@@ -64,6 +64,18 @@ A rule is not accepted without:
 4. **Confidence + fingerprint on every finding** — the fingerprint is stable
    across runs (rule + path + normalized match) so reviews and suppressions are reproducible.
 
+### 4.1 Known medium-severity heuristic findings (accepted by design)
+
+These fire on ordinary code on purpose — they mark real weakness classes that a
+static pass cannot prove or disprove, so they are priced at MEDIUM (−4 each),
+never HIGH/CRITICAL:
+
+| Finding | Fires on | Why it is accepted |
+|---|---|---|
+| `JWT-002` **jwt_alg_unpinned** | any `jwt.verify(token, secret)` call **without** an `algorithms:` option | Unpinned verify accepts every registered algorithm — the JWT HS/RS confusion class. The FIX is one option object. Only `algorithms: [...]`-pinned calls stay silent; `algorithms:"none"` / `ignoreExpiration:true` are HIGH (seeded in the honeypot). Suppress with an inline `anubis-ignore` where the unpinned choice is deliberate, e.g. `expires="…" reason="internal verify with explicit alg check upstream"`. |
+| `TAINT-001..005` | single-file untrusted-input → dangerous-sink flows | Static flow is capped MEDIUM by design ("flow to verify with the generated canary", not a proven vulnerability). |
+| `DOCKER-001` | Dockerfile without a `USER` directive | Many images run fine without it; it is hardening advice, not proof of exposure. |
+
 ## 5. Org rules & the supply-chain guard (v1.0)
 
 Custom rules run inside Layer-5 semantics. Since v1.0:

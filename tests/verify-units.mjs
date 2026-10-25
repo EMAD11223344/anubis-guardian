@@ -166,6 +166,12 @@ check("U8.4 ARG DATABASE_PASSWORD fires (honeypot seed 19 stays detected)", argS
 check("U8.5 ARG STRIPE_SECRET_KEY / JWT_SECRET / API_KEY fire", argSecretRisk("STRIPE_SECRET_KEY") && argSecretRisk("JWT_SECRET") && argSecretRisk("API_KEY"));
 check("U8.6 camelCase apiKey / refreshToken fire (camel-boundary tokenizing)", argSecretRisk("apiKey") === true && argSecretRisk("refreshToken") === true);
 check("U8.7 ARG REFRESH_TOKEN / AWS_ACCESS_SECRET fire", argSecretRisk("REFRESH_TOKEN") === true && argSecretRisk("AWS_ACCESS_SECRET") === true);
+// Intended behavior (documented in METHODOLOGY §4.1 spirit + DOCKER-003 rule comment):
+// DOCKER-003 polices the ARG NAME (build-time intent), NOT the value — values are not
+// evaluated at all. ARG DATABASE_URL=postgres://user:pass@host stays silent: *_URL ARGs
+// are legitimate (endpoint URLs), and value-shaped literals in the file itself would be
+// a separate future rule, not a name-based flag.
+check("U8.8 ARG DATABASE_URL stays silent (name-only policy; its URL value is NOT evaluated)", argSecretRisk("DATABASE_URL") === false);
 
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);
