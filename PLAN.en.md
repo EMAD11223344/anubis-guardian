@@ -4,7 +4,7 @@
 >
 > Status: `SHIPPED v1.0 — Step 0 ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 (Mode 2) ✅ · v1.0 Public Release ✅ — both modes + release engineering complete` · Master plan rev: `v2.1` · License: `MIT` · Date: 2026-10
 > Modes: **Mode 1 — Codebase** (scan project files, shipped) · **Mode 2 — URL** (scan a live site by its URL, shipped v0.4)
-> Implementation: TypeScript / Node ≥ 18 · Distribution: source + npm-ready (`@anubis-guardian/cli` — publish workflow shipped: Trusted Publishing + provenance + SBOM) + Agent Skill
+> Implementation: TypeScript / Node ≥ 18 · Distribution: source + npm-ready (`anubis-guardian` — publish workflow shipped: Trusted Publishing + provenance + SBOM) + Agent Skill
 >
 > Same plan in Arabic: [`PLAN.ar.md`](PLAN.ar.md) · Full bilingual design + decision log: [`docs/PLAN.master.md`](docs/PLAN.master.md)
 
@@ -167,7 +167,7 @@ Masking is mandatory in every output: secret evidence = type + location + first-
 - **Organizational rules as supply chain** (§9.4): `--rules-dir` requires clean-cases per rule; org CRITICAL is forced to `needs_confirmation`; **v1.0 ships `rules-lock`** — SHA-256 pinning per rule file, scan refuses modified/unpinned rules, `--allow-community-rules` runs quarantined (meta-labeled); the remote community registry will ride on this mechanism.
 - **URL Mode abuse** (§9.5): graduated levels, verified ownership gates, rate limits, authorization records.
 - **Distribution supply chain** (§9.6) — **shipped v1.0:** CycloneDX 1.5 SBOM generator + `.github/workflows/release.yml` (npm Trusted Publishing + provenance attestation + checksums + real-SHA-pinned actions) + signed-tag instructions; hook/plugin versions pinned to explicit versions (never `@latest`).
-- **Name collision** ("Anubis" is used by other OSS, e.g. TecharoHQ/anubis): always the full name **Anubis Guardian**, npm scope `@anubis-guardian/cli`.
+- **Name collision** ("Anubis" is used by other OSS, e.g. TecharoHQ/anubis): always the full name **Anubis Guardian**, npm package `anubis-guardian`.
 
 ## 9. Data-driven prioritization — the Step 0 study
 

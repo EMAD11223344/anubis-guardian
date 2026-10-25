@@ -5,7 +5,7 @@
 >
 > Status: `SHIPPED v1.0 — Step 0 ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 (Mode 2) ✅ · v1.0 Public Release ✅ — الوضعان + هندسة الإصدار اكتملوا` · Version: `2.1` (rev: **جولة التنفيذ الرابعة — v1.0 كاملة بالأدلة: rules supply-chain guard + الفحص التفاضلي المُقيَّد (قرار L3 النشط) + init-zap + SBOM/provenance + METHODOLOGY/CONTRIBUTING + BENCHMARKS.md بالأرقام المقاسة + اختبار install→report · المتبقي على المالك: npm publish الفعلي + dogfood Business-OS**) · License: `MIT` · Date: 2026-10
 > Modes: **Codebase Mode** (فحص الملفات) + **URL Mode** (فحص الموقع الحي)
-> Implementation: **TypeScript / Node ≥ 18** · Distribution: **npm (`@anubis-guardian/cli`) + Agent Skill**
+> Implementation: **TypeScript / Node ≥ 18** · Distribution: **npm (`anubis-guardian`) + Agent Skill**
 
 ### حالة بناء الأداة | Build Progress Tracker (جديد في v1.7 — يتحدّث بعد كل مرحلة تكتمل)
 
@@ -204,7 +204,7 @@ anubis-guardian scan --url https://myapp.com --level 3 --verified
 
 | Environment | How it works |
 |---|---|
-| Any terminal (Linux/macOS/Windows) | `npx anubis-guardian scan` — Node ≥ 18 (موجود أصلًا في أي مشروع JS/TS)، أو `npm i -g @anubis-guardian/cli` |
+| Any terminal (Linux/macOS/Windows) | `npx anubis-guardian scan` — Node ≥ 18 (موجود أصلًا في أي مشروع JS/TS)، أو `npm i -g anubis-guardian` |
 | VS Code / Cursor / Windsurf agent | Agent Skill format: `npx skills add anubis-guardian` → agent can run the audit and propose fixes |
 | Claude Code / Codex / OpenCode | Same SKILL.md loaded as agent skill; findings flow back to the agent — **diffs proposed, human approves** |
 | CI/CD (GitHub Actions) | Generated workflow file with `--fail-on` gate + **SARIF upload to GitHub Security tab** (جديد في v1.3 — Section 8)؛ also available as a reusable Action — **والـ workflow المولّد بأقل صلاحيات (least-privilege `permissions:`) من v1.6، والأداة بتفحص الـ workflows الموجودة في المشروع نفسه (CI pack — Section 6 Layer 5)** |
@@ -675,7 +675,7 @@ fix: "Move all service_role usage to server-side code; the client must only use 
 
 ### 9.6 Distribution Supply Chain (جديد في v1.2)
 
-- **npm Trusted Publishing + provenance:** النشر عبر OIDC من GitHub Actions مع **provenance attestation** (sigstore) — أي حد ينزّل `@anubis-guardian/cli` يقدر يتحقق إن الحزمة اتبنت من الـ repo الرسمي بالحرف — من غير long-lived token أصلًا.
+- **npm Trusted Publishing + provenance:** النشر عبر OIDC من GitHub Actions مع **provenance attestation** (sigstore) — أي حد ينزّل `anubis-guardian` يقدر يتحقق إن الحزمة اتبنت من الـ repo الرسمي بالحرف — من غير long-lived token أصلًا.
 - **Signed releases:** git tags موقّعة + checksums منشورة مع كل release + **SBOM (CycloneDX)** مولّد مع كل إصدار — عشان مستخدمي الأداة نفسهم يقدروا يراقبوا اعتمادياتها.
 - **2FA إلزامي على الحزمة**، وكل CI workflow بتاع الأداة نفسه بصلاحيات دنيا معلنة (`permissions:` صريحة) — الأداة اللي بتفحص الـ supply chain لازم تكون أول نموذج فيه.
 
@@ -780,7 +780,7 @@ fix: "Move all service_role usage to server-side code; the client must only use 
 - [x] ✅ **وثائق الإصدار:** `METHODOLOGY.md` (عقد الحتمية + الدرجات + عقد الـ FP + مستويات URL + سياسة الأرقام) + `CONTRIBUTING-RULES.md` (دليل مساهمة القواعد) + `docs/site/` (صفحة GitHub Pages) + README/SKILL محدّثين — **بوابات P1–P4**
 - [x] ✅ **BENCHMARKS.md بالأرقام المقاسة فقط:** `scripts/measure-benchmarks.mjs` بيقيس ويكتب — honeypot 49/49 (self-test) · clean 0 FP (100/A) · **NodeGoat 16 findings · Juice Shop 121 findings** (sanity خارجي — طبقات عامة فقط) · أزمنة قياس فعلية — مفيش أي رقم تسويقي غير مقاس
 - [x] ✅ **install → first report smoke:** npm pack → install من التاربول (خارج الريبو عمدًا — npm بيطلع لأقرب package.json) → أول تقرير — أقل من دقيقتين — **بوابة N4/N4b**
-- [ ] **الخطوة المتبقية على المالك:** `npm publish @anubis-guardian/cli` الفعلي (كل حاجة جاهزة: files/prepublishOnly/workflow) + **dogfooding على Business-OS** (أول اختبار حي حقيقي — مؤجل بقرار المالك للأداة المكتملة) + الـ labeled AI-corpus recall الكامل (العينة الخام محفوظة من Step 0)
+- [ ] **الخطوة المتبقية على المالك:** `npm publish anubis-guardian` الفعلي (كل حاجة جاهزة: files/prepublishOnly/workflow) + **dogfooding على Business-OS** (أول اختبار حي حقيقي — مؤجل بقرار المالك للأداة المكتملة) + الـ labeled AI-corpus recall الكامل (العينة الخام محفوظة من Step 0)
 - **Acceptance ✅ متحققة فعليًا:** acceptance v1.0 — **45/45 بوابة خضرا** + install→report من التاربول شغال + BENCHMARKS.md منشور بأرقام مقاسة + السلسلة الكاملة (v0.2/v0.3/mode2 33/v0.4 47/v1.0 45) خضرا
 
 #### ملخص الجدولة بعد v1.9 (جولتا التنفيذ) — البوابات المتبقية
@@ -805,7 +805,7 @@ fix: "Move all service_role usage to server-side code; the client must only use 
 | LLM cost & latency | AI layer optional and off by default; core works offline with zero cost |
 | Rule maintenance across framework versions | Playbooks versioned and community-contributable; CI runs them against pinned sample apps |
 | Black-box limits (can't see server internals) | Honest reporting: URL Mode reports "external view" findings only; recommends Codebase Mode for depth |
-| Name collision ("Anubis" used by other OSS — e.g., TecharoHQ/anubis anti-scraper proxy) | Always use the **full name "Anubis Guardian"**; npm scope `@anubis-guardian/cli`; repo `anubis-guardian`; SEO anchored to full name. If npm name conflict at launch: scoped package solves it. (Alternatives if ever needed: Wepwawet, Mafdet, Nekhbet — Egyptian guardian deities) |
+| Name collision ("Anubis" used by other OSS — e.g., TecharoHQ/anubis anti-scraper proxy) | Always use the **full name "Anubis Guardian"**; npm package `anubis-guardian`; repo `anubis-guardian`; SEO anchored to full name. If npm name conflict at launch: scoped package solves it. (Alternatives if ever needed: Wepwawet, Mafdet, Nekhbet — Egyptian guardian deities) |
 | Scope creep | Roadmap frozen per milestone؛ playbook contributions via template PRs؛ **عقد Non-Goals في Section 2 + بوابة إلزامية: أي فكرة جديدة تعدي على الـ Decision Log وبند roadmap صريح — مفيش إضافة صامتة للخطة (v1.3)** |
 | Taint-lite noise (أكبر بند جديد في v1.6) | نطاق محصور عمدًا (ملف + استيراد واحد) · سقف MEDIUM في الـ severity · قائمة sanitizers معترف بيها بتقطع المسار · clean-cases إلزامية لكل قاعدة · التأكيد النهائي باختبار مولّد يشغّله المالك مش بحكم الأداة (Sections 6/9.7) |
 

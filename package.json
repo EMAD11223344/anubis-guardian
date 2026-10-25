@@ -1,9 +1,12 @@
 {
-  "name": "@anubis-guardian/cli",
+  "name": "anubis-guardian",
   "version": "1.1.0",
   "description": "Deterministic security auditor for AI-built projects \u2014 Codebase Mode + URL Mode (offline-first, MIT).",
   "license": "MIT",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   },

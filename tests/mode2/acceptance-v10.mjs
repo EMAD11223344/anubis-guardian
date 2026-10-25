@@ -228,7 +228,7 @@ try {
     const n2i = spawnSync("npm", ["install", "--prefix", instDir, "--no-audit", "--no-fund", "--loglevel", "error", "./pkg.tgz"], { encoding: "utf8", cwd: instDir, ...npmShell });
     const report = join(instDir, "first-report.json");
     const n2r = n2i.status === 0
-      ? spawnSync("node", [join(instDir, "node_modules", "@anubis-guardian", "cli", "dist", "cli.js"), "scan", join(ROOT, "tests", "clean", "app"), "--format", "json", "-o", report], { encoding: "utf8" })
+      ? spawnSync("node", [join(instDir, "node_modules", "anubis-guardian", "dist", "cli.js"), "scan", join(ROOT, "tests", "clean", "app"), "--format", "json", "-o", report], { encoding: "utf8" })
       : { status: 1, stderr: n2i.stderr ?? "" };
     const elapsed = Date.now() - t0;
     check("N4: install → first report works from the packed tarball (exit 0, < 2 min)",

@@ -1,10 +1,10 @@
-# Anubis Guardian — الخطة الرسمية (بالعربية)
+﻿# Anubis Guardian — الخطة الرسمية (بالعربية)
 
 > **أداة مفتوحة المصدر للفحص الأمني لمشاريع الـ vibe coding المبنية بالذكاء الاصطناعي**
 >
 > الحالة: `اتسلم v1.0 — Step 0 ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 (Mode 2) ✅ · v1.0 الإصدار العام ✅ — الوضعان + هندسة الإصدار اكتملوا` · المرجع الأصلي: `v2.1` · الرخصة: `MIT` · التاريخ: 2026-10
 > الوضعان: **Mode 1 — فحص ملفات الكود** (متاح) · **Mode 2 — الفحص الأونلاين بالرابط** (اتسلم في v0.4)
-> التنفيذ: TypeScript / Node ≥ 18 · التوزيع: المصدر + جاهزية npm كاملة (`@anubis-guardian/cli` — workflow النشر متسلم: Trusted Publishing + provenance + SBOM) + Agent Skill
+> التنفيذ: TypeScript / Node ≥ 18 · التوزيع: المصدر + جاهزية npm كاملة (`anubis-guardian` — workflow النشر متسلم: Trusted Publishing + provenance + SBOM) + Agent Skill
 >
 > نفس الخطة بالإنجليزي: [`PLAN.en.md`](PLAN.en.md) · سجل التصميم التفصيلي ثنائي اللغة + Decision Log: [`docs/PLAN.master.md`](docs/PLAN.master.md)
 
@@ -167,7 +167,7 @@ score = 100 − (25 × CRITICAL + 10 × HIGH + 4 × MEDIUM + 1 × LOW)     در�
 - **القواعد المؤسسية كسلسلة توريد** (§9.4): `--rules-dir` بيشترط clean-cases لكل قاعدة؛ والـ CRITICAL المؤسسي بيتفرض عليه `needs_confirmation`؛ **وv1.0 سلّمت `rules-lock`** — تثبيت SHA-256 لكل ملف قواعد، والـ scan بيرفض المعدّل/غير المثبّت، و`--allow-community-rules` بيشتغل معلَّم quarantine في meta؛ والسجل المجتمعي البعيد هيبني فوق نفس الميكانيزم.
 - **إساءة استخدام URL Mode** (§9.5): مستويات متدرجة، بوابات إثبات ملكية، rate limits، سجلات تفويض.
 - **سلسلة توريد التوزيع** (§9.6) — **اتسلمت في v1.0:** مولّد SBOM (CycloneDX 1.5) + `.github/workflows/release.yml` (npm Trusted Publishing + provenance attestation + checksums + actions مثبتة بـ SHAs حقيقية) + تعليمات التاج الموقّع؛ وإصدارات الـ hook/plugin مثبّتة بإصدار صريح (عمرها ما `@latest`).
-- **تعارض الاسم** ("Anubis" مستخدم في OSS تانية زي TecharoHQ/anubis): دايمًا الاسم الكامل **Anubis Guardian**، ونطاق npm `@anubis-guardian/cli`.
+- **تعارض الاسم** ("Anubis" مستخدم في OSS تانية زي TecharoHQ/anubis): دايمًا الاسم الكامل **Anubis Guardian**، وحزمة npm `anubis-guardian`.
 
 ## 9. ترتيب الأولويات بالبيانات — دراسة Step 0
 

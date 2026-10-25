@@ -80,7 +80,7 @@ Optional — global command:
 npm link        # then simply:  anubis-guardian scan ./my-project
 ```
 
-> The npm registry package (`@anubis-guardian/cli`) ships with a ready publish workflow (provenance + SBOM + checksums in [`.github/workflows/release.yml`](.github/workflows/release.yml)). Until the first publish happens, install from source as above.
+> The npm registry package (`anubis-guardian`) ships with a ready publish workflow (provenance + SBOM + checksums in [`.github/workflows/release.yml`](.github/workflows/release.yml)). Until the first publish happens, install from source as above.
 
 **Requirements:** Node ≥ 18. Only runtime dependency: `commander`.
 
