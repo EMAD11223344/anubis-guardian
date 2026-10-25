@@ -5,6 +5,8 @@
 **Deterministic security auditor for AI-built (vibe-coded) projects**
 **ماسح أمني حتمي للمشاريع المبنية بالذكاء الاصطناعي**
 
+**Works on any stack. Supabase/Next.js is the batteries-included case.**
+
 <img src="docs/assets/hero.jpg" alt="Anubis Guardian — deterministic security auditor for AI-built projects: offline static-only scanner with score 100/A" width="100%">
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -14,6 +16,8 @@
 [![Tests](https://img.shields.io/badge/regression%20gates-9%20suites-brightgreen.svg)](#-tests-regression-gates)
 
 **Codebase audit (offline) · URL audit (consent-gated) · Secrets · Supabase RLS · Next.js · NestJS · Dependencies (OSV) · CI/supply-chain · SARIF**
+
+> 🛡️ **Real-time AI guard, not just another scanner.** Existing tools audit *after* the damage ships. Anubis Guardian can sit in the loop **at write time**: a pinned PreToolUse hook + skill block service-role keys, RLS-killing SQL, and secrets **before they enter your codebase** — detection, prevention, and repair guidance in one tool.
 
 [English](#-why-anubis-guardian) · [العربية](#-العربية-quick-guide)
 
@@ -25,13 +29,20 @@
 
 AI coding agents (Claude Code, Cursor, Bolt, Lovable, Windsurf…) ship full-stack apps in days — but with a **consistent, repeating pattern of security mistakes**: service keys shipped to the client, database passwords in request headers, missing Row-Level Security, JWTs in `localStorage`, `.env` files pushed to GitHub, unpinned CI actions.
 
-Existing scanners (Semgrep, Trivy, Gitleaks) are powerful but generic — they were not designed for this failure pattern. **Anubis Guardian** is a deterministic, static-only security scanner built specifically for the AI stack (**Supabase / Next.js / NestJS**), with:
+Existing scanners (Semgrep, Trivy, Gitleaks) are powerful but generic — they were not designed for this failure pattern. **Anubis Guardian** is a deterministic, static-only security scanner built for AI-generated code — first-class playbooks for the **Supabase / Next.js / NestJS** stack, universal coverage everywhere else, and:
 
 - **Hard honesty contracts** — secrets are masked (first-4 chars + SHA-256) in *every* output, including the optional AI-review prompt; no CRITICAL without independent confirmation
 - **Byte-identical determinism** — same code + same tool version ⇒ identical `findings.json` / `fix-prompt.md`; for URL mode, one saved capture replays with zero network and identical results
 - **No execution of scanned code** — file reads and git plumbing only; generated tests land in a *quarantine* folder that **you** run
 - **Prevention, not just detection** — an optional pinned agent hook blocks service-role keys and RLS-killing SQL *at write time*
 - **Data-driven rules** — priorities come from a study of 100 public AI-built projects (top patterns: unpinned CI actions 22% · `Math.random` tokens 11% · `dangerouslySetInnerHTML` 7% · committed `.env` 3%) — see [studies/RESULTS.md](studies/step0-pattern-study/RESULTS.md)
+
+## 🧭 What's stack-specific vs universal
+
+| | Coverage |
+|---|---|
+| **Stack-specific** *(the differentiator — deep host-aware playbooks)* | **Supabase** — missing RLS, `USING (true)`, service-role exposure, Storage/Edge/policies, live L3 anon RLS probe (`SUPA-001..003`, `SUPA-R01..R08`) · **Next.js** — client/server boundary, public env, cookies, middleware-matcher gaps, CSRF heuristic (`NEXT-002`, `AUTH-001`) · **NestJS** — controller guards, CORS, helmet, throttler, Socket.IO gateways (`NEST-001..004`) |
+| **Universal** *(works on any JS/TS project, any framework, any host)* | secrets + masking (`SEED`/`ENV`/`FILE`/`LOGS`/`HDR-001`) · git-history leaks · taint (`TAINT-001..005` SSRF/open redirect/path traversal/command injection/XSS) · JWT auth (`JWT-001/002`) · crypto (`CRYPTO-001`) · dependencies (`DEP-001..005`: CVEs, malicious, typosquat, slopsquat) · mass assignment / webhooks / exposed docs · Docker + CI/supply-chain (`DOCKER-001..003`, `CI-001..004`) · agent-environment audit (`AGENT-001..004`) · URL Mode headers/secrets (L1–L2) |
 
 ## 🧪 What It Checks
 
@@ -72,6 +83,20 @@ npm install && npm run build
 
 # scan any project — offline, no configuration needed
 node dist/cli.js scan ./path/to/your-project
+```
+
+Other stacks work the same way — no Supabase or Next.js required:
+
+```bash
+# Prisma + Express (plain Postgres)
+node dist/cli.js scan ./my-api
+# universal rules fire as-is: SEED-001 hardcoded seeder creds · SQL string-concat
+# · committed .env · FILE/LOGS secret patterns · DEP-001 CVEs · typosquat
+
+# Drizzle + Fastify (MySQL anywhere)
+node dist/cli.js scan ./crm
+# universal rules fire as-is: TAINT-001 SSRF · JWT-001 decode-based auth
+# · CI-001 unpinned actions · CRYPTO-001 Math.random tokens
 ```
 
 Optional — global command:

@@ -127,6 +127,15 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
   `git log` / `git ls-files` are never imported into the report (no foreign
   HIST findings, no foreign tracked-file paths). `ls-files` output is always
   rebased target-relative.
+- URL Mode performs **no private-IP / redirect-hop / DNS-rebinding network
+  validation**: `Fetcher` follows redirects anywhere (fetch: `redirect:"follow"`,
+  TRACE via raw node:http) and `isLocalOrPrivate` is checked on the hostname
+  *string* for ownership labeling — never against the RESOLVED address. That is
+  fine for the operator-run CLI model (the operator already owns the machine),
+  and UNSAFE if `scan-url` were ever exposed as a hosted service (SSRF into
+  RFC1918/loopback/link-local/cloud-metadata, incl. redirect + rebind bypasses).
+  An SSRF guard (resolve→pin→re-validate every hop) is REQUIRED before any
+  web-service deployment — proposed, not yet implemented.
 - The advisory snapshot is a point-in-time capture per release; run
   `update-advisories` (or `--online`) for current registry state.
 - Dockerfile **ARG/ENV values are not evaluated** — DOCKER-003 is name-only by
