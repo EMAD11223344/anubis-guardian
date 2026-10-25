@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": ["Bash(*)", "Edit(*)"],
+    "deny": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "npx anubis-guard@latest precheck" }]
+      }
+    ]
+  }
+}

@@ -1,0 +1,138 @@
+# Step 0 — Candidate patterns (Plan Section 11)
+# Every pattern the plan hunts, with the grep used to measure real-world frequency.
+# measure.mjs consumes this file — add patterns here, never in the script.
+# NOTE: regexes are single-backslash (the loader compiles them directly).
+# files: comma list supporting exact names, * wildcards, and **/ any-depth prefixes.
+
+patterns:
+  # ---- owner's real-world cases (highest priority) ----
+  - id: db_creds_in_headers
+    label: DB credentials sent/received in HTTP headers
+    regex: (x[-_]?(db|database|sql|conn)[-_]?[a-z]*|db[-_]?(pass(word)?|user|host))["']?\s*[:=]
+    files: *.ts,*.tsx,*.js
+  - id: seeder_credentials
+    label: hardcoded passwords in seeders/fixtures
+    regex: password\s*[:=]\s*["'][^"']{4,}["']
+    files: **/seed*,**/seeders/*,**/factories/*,**/fixtures/*
+  - id: service_role_lead
+    label: JWT-shaped literals in code/env (service_role leads — engine decodes by value)
+    regex: eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}
+    files: *.ts,*.tsx,*.js,.env*
+  - id: committed_env
+    label: .env / .env.production present in worktree
+    regex: null
+    files: .env,.env.local,.env.production
+  - id: env_in_git_history
+    label: env files ever committed (git log --diff-filter=A)
+    regex: null
+    files: git-history
+
+  # ---- AI-stack patterns ----
+  - id: rls_permissive
+    label: RLS policies USING(true)/WITH CHECK(true)
+    regex: (USING|WITH\s+CHECK)\s*\(\s*true\s*\)
+    files: *.sql
+  - id: nextpublic_secret_keys
+    label: secret-looking keys under NEXT_PUBLIC_/VITE_/REACT_APP_
+    regex: ^(NEXT_PUBLIC_|VITE_|REACT_APP_|EXPO_PUBLIC_).*(SECRET|SERVICE|PRIVATE|ADMIN|PASSWORD|TOKEN)
+    files: .env*
+  - id: jwt_in_localstorage
+    label: auth tokens stored in localStorage/sessionStorage
+    regex: (localStorage|sessionStorage)\.setItem\(\s*["'][^"']*(token|jwt|auth|session)
+    files: *.ts,*.tsx,*.js
+  - id: hardcoded_secret_generic
+    label: generic credential assignments (api_key/secret/token = long literal)
+    regex: (api[_-]?key|api[_-]?secret|secret|auth[_-]?token|access[_-]?token)\s*[:=]\s*["'][A-Za-z0-9+/=_-]{20,}["']
+    files: *.ts,*.js,*.json
+  - id: db_url_with_password
+    label: connection URLs with embedded password
+    regex: (postgres|mysql|mongodb|redis)(\+srv)?://[^\s"']+:[^\s"'@]{4,}@
+    files: *.ts,*.js,.env*,*.json,*.yml,*.yaml,*.sql
+
+  # ---- classic patterns (calibration baseline) ----
+  - id: aws_keys
+    label: AWS access keys
+    regex: AKIA[0-9A-Z]{16}
+    files: *
+  - id: stripe_live
+    label: Stripe live keys
+    regex: (sk|rk)_live_[0-9a-zA-Z]{20,}
+    files: *
+  - id: private_keys
+    label: private key material
+    regex: -----BEGIN [A-Z ]*PRIVATE KEY
+    files: *
+  - id: sql_concat
+    label: SQL built by string concatenation
+    regex: (select|insert|update|delete)[^;\n]{0,120}["']\s*\+
+    files: *.ts,*.js
+  - id: dangerous_html
+    label: dangerouslySetInnerHTML usage (review non-literals)
+    regex: dangerouslySetInnerHTML
+    files: *.tsx,*.jsx
+  - id: eval_exec
+    label: eval/exec/new Function usage
+    regex: (eval\s*\(|new\s+Function\s*\(|child_process.*exec\s*\()
+    files: *.ts,*.js
+  - id: weak_hashing
+    label: MD5/SHA1 hashing (password context judged by engine)
+    regex: createHash\s*\(\s*["'](md5|sha1)["']
+    files: *.ts,*.js
+  - id: math_random_tokens
+    label: Math.random for tokens/OTPs (v0.3 CRYPTO-001 lead)
+    regex: Math\.random\(\)
+    files: *.ts,*.js
+  - id: jwt_decode_usage
+    label: jwt.decode usage (v0.3 JWT-001 lead)
+    regex: jwt\.decode\(
+    files: *.ts,*.js
+  - id: npmrc_token
+    label: .npmrc with _authToken
+    regex: _authToken\s*=
+    files: .npmrc
+  - id: tfstate
+    label: terraform.tfstate present
+    regex: null
+    files: terraform.tfstate
+  - id: service_account_json
+    label: cloud service-account JSON with private key
+    regex: "private_key"
+    files: *.json
+
+  # ---- v1.6 rule-pack leads (sweep decides v0.2/v0.3 priority — plan Section 6 Layer 5) ----
+  - id: ci_unpinned_actions
+    label: GitHub Actions using tag/branch refs instead of SHA pinning (CI-001 lead)
+    regex: uses:\s*[^@\s]+@(v\d[\w.]*|main|master|latest)\s*$
+    files: .github/workflows/*.yml,.github/workflows/*.yaml
+  - id: ci_pull_request_target
+    label: pull_request_target workflow trigger (CI-002 lead)
+    regex: pull_request_target
+    files: .github/workflows/*.yml,.github/workflows/*.yaml
+  - id: dockerfile_latest
+    label: Dockerfile FROM :latest tag (DOCKER-002 lead)
+    regex: (?i)^FROM\s+\S+:latest\s*$
+    files: Dockerfile,**/Dockerfile
+  - id: mass_assignment_lead
+    label: NestJS @Body() typed any (MASS-001 lead)
+    regex: @Body\(\)\s*\w+\s*:\s*any\b
+    files: *.ts
+  - id: ws_gateway_presence
+    label: Socket.IO @WebSocketGateway present (WS-001 lead)
+    regex: @WebSocketGateway
+    files: *.ts
+  - id: swagger_setup
+    label: SwaggerModule.setup present (SWAGGER-001 lead)
+    regex: SwaggerModule\.setup
+    files: *.ts
+  - id: logs_secret_leak
+    label: console.log printing secret-looking vars (LOGS-001 lead)
+    regex: console\.log\([^)]*(password|secret|token|api[_-]?key)
+    files: *.ts,*.js
+  - id: supabase_user_metadata
+    label: user_metadata referenced in SQL policies (SUPA-002 lead)
+    regex: user_metadata|raw_user_meta_data
+    files: *.sql
+  - id: supabase_service_role_fn
+    label: service_role key inside supabase/functions (SUPA-003 lead)
+    regex: SUPABASE_SERVICE_ROLE_KEY|service_role
+    files: **/supabase/functions/**/*.ts,**/functions/**/*.ts

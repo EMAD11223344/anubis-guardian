@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "fs": { "command": "npx -y @modelcontextprotocol/server-filesystem@0.2.8 ./data" },
+    "db": { "command": "npx supa-db-mcp@1.4.2", "env": { "SUPA_TOKEN": "${SUPA_TOKEN_ENV}" } }
+  }
+}

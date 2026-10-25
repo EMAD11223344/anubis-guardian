@@ -1,0 +1,5 @@
+{
+  "name": "demo-vibe-api",
+  "private": true,
+  "dependencies": { "@nestjs/core": "^10.4.0", "@nestjs/common": "^10.4.0", "@nestjs/platform-express": "^10.4.0", "reflect-metadata": "^0.2.0" }
+}

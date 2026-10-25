@@ -1,0 +1,6 @@
+{
+  "name": "clean-demo-app",
+  "private": true,
+  "scripts": { "start": "next start", "build": "next build" },
+  "dependencies": { "next": "15.1.0", "react": "19.0.0", "@supabase/supabase-js": "2.47.0", "pg": "8.13.0" }
+}

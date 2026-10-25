@@ -1,0 +1,3040 @@
+{
+  "tool": "anubis-guardian",
+  "version": "0.4.0",
+  "advisory_snapshot": "2026-10",
+  "target": {
+    "mode": "codebase",
+    "path": "/home/z/my-project/anubis-guardian/tests/honeypot/app + /home/z/my-project/anubis-guardian/tests/honeypot/nest-app",
+    "paths": [
+      "/home/z/my-project/anubis-guardian/tests/honeypot/app",
+      "/home/z/my-project/anubis-guardian/tests/honeypot/nest-app"
+    ],
+    "stack": [
+      "node",
+      "nextjs",
+      "supabase",
+      "frontend-ui",
+      "supabase-migrations",
+      "nestjs"
+    ]
+  },
+  "score": 0,
+  "grade": "F",
+  "summary": {
+    "critical": 10,
+    "high": 53,
+    "medium": 31,
+    "low": 2,
+    "info": 0
+  },
+  "coverage": {
+    "checks_run": 28,
+    "checks_applicable": 29,
+    "classes_covered": [
+      "secrets (hardcoded keys, service_role by value, DB creds in headers, seeder credentials)",
+      "git-history secrets + committed env files",
+      "sensitive files (dumps/backups/.npmrc/service-account/tfstate/SSH keys)",
+      "supabase RLS (missing RLS, USING(true), views, SECURITY DEFINER, policy scoping, storage.objects, verify_jwt, dashboard drift via --schema)",
+      "next.js auth basics (tokens in web storage, cookie flags, NEXT_PUBLIC secrets, mutating endpoints without in-file auth)",
+      "nestjs playbook (APP_GUARD-aware unguarded controllers, CORS, helmet, throttler)",
+      "sast-light (SQLi concat, XSS dangerous HTML, eval/exec, weak hashing)",
+      "crypto (Math.random for tokens/OTPs — CRYPTO-001)",
+      "dependencies (CVEs vs bundled advisory snapshot, known-malicious, typosquat, unresolved-no-lockfile, slopsquat via --online)",
+      "ci/supply-chain (GitHub Actions SHA pinning, pull_request_target, script injection, permissions; Dockerfile root/:latest/ARG secrets)",
+      "recon inventory (routes, server actions, controllers w/ guards, supabase tables/RPC/edge functions, socket events, webhooks)",
+      "taint-lite (SSRF, open redirect, path traversal, command injection, reflected XSS — single-file scope, MEDIUM cap, generated canary tests)",
+      "rule packs II (LOGS-001, SUPA-002/003, AUTH-001 middleware-matcher gaps, NEXT-005 CSRF heuristic, MASS-001, WS-001, WEBHOOK-001, JWT-001/002, SWAGGER-001, PRISMA-001 hint)",
+      "agent environment (unpinned MCP servers, secrets in agent configs, permission wildcards/bypass, unpinned hook commands)",
+      "AI review layer with independent verifier (opt-in --ai-review; redaction-before-LLM; verifier-gated; AI findings cap at HIGH)",
+      "authz matrix + generated Supertest/Playwright quarantine tests (test-authz — the tool never executes them)",
+      "agent guard hook (init-hook — PreToolUse prevention of service_role-in-client, RLS-killing SQL, secrets into .env)"
+    ],
+    "classes_not_covered": [
+      "deep multi-file taint flows (taint-lite is single-file + one-level import by design)",
+      "IDOR differential testing / authz matrix execution (v1.0 — restricted; the generated tests are run by the owner, never the tool)",
+      "URL Mode L1–L3: security headers, exposed files, live probing (v0.4 — after Mode 1 completes)",
+      "cookie HttpOnly deep verification beyond the flag-level check + full CSRF semantics (heuristic only)",
+      "business & payment logic (human review by design)",
+      "DAST / wide fuzzing (non-goal by design)",
+      "compliance SOC2/PCI/HIPAA (non-goal by design)",
+      "non-JS/TS languages (non-goal — use the Semgrep adapter)"
+    ]
+  },
+  "score_breakdown": {
+    "base": 100,
+    "total_deducted": 824.3,
+    "score": 0,
+    "grade": "F",
+    "groups": [
+      {
+        "rule_id": "SUPA-001",
+        "root": "app:1df107c6",
+        "severity": "critical",
+        "count": 2,
+        "deducted": 27.5
+      },
+      {
+        "rule_id": "ENV-001",
+        "root": "app:.env",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "ENV-001",
+        "root": "app:.env.production",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "SEC-002",
+        "root": "app:2105c29f",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "HDR-001",
+        "root": "app:app/api/connect/route.ts:c1294c17",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "HDR-001",
+        "root": "app:app/api/connect/route.ts:e41942c8",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "HDR-001",
+        "root": "cross-root",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "SEED-001",
+        "root": "app:240be518",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "SEED-001",
+        "root": "app:0792b5fb",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "JWT-002",
+        "root": "app:lib/tokencheck.ts",
+        "severity": "high",
+        "count": 4,
+        "deducted": 13
+      },
+      {
+        "rule_id": "CRYPTO-001",
+        "root": "app:lib/auth.ts",
+        "severity": "high",
+        "count": 2,
+        "deducted": 11
+      },
+      {
+        "rule_id": "AGENT-003",
+        "root": "app:.claude/settings.json",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-001",
+        "root": "app:00a08bdb",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-001",
+        "root": "app:1df107c6",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "NEXT-001",
+        "root": "app:1df107c6",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-ENV",
+        "root": "app:.env.local",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-007",
+        "root": "app:f4c37a83",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "FILE-006",
+        "root": "app:.env.production",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-007",
+        "root": "app:733c75ff",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-003",
+        "root": "app:2105c29f",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "SEC-008",
+        "root": "app:733c75ff",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "CI-002",
+        "root": "app:.github/workflows/deploy.yml",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "CI-004",
+        "root": "app:.github/workflows/deploy.yml",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "CI-003",
+        "root": "app:.github/workflows/deploy.yml",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "AGENT-002",
+        "root": "app:38c3aaef",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "FILE-002",
+        "root": "app:.npmrc",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "AUTH-001",
+        "root": "app:app/api/admin/stats/route.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "AUTH-001",
+        "root": "app:app/api/connect/route.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "SAST-003",
+        "root": "app:app/api/convert/route.ts:8",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "AUTH-001",
+        "root": "app:app/api/profile/route.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "MASS-001",
+        "root": "app:app/api/profile/route.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "AUTH-001",
+        "root": "app:app/api/webhooks/checkout/route.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "WEBHOOK-001",
+        "root": "app:app/api/webhooks/checkout/route.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "NEXT-002",
+        "root": "app:app/components/TokenStore.tsx:localStorage",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "NEXT-002",
+        "root": "app:app/components/TokenStore.tsx:sessionStorage",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "DOCKER-003",
+        "root": "app:Dockerfile",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HDR-001",
+        "root": "app:e0a88454:x-db-password",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HDR-001",
+        "root": "app:8c6976e5:x-db-user",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-001",
+        "root": "app:46e729b3",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "LOGS-001",
+        "root": "app:lib/logline.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "JWT-001",
+        "root": "app:lib/tokencheck.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "DEP-002",
+        "root": "app:crossenv",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "DEP-003",
+        "root": "app:expres",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "SUPA-003",
+        "root": "app:supabase/functions/admin-export/index.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "SUPA-R08",
+        "root": "app:supabase/functions/notify/config.toml",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "SUPA-R01",
+        "root": "app:public.profiles",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "SUPA-R02",
+        "root": "app:public.users:everyone_read",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "SUPA-R02",
+        "root": "app:public.profiles:anon_write_profiles",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "SUPA-R01",
+        "root": "app:public.sessions",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "SUPA-R02",
+        "root": "app:public.sessions:sessions_read",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "SUPA-002",
+        "root": "app:supabase/migrations/0004_usermeta.sql",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-003",
+        "root": "nest-app:9e615fde",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-003",
+        "root": "nest-app:5a7bec94",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-007",
+        "root": "nest-app:d9b8ac26",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-001",
+        "root": "nest-app:46e729b3",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "NEST-001",
+        "root": "nest-app:app.controller.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "WS-001",
+        "root": "nest-app:events.gateway.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "NEST-001",
+        "root": "nest-app:files.controller.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "CI-001",
+        "root": "app:.github/workflows/deploy.yml",
+        "severity": "medium",
+        "count": 2,
+        "deducted": 4.4
+      },
+      {
+        "rule_id": "AGENT-004",
+        "root": "app:.mcp.json",
+        "severity": "medium",
+        "count": 2,
+        "deducted": 4.4
+      },
+      {
+        "rule_id": "AGENT-001",
+        "root": "app:.claude/settings.json",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "AGENT-004",
+        "root": "app:.claude/settings.json",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "AGENT-001",
+        "root": "app:.mcp.json",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "AGENT-001",
+        "root": "app:.mcp.json",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "AGENT-001",
+        "root": "app:.mcp.json",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "TAINT-004",
+        "root": "app:app/api/convert/route.ts",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "TAINT-001",
+        "root": "app:app/api/fetch-url/route.ts",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "TAINT-002",
+        "root": "app:app/api/go/route.ts",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "DOCKER-001",
+        "root": "app:Dockerfile",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "DOCKER-002",
+        "root": "app:Dockerfile",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "DEP-004",
+        "root": "app:some-madeup-util",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "SUPA-R06",
+        "root": "app:users:everyone_read",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "SUPA-R06",
+        "root": "app:profiles:anon_write_profiles",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "SUPA-R07",
+        "root": "app:storage.objects",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "SUPA-R06",
+        "root": "app:sessions:sessions_read",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "NEST-002",
+        "root": "nest-app:events.gateway.ts",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "TAINT-003",
+        "root": "nest-app:files.controller.ts",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "TAINT-005",
+        "root": "nest-app:files.controller.ts",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "NEST-003",
+        "root": "nest-app:main.ts",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "NEST-004",
+        "root": "nest-app:main.ts",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "NEST-002",
+        "root": "nest-app:main.ts",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "SWAGGER-001",
+        "root": "nest-app:main.ts",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "DEP-004",
+        "root": "nest-app:reflect-metadata",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "HIST-011",
+        "root": "app:gitignore",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      },
+      {
+        "rule_id": "HIST-010",
+        "root": "nest-app:.gitignore",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      }
+    ],
+    "note": "Low-confidence findings and INFO do not deduct. Repeats of the same root cause add +10% each, capped at 2× the severity weight (v1.3)."
+  },
+  "findings": [
+    {
+      "id": "ENV-001",
+      "severity": "critical",
+      "confidence": "high",
+      "title": "Environment file with live values is committed to git",
+      "file": "app/.env",
+      "line": 0,
+      "evidence": {
+        "type": "committed_env",
+        "masked": ".env (git-tracked)",
+        "note": "values masked — see per-line secret findings"
+      },
+      "owasp": "A02",
+      "fix": "1) Remove the file from tracking (git rm --cached) and gitignore it 2) Rotate every credential inside it (rotate-first) 3) Scrub history with git filter-repo 4) Load values from the deployment platform's secret store.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "Rotate ALL credentials inside this file, then scrub history — the file is already public if the repo is public.",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "app:.env",
+      "root_cause": "app:ENV-001:.env",
+      "verified": true,
+      "fingerprint": "0f2f837408cc",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-001",
+      "title": "Supabase service_role key reachable from client code",
+      "file": "app/.env",
+      "line": 3,
+      "evidence": {
+        "type": "service_role_jwt",
+        "masked": "eyJh•••… (first-4 + sha256:1df107c6)",
+        "sha256_prefix": "1df107c6",
+        "note": "full value is never written to any report or artifact"
+      },
+      "owasp": "A01",
+      "fix": "service_role must never reach client code: use the anon key client-side with RLS enabled; move all admin operations to server-side code (route handlers/server actions) reading the key from server env.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "supabase",
+        "steps": "1) Rotate the JWT secret / regenerate API keys in the Supabase dashboard 2) Invalidate active sessions 3) Update server-side env with the new key 4) Scrub git history (git filter-repo) 5) Verify the old key is dead",
+        "history_cleanup": "git filter-repo required — deletion from HEAD is not enough"
+      },
+      "root": "app:1df107c6",
+      "root_cause": "app:SUPA-001:1df107c6",
+      "verified": true,
+      "severity": "critical",
+      "confidence": "high",
+      "fingerprint": "bf9c7f1c9e79",
+      "suppression": null
+    },
+    {
+      "id": "ENV-001",
+      "severity": "critical",
+      "confidence": "high",
+      "title": "Environment file with live values is committed to git",
+      "file": "app/.env.production",
+      "line": 0,
+      "evidence": {
+        "type": "committed_env",
+        "masked": ".env.production (git-tracked)",
+        "note": "values masked — see per-line secret findings"
+      },
+      "owasp": "A02",
+      "fix": "1) Remove the file from tracking (git rm --cached) and gitignore it 2) Rotate every credential inside it (rotate-first) 3) Scrub history with git filter-repo 4) Load values from the deployment platform's secret store.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "Rotate ALL credentials inside this file, then scrub history — the file is already public if the repo is public.",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "app:.env.production",
+      "root_cause": "app:ENV-001:.env.production",
+      "verified": true,
+      "fingerprint": "397cb8fb097e",
+      "suppression": null
+    },
+    {
+      "id": "SEC-002",
+      "severity": "critical",
+      "confidence": "high",
+      "title": "Stripe live secret key committed",
+      "file": "app/.env.production",
+      "line": 2,
+      "evidence": {
+        "type": "stripe_secret",
+        "masked": "sk_l•••… (first-4 + sha256:2105c29f)",
+        "sha256_prefix": "2105c29f",
+        "note": "full value is never written to any report or artifact"
+      },
+      "owasp": "A02",
+      "fix": "Roll the Stripe live key from the dashboard, update server-side env, then scrub git history (rotate-first).",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "stripe",
+        "steps": "1) Rotate/revoke the stripe credential 2) Update server-side env 3) Scrub git history (git filter-repo) 4) Verify the old credential is dead",
+        "history_cleanup": "git filter-repo required — deletion from HEAD is not enough"
+      },
+      "root": "app:2105c29f",
+      "root_cause": "app:SEC-002:2105c29f",
+      "verified": true,
+      "fingerprint": "ee3baa501d1b",
+      "suppression": null
+    },
+    {
+      "id": "HDR-001",
+      "title": "Server reads database credentials from request headers",
+      "file": "app/app/api/connect/route.ts",
+      "line": 7,
+      "evidence": {
+        "type": "receiver_read",
+        "masked": "header \"x-db-connection-password\"",
+        "sha256_prefix": "c1294c17",
+        "note": "receiver read + DB connection sink in the same module"
+      },
+      "owasp": "A02",
+      "fix": "Database credentials must never travel in HTTP headers. Connect from server-side code using isolated env vars + a connection pool; if a proxy needs to authorize, send a short-lived signed token instead of raw credentials.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/connect/route.ts:c1294c17",
+      "root_cause": "app:HDR-001:app/api/connect/route.ts:c1294c17",
+      "verified": true,
+      "severity": "critical",
+      "confidence": "high",
+      "fingerprint": "554ff617063e",
+      "suppression": null
+    },
+    {
+      "id": "HDR-001",
+      "title": "Server reads database credentials from request headers",
+      "file": "app/app/api/connect/route.ts",
+      "line": 8,
+      "evidence": {
+        "type": "receiver_read",
+        "masked": "header \"x-db-user\"",
+        "sha256_prefix": "e41942c8",
+        "note": "receiver read + DB connection sink in the same module"
+      },
+      "owasp": "A02",
+      "fix": "Database credentials must never travel in HTTP headers. Connect from server-side code using isolated env vars + a connection pool; if a proxy needs to authorize, send a short-lived signed token instead of raw credentials.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/connect/route.ts:e41942c8",
+      "root_cause": "app:HDR-001:app/api/connect/route.ts:e41942c8",
+      "verified": true,
+      "severity": "critical",
+      "confidence": "high",
+      "fingerprint": "3ea3a5553bb1",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-001",
+      "title": "Supabase service_role key reachable from client code",
+      "file": "app/app/components/AdminPanel.tsx",
+      "line": 6,
+      "evidence": {
+        "type": "service_role_jwt",
+        "masked": "eyJh•••… (first-4 + sha256:1df107c6)",
+        "sha256_prefix": "1df107c6",
+        "note": "full value is never written to any report or artifact"
+      },
+      "owasp": "A01",
+      "fix": "service_role must never reach client code: use the anon key client-side with RLS enabled; move all admin operations to server-side code (route handlers/server actions) reading the key from server env.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "supabase",
+        "steps": "1) Rotate the JWT secret / regenerate API keys in the Supabase dashboard 2) Invalidate active sessions 3) Update server-side env with the new key 4) Scrub git history (git filter-repo) 5) Verify the old key is dead",
+        "history_cleanup": "git filter-repo required — deletion from HEAD is not enough"
+      },
+      "root": "app:1df107c6",
+      "root_cause": "app:SUPA-001:1df107c6",
+      "verified": true,
+      "severity": "critical",
+      "confidence": "high",
+      "fingerprint": "ed62df351b9c",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "HDR-001",
+      "severity": "critical",
+      "title": "Cross-root confirmation: DB credentials sent by one app and read by another",
+      "file": "app/lib/api-client.ts → app/app/api/connect/route.ts",
+      "line": 7,
+      "evidence": {
+        "type": "cross_root_linkage",
+        "masked": "sender:header \"x-db-password\" = Pr0d•••… (first-4 + sha256:e0a88454) → receiver:header \"x-db-connection-password\"",
+        "note": "sender in \"app\" and receiver in \"nest-app\" — both ends of the credential channel are present in this system"
+      },
+      "owasp": "A02",
+      "fix": "Database credentials must never travel in HTTP headers. Connect from server-side code using isolated env vars + a connection pool; if a proxy needs to authorize, send a short-lived signed token instead of raw credentials.",
+      "needs_confirmation": false,
+      "root": "cross-root",
+      "root_cause": "HDR-001:cross-root",
+      "fingerprint": "aebf01683788",
+      "suppression": null
+    },
+    {
+      "id": "SEED-001",
+      "severity": "critical",
+      "confidence": "high",
+      "title": "Seeder credential runs in production (deploy pipeline references seed)",
+      "file": "app/prisma/seed.ts",
+      "line": 9,
+      "evidence": {
+        "type": "seeder_credential",
+        "masked": "password = admi•••… (first-4 + sha256:240be518)",
+        "sha256_prefix": "240be518",
+        "note": "escalated: package.json script \"prestart\" runs the seed"
+      },
+      "owasp": "A07",
+      "fix": "Remove credentials from code. Bootstrap the first admin through a safe provisioning flow (invite / first-run setup). Seed scripts must never run in production — gate them behind NODE_ENV checks and rotate any credential that was committed (rotate-first).",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential 2) Provision admin via invite/first-run flow 3) Add env guard around seed 4) Scrub git history if committed",
+        "history_cleanup": "git filter-repo if committed"
+      },
+      "root": "app:240be518",
+      "root_cause": "app:SEED-001:240be518",
+      "verified": true,
+      "fingerprint": "0f5a79afd65a",
+      "suppression": null
+    },
+    {
+      "id": "SEED-001",
+      "severity": "critical",
+      "confidence": "high",
+      "title": "SQL INSERT into \"auth.users\" sets a password column with a literal value",
+      "file": "app/supabase/seed.sql",
+      "line": 2,
+      "evidence": {
+        "type": "sql_insert_credential",
+        "masked": "'Sup•••… (first-4 + sha256:0792b5fb)",
+        "sha256_prefix": "0792b5fb",
+        "note": "password column gets a committed literal (v1.6 expansion) — confirm plaintext vs hash"
+      },
+      "owasp": "A07",
+      "fix": "Remove credentials from code. Bootstrap the first admin through a safe provisioning flow (invite / first-run setup). Seed scripts must never run in production — gate them behind NODE_ENV checks and rotate any credential that was committed (rotate-first).",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Confirm plaintext vs hash 2) If plaintext: rotate + provision via safe flow 3) Scrub history",
+        "history_cleanup": "git filter-repo if committed"
+      },
+      "root": "app:0792b5fb",
+      "root_cause": "app:SEED-001:0792b5fb",
+      "verified": true,
+      "fingerprint": "d8151af6594b",
+      "suppression": null
+    },
+    {
+      "id": "AGENT-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Agent allow-list grants a wildcard (e.g. Bash(*) or \"*\") — any command runs without approval",
+      "file": "app/.claude/settings.json",
+      "line": 3,
+      "evidence": {
+        "type": "agent_permissions_wildcard",
+        "masked": "\"allow\": [\"Bash(*)\", \"Edit(*)\"],",
+        "note": "one prompt injection away from arbitrary execution — scope allows to exact commands"
+      },
+      "owasp": "A05",
+      "fix": "Scope the allow-list to exact commands (e.g. \"Bash(npm run test)\", \"Bash(npm run lint)\") and remove bypass modes; keep everything else behind human confirmation.",
+      "fix_mode": "suggested-diff",
+      "root": "app:.claude/settings.json",
+      "root_cause": "app:AGENT-003:.claude/settings.json",
+      "verified": true,
+      "fingerprint": "7d10752f7c0d",
+      "suppression": null
+    },
+    {
+      "id": "HIST-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: JWT-shaped token",
+      "file": "app/.env",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "eyJh•••… (first-4 + sha256:00a08bdb)",
+        "sha256_prefix": "00a08bdb",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "app:00a08bdb",
+      "root_cause": "app:HIST-001:00a08bdb",
+      "verified": true,
+      "fingerprint": "d7294bba19f5",
+      "suppression": null
+    },
+    {
+      "id": "HIST-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: JWT-shaped token",
+      "file": "app/.env",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "eyJh•••… (first-4 + sha256:1df107c6)",
+        "sha256_prefix": "1df107c6",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "app:1df107c6",
+      "root_cause": "app:HIST-001:1df107c6",
+      "verified": true,
+      "fingerprint": "6b5c0c39940d",
+      "suppression": null
+    },
+    {
+      "id": "NEXT-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret value exposed via public env var NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY — it ships to the browser bundle",
+      "file": "app/.env",
+      "line": 3,
+      "evidence": {
+        "type": "public_env_secret",
+        "masked": "NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY=eyJh•••… (first-4 + sha256:1df107c6)",
+        "sha256_prefix": "1df107c6",
+        "note": "NEXT_PUBLIC_/VITE_/REACT_APP_/EXPO_PUBLIC_ vars are inlined into client JS at build time"
+      },
+      "owasp": "A02",
+      "fix": "Remove NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY from public env. Only truly public values (API URLs, anon keys) belong there; load secrets from server-side env in route handlers/server actions.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate this credential — it IS public the moment the bundle ships 2) Move usage server-side 3) Scrub git history if committed",
+        "history_cleanup": "git filter-repo if committed"
+      },
+      "root": "app:1df107c6",
+      "root_cause": "app:NEXT-001:1df107c6",
+      "verified": true,
+      "fingerprint": "2f9e336f1e10",
+      "suppression": null
+    },
+    {
+      "id": "HIST-ENV",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Env file committed in git history (.env.local) — deleted from HEAD is NOT deleted from history",
+      "file": "app/.env.local",
+      "line": 0,
+      "evidence": {
+        "type": "env_in_history",
+        "masked": ".env.local",
+        "note": "anyone with clone access can recover it"
+      },
+      "owasp": "A02",
+      "fix": "Rotate EVERY credential that lived in that file (rotate-first), then scrub history: git filter-repo --path .env.local --invert-paths, coordinate force-push with the team, and verify old credentials are dead.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate all credentials from that env file 2) git filter-repo to purge it from history 3) Force-push + notify team to re-clone 4) Verify old credentials are dead",
+        "history_cleanup": "git filter-repo required — this IS the fix, not an extra"
+      },
+      "root": "app:.env.local",
+      "root_cause": "app:HIST-ENV:.env.local",
+      "verified": true,
+      "fingerprint": "4ca94da95aac",
+      "suppression": null
+    },
+    {
+      "id": "HIST-007",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: DB URL with password",
+      "file": "app/.env.local",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "post•••… (first-4 + sha256:f4c37a83)",
+        "sha256_prefix": "f4c37a83",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "app:f4c37a83",
+      "root_cause": "app:HIST-007:f4c37a83",
+      "verified": true,
+      "fingerprint": "45f767e06432",
+      "suppression": null
+    },
+    {
+      "id": "FILE-006",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Production config/env file committed with values",
+      "file": "app/.env.production",
+      "line": 0,
+      "evidence": {
+        "type": "production_config",
+        "masked": ".env.production (git-tracked)",
+        "note": "real content detected"
+      },
+      "owasp": "A05",
+      "fix": "Keep production values in the deployment platform's secret store; commit only sanitized examples.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate every credential inside this file 2) Remove it from the repo + gitignore 3) Scrub git history 4) Verify old credentials are dead",
+        "history_cleanup": "git filter-repo required — deletion from HEAD is not enough"
+      },
+      "root": "app:.env.production",
+      "root_cause": "app:FILE-006:.env.production",
+      "verified": true,
+      "fingerprint": "f942f4e6228e",
+      "suppression": null
+    },
+    {
+      "id": "HIST-007",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: DB URL with password",
+      "file": "app/.env.production",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "post•••… (first-4 + sha256:733c75ff)",
+        "sha256_prefix": "733c75ff",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "app:733c75ff",
+      "root_cause": "app:HIST-007:733c75ff",
+      "verified": true,
+      "fingerprint": "4c2fc5a55a21",
+      "suppression": null
+    },
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "app/.env.production",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:2105c29f)",
+        "sha256_prefix": "2105c29f",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "app:2105c29f",
+      "root_cause": "app:HIST-003:2105c29f",
+      "verified": true,
+      "fingerprint": "41fc0527b7ba",
+      "suppression": null
+    },
+    {
+      "id": "SEC-008",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Database URL with embedded password committed",
+      "file": "app/.env.production",
+      "line": 1,
+      "evidence": {
+        "type": "generic_secret",
+        "masked": "post•••… (first-4 + sha256:733c75ff)",
+        "sha256_prefix": "733c75ff",
+        "note": "full value is never written to any report or artifact"
+      },
+      "owasp": "A02",
+      "fix": "Move connection strings to server-side env; rotate the DB password; scrub git history (rotate-first).",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate/revoke the generic credential 2) Update server-side env 3) Scrub git history (git filter-repo) 4) Verify the old credential is dead",
+        "history_cleanup": "git filter-repo required — deletion from HEAD is not enough"
+      },
+      "root": "app:733c75ff",
+      "root_cause": "app:SEC-008:733c75ff",
+      "verified": true,
+      "fingerprint": "bef1b649be90",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "CI-002",
+      "severity": "high",
+      "title": "Workflow uses pull_request_target (fork code with repo secrets)",
+      "file": "app/.github/workflows/deploy.yml",
+      "line": 4,
+      "evidence": {
+        "type": "pr_target_trigger",
+        "masked": "pull_request_target",
+        "note": "combined with checkout of the PR head this executes fork code in a privileged context"
+      },
+      "owasp": "A08",
+      "fix": "Avoid pull_request_target with checkout of the PR head: fork code would run with repository secrets. If you must label/comment, checkout the base ref and never execute untrusted PR code in a privileged job.",
+      "root": "app:.github/workflows/deploy.yml",
+      "root_cause": "app:CI-002:.github/workflows/deploy.yml",
+      "fingerprint": "bf358ef5d6ea",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "CI-004",
+      "severity": "high",
+      "title": "Workflow grants write-all permissions",
+      "file": "app/.github/workflows/deploy.yml",
+      "line": 9,
+      "evidence": {
+        "type": "permissions_write_all",
+        "masked": "permissions: write-all",
+        "note": "every token in this workflow can write repos/packages — least privilege required"
+      },
+      "owasp": "A05",
+      "fix": "Grant least-privilege: set the top-level permissions block explicitly (e.g. contents: read) and add only the scopes a job truly needs (security-events: write for SARIF upload). Avoid permissions: write-all.",
+      "root": "app:.github/workflows/deploy.yml",
+      "root_cause": "app:CI-004:.github/workflows/deploy.yml",
+      "fingerprint": "7a5b043e3444",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "CI-003",
+      "severity": "high",
+      "title": "Untrusted event data interpolated directly into run: script (block)",
+      "file": "app/.github/workflows/deploy.yml",
+      "line": 19,
+      "evidence": {
+        "type": "script_injection",
+        "masked": "echo \"Thanks ${{ github.event.pull_request.title }} for the ",
+        "note": "a crafted PR title/branch name becomes shell code with workflow-token access"
+      },
+      "owasp": "A03",
+      "fix": "Never interpolate untrusted event data (titles, bodies, branch names) directly into run: scripts. Pass the value through the environment: env: TITLE: ${{ ... }} then use \"$TITLE\" quoted inside the script.",
+      "root": "app:.github/workflows/deploy.yml",
+      "root_cause": "app:CI-003:.github/workflows/deploy.yml",
+      "fingerprint": "fe4a8d252ae9",
+      "suppression": null
+    },
+    {
+      "id": "AGENT-002",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Literal secret \"SUPA_TOKEN\" committed inside an agent/MCP config file — these files get pushed and shared",
+      "file": "app/.mcp.json",
+      "line": 4,
+      "evidence": {
+        "type": "agent_config_secret",
+        "masked": "SUPA_TOKEN=sbp_•••… (first-4 + sha256:38c3aaef)",
+        "sha256_prefix": "38c3aaef",
+        "note": "agent configs belong in the repo; the secret belongs in the environment it references"
+      },
+      "owasp": "A02",
+      "fix": "Move \"SUPA_TOKEN\" out of the config (reference an env var the agent host injects), then rotate the exposed value.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate \"SUPA_TOKEN\" — it is in a file designed to be committed 2) Replace the literal with an env reference 3) Scrub git history if already pushed"
+      },
+      "root": "app:38c3aaef",
+      "root_cause": "app:AGENT-002:38c3aaef",
+      "verified": true,
+      "fingerprint": "a2a88fd88de5",
+      "suppression": null
+    },
+    {
+      "id": "FILE-002",
+      "severity": "high",
+      "confidence": "high",
+      "title": "npm auth token committed in .npmrc",
+      "file": "app/.npmrc",
+      "line": 0,
+      "evidence": {
+        "type": "npmrc_token",
+        "masked": ".npmrc (git-tracked)",
+        "note": "real content detected"
+      },
+      "owasp": "A02",
+      "fix": "Move the registry token to environment or keychain-level npm config (~/.npmrc outside the repo); rotate the leaked token.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate every credential inside this file 2) Remove it from the repo + gitignore 3) Scrub git history 4) Verify old credentials are dead",
+        "history_cleanup": "git filter-repo required — deletion from HEAD is not enough"
+      },
+      "root": "app:.npmrc",
+      "root_cause": "app:FILE-002:.npmrc",
+      "verified": true,
+      "fingerprint": "e4ffdf757203",
+      "suppression": null
+    },
+    {
+      "id": "AUTH-001",
+      "severity": "high",
+      "confidence": "medium",
+      "title": "Middleware exists but its matcher does NOT cover /api/admin/stats — and the handler has no in-file auth",
+      "file": "app/app/api/admin/stats/route.ts",
+      "line": 0,
+      "evidence": {
+        "type": "middleware_matcher_gap",
+        "masked": "/api/admin/stats vs matcher: /dashboard/:path*",
+        "note": "middleware-only auth is fragile: matchers drift as routes are added; add a server-side check in the handler"
+      },
+      "owasp": "A01",
+      "fix": "Add an explicit auth check at the top of the /api/admin/stats handler (verify session/token server-side, return 401), independent of middleware.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/admin/stats/route.ts",
+      "root_cause": "app:AUTH-001:app/api/admin/stats/route.ts",
+      "verified": true,
+      "fingerprint": "b94f63168ba0",
+      "suppression": null
+    },
+    {
+      "id": "AUTH-001",
+      "severity": "high",
+      "confidence": "medium",
+      "title": "Middleware exists but its matcher does NOT cover /api/connect — and the handler has no in-file auth",
+      "file": "app/app/api/connect/route.ts",
+      "line": 0,
+      "evidence": {
+        "type": "middleware_matcher_gap",
+        "masked": "/api/connect vs matcher: /dashboard/:path*",
+        "note": "middleware-only auth is fragile: matchers drift as routes are added; add a server-side check in the handler"
+      },
+      "owasp": "A01",
+      "fix": "Add an explicit auth check at the top of the /api/connect handler (verify session/token server-side, return 401), independent of middleware.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/connect/route.ts",
+      "root_cause": "app:AUTH-001:app/api/connect/route.ts",
+      "verified": true,
+      "fingerprint": "2ca385877c0c",
+      "suppression": null
+    },
+    {
+      "id": "SAST-003",
+      "severity": "high",
+      "confidence": "medium",
+      "title": "Code executed from an interpolated string (eval/exec/new Function) — command injection risk",
+      "file": "app/app/api/convert/route.ts",
+      "line": 8,
+      "evidence": {
+        "type": "code_execution",
+        "masked": "exec(`convert ${name} out.png`);"
+      },
+      "owasp": "A03",
+      "fix": "Avoid spawning shells with interpolated input. Use execFile with argument arrays and an allowlist; validate input server-side.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/convert/route.ts:8",
+      "root_cause": "app:SAST-003:app/api/convert/route.ts:8",
+      "verified": true,
+      "fingerprint": "749310c25561",
+      "suppression": null
+    },
+    {
+      "id": "AUTH-001",
+      "severity": "high",
+      "confidence": "medium",
+      "title": "Middleware exists but its matcher does NOT cover /api/profile — and the handler has no in-file auth",
+      "file": "app/app/api/profile/route.ts",
+      "line": 0,
+      "evidence": {
+        "type": "middleware_matcher_gap",
+        "masked": "/api/profile vs matcher: /dashboard/:path*",
+        "note": "middleware-only auth is fragile: matchers drift as routes are added; add a server-side check in the handler"
+      },
+      "owasp": "A01",
+      "fix": "Add an explicit auth check at the top of the /api/profile handler (verify session/token server-side, return 401), independent of middleware.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/profile/route.ts",
+      "root_cause": "app:AUTH-001:app/api/profile/route.ts",
+      "verified": true,
+      "fingerprint": "10707d573aae",
+      "suppression": null
+    },
+    {
+      "id": "MASS-001",
+      "severity": "high",
+      "confidence": "medium",
+      "title": "Request body flows into a database write without a whitelist — clients can set fields they must not (role, is_admin, …)",
+      "file": "app/app/api/profile/route.ts",
+      "line": 8,
+      "evidence": {
+        "type": "mass_assignment",
+        "masked": "const { error } = await supabaseAdmin.from('profiles').update(payload).eq('id', ",
+        "note": "attacker adds \"role\": \"admin\" to the JSON body — nothing strips it"
+      },
+      "owasp": "A04",
+      "fix": "Map the request to an explicit whitelist (pick only known fields, or a validated DTO/schema) before persisting. Never pass the raw body object.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/profile/route.ts",
+      "root_cause": "app:MASS-001:app/api/profile/route.ts",
+      "verified": true,
+      "fingerprint": "fffdefc41d12",
+      "suppression": null
+    },
+    {
+      "id": "AUTH-001",
+      "severity": "high",
+      "confidence": "medium",
+      "title": "Middleware exists but its matcher does NOT cover /api/webhooks/checkout — and the handler has no in-file auth",
+      "file": "app/app/api/webhooks/checkout/route.ts",
+      "line": 0,
+      "evidence": {
+        "type": "middleware_matcher_gap",
+        "masked": "/api/webhooks/checkout vs matcher: /dashboard/:path*",
+        "note": "middleware-only auth is fragile: matchers drift as routes are added; add a server-side check in the handler"
+      },
+      "owasp": "A01",
+      "fix": "Add an explicit auth check at the top of the /api/webhooks/checkout handler (verify session/token server-side, return 401), independent of middleware.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/webhooks/checkout/route.ts",
+      "root_cause": "app:AUTH-001:app/api/webhooks/checkout/route.ts",
+      "verified": true,
+      "fingerprint": "3f120f5745b3",
+      "suppression": null
+    },
+    {
+      "id": "WEBHOOK-001",
+      "severity": "high",
+      "confidence": "medium",
+      "title": "Webhook endpoint processes requests without verifying a signature — anyone can forge provider events",
+      "file": "app/app/api/webhooks/checkout/route.ts",
+      "line": 0,
+      "evidence": {
+        "type": "webhook_no_signature",
+        "masked": "app/api/webhooks/checkout/route.ts",
+        "note": "verification may live in a shared proxy/middleware — confirm"
+      },
+      "owasp": "A07",
+      "fix": "Verify the provider signature before processing: compute the HMAC over the raw body (e.g. stripe.webhooks.constructEvent) and reject mismatches with 400 before any side effect.",
+      "fix_mode": "suggested-diff",
+      "needs_confirmation": true,
+      "root": "app:app/api/webhooks/checkout/route.ts",
+      "root_cause": "app:WEBHOOK-001:app/api/webhooks/checkout/route.ts",
+      "verified": true,
+      "fingerprint": "54e3858ccabe",
+      "suppression": null
+    },
+    {
+      "id": "NEXT-002",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Auth token stored in localStorage (\"auth_token\") — stealable by any XSS",
+      "file": "app/app/components/TokenStore.tsx",
+      "line": 4,
+      "evidence": {
+        "type": "token_in_web_storage",
+        "masked": "localStorage.setItem(\"auth_token\", …)"
+      },
+      "owasp": "A02",
+      "fix": "Tokens readable by JavaScript can be exfiltrated by any XSS. Store the session in an httpOnly + Secure + SameSite cookie instead (set by the server), and keep refresh tokens server-side.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/components/TokenStore.tsx:localStorage",
+      "root_cause": "app:NEXT-002:app/components/TokenStore.tsx:localStorage",
+      "verified": true,
+      "fingerprint": "63bb33cc8b5a",
+      "suppression": null
+    },
+    {
+      "id": "NEXT-002",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Auth token stored in sessionStorage (\"refresh_token\") — stealable by any XSS",
+      "file": "app/app/components/TokenStore.tsx",
+      "line": 5,
+      "evidence": {
+        "type": "token_in_web_storage",
+        "masked": "sessionStorage.setItem(\"refresh_token\", …)"
+      },
+      "owasp": "A02",
+      "fix": "Tokens readable by JavaScript can be exfiltrated by any XSS. Store the session in an httpOnly + Secure + SameSite cookie instead (set by the server), and keep refresh tokens server-side.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/components/TokenStore.tsx:sessionStorage",
+      "root_cause": "app:NEXT-002:app/components/TokenStore.tsx:sessionStorage",
+      "verified": true,
+      "fingerprint": "dcadb1a423a7",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "DOCKER-003",
+      "severity": "high",
+      "title": "Secret passed via ARG (baked into image history)",
+      "file": "app/Dockerfile",
+      "line": 3,
+      "evidence": {
+        "type": "arg_secret",
+        "masked": "DATABASE_PASSWORD",
+        "note": "docker history exposes ARG values — use BuildKit --mount=type=secret"
+      },
+      "owasp": "A05",
+      "fix": "Never pass secrets via ARG — args are baked into image history (docker history shows them). Use BuildKit --mount=type=secret or runtime env/orchestrator secrets.",
+      "root": "app:Dockerfile",
+      "root_cause": "app:DOCKER-003:Dockerfile",
+      "fingerprint": "8a51440a00be",
+      "suppression": null
+    },
+    {
+      "id": "HDR-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Client sends a hardcoded credential in a request header",
+      "file": "app/lib/api-client.ts",
+      "line": 6,
+      "evidence": {
+        "type": "client_sends_secret",
+        "masked": "header \"x-db-password\" = Pr0d•••… (first-4 + sha256:e0a88454)",
+        "sha256_prefix": "e0a88454",
+        "note": "client-side sender; confirm the receiver side for full severity"
+      },
+      "owasp": "A02",
+      "fix": "Database credentials must never travel in HTTP headers. Connect from server-side code using isolated env vars + a connection pool; if a proxy needs to authorize, send a short-lived signed token instead of raw credentials.",
+      "fix_mode": "suggested-diff",
+      "root": "app:e0a88454:x-db-password",
+      "root_cause": "app:HDR-001:e0a88454:x-db-password",
+      "verified": true,
+      "fingerprint": "3e31b6523cb2",
+      "suppression": null
+    },
+    {
+      "id": "HDR-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Client sends a hardcoded credential in a request header",
+      "file": "app/lib/api-client.ts",
+      "line": 7,
+      "evidence": {
+        "type": "client_sends_secret",
+        "masked": "header \"x-db-user\" = admi•••… (first-4 + sha256:8c6976e5)",
+        "sha256_prefix": "8c6976e5",
+        "note": "client-side sender; confirm the receiver side for full severity"
+      },
+      "owasp": "A02",
+      "fix": "Database credentials must never travel in HTTP headers. Connect from server-side code using isolated env vars + a connection pool; if a proxy needs to authorize, send a short-lived signed token instead of raw credentials.",
+      "fix_mode": "suggested-diff",
+      "root": "app:8c6976e5:x-db-user",
+      "root_cause": "app:HDR-001:8c6976e5:x-db-user",
+      "verified": true,
+      "fingerprint": "1a1dc7b3a686",
+      "suppression": null
+    },
+    {
+      "id": "CRYPTO-001",
+      "severity": "high",
+      "title": "Security material generated with Math.random() (predictable)",
+      "file": "app/lib/auth.ts",
+      "line": 3,
+      "evidence": {
+        "type": "insecure_randomness",
+        "masked": "token",
+        "note": "random value assigned to a token/secret-shaped variable"
+      },
+      "owasp": "A02",
+      "confidence": "high",
+      "fix": "Math.random() is not cryptographically secure — its output is predictable. Use crypto.randomBytes()/crypto.randomUUID() (node:crypto) or WebCrypto crypto.getRandomValues() for tokens, OTPs, secrets, and any security-relevant identifier.",
+      "fix_mode": "suggested-diff",
+      "verified": true,
+      "source": "builtin",
+      "root": "app:lib/auth.ts",
+      "root_cause": "app:CRYPTO-001:lib/auth.ts",
+      "fingerprint": "cd59a4af7877",
+      "suppression": null
+    },
+    {
+      "id": "CRYPTO-001",
+      "severity": "high",
+      "title": "Security material generated with Math.random() (predictable)",
+      "file": "app/lib/auth.ts",
+      "line": 8,
+      "evidence": {
+        "type": "insecure_randomness",
+        "masked": "Math.random()",
+        "note": "random value assigned to a token/secret-shaped variable"
+      },
+      "owasp": "A02",
+      "confidence": "high",
+      "fix": "Math.random() is not cryptographically secure — its output is predictable. Use crypto.randomBytes()/crypto.randomUUID() (node:crypto) or WebCrypto crypto.getRandomValues() for tokens, OTPs, secrets, and any security-relevant identifier.",
+      "fix_mode": "suggested-diff",
+      "verified": true,
+      "source": "builtin",
+      "root": "app:lib/auth.ts",
+      "root_cause": "app:CRYPTO-001:lib/auth.ts",
+      "fingerprint": "aadd5b58bbd4",
+      "suppression": null
+    },
+    {
+      "id": "HIST-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: JWT-shaped token",
+      "file": "app/lib/logline.ts",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "eyJh•••… (first-4 + sha256:46e729b3)",
+        "sha256_prefix": "46e729b3",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "app:46e729b3",
+      "root_cause": "app:HIST-001:46e729b3",
+      "verified": true,
+      "fingerprint": "0ccd0279ff78",
+      "suppression": null
+    },
+    {
+      "id": "LOGS-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret-shaped literal written to logs — the credential now lives in log storage",
+      "file": "app/lib/logline.ts",
+      "line": 4,
+      "evidence": {
+        "type": "secret_in_logs_literal",
+        "masked": "log call at lib/logline.ts:4 carries a secret-shaped literal (eyJh•••… (first-4 + sha256:46e729b3))"
+      },
+      "owasp": "A09",
+      "fix": "Remove the secret from the log statement and rotate the credential (it is already in log aggregation/retention). Log identifiers, not values.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the logged credential now (logs persist) 2) Remove it from the log call 3) Purge the value from log storage if retention allows"
+      },
+      "root": "app:lib/logline.ts",
+      "root_cause": "app:LOGS-001:lib/logline.ts",
+      "verified": true,
+      "fingerprint": "c9ef3e916ed6",
+      "suppression": null
+    },
+    {
+      "id": "JWT-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "jwt.decode() feeds an authorization decision — decode does NOT verify the signature",
+      "file": "app/lib/tokencheck.ts",
+      "line": 5,
+      "evidence": {
+        "type": "jwt_decode_authz",
+        "masked": "const payload = jwt.decode(token) as { role?: string; sub?: string } | null;",
+        "note": "anyone can craft a token with any role/claim — jwt.decode trusts it blindly"
+      },
+      "owasp": "A07",
+      "fix": "Use jwt.verify(token, secret, { algorithms: [...] }) — verification first; only then read claims for decisions.",
+      "fix_mode": "suggested-diff",
+      "root": "app:lib/tokencheck.ts",
+      "root_cause": "app:JWT-001:lib/tokencheck.ts",
+      "verified": true,
+      "fingerprint": "973040c7412d",
+      "suppression": null
+    },
+    {
+      "id": "JWT-002",
+      "severity": "high",
+      "confidence": "high",
+      "title": "jwt.verify accepts algorithm \"none\" — unsigned tokens pass verification",
+      "file": "app/lib/tokencheck.ts",
+      "line": 12,
+      "evidence": {
+        "type": "jwt_alg_none",
+        "masked": "return jwt.verify(token, process.env.JWT_SECRET as string, {"
+      },
+      "owasp": "A07",
+      "fix": "Pin the expected algorithms explicitly, e.g. { algorithms: [\"HS256\"] } (or RS256) — never allow \"none\".",
+      "fix_mode": "suggested-diff",
+      "root": "app:lib/tokencheck.ts",
+      "root_cause": "app:JWT-002:lib/tokencheck.ts",
+      "verified": true,
+      "fingerprint": "128f010787f4",
+      "suppression": null
+    },
+    {
+      "id": "JWT-002",
+      "severity": "high",
+      "confidence": "high",
+      "title": "jwt.verify accepts algorithm \"none\" — unsigned tokens pass verification",
+      "file": "app/lib/tokencheck.ts",
+      "line": 13,
+      "evidence": {
+        "type": "jwt_alg_none",
+        "masked": "algorithms: [\"none\", \"HS256\"],"
+      },
+      "owasp": "A07",
+      "fix": "Pin the expected algorithms explicitly, e.g. { algorithms: [\"HS256\"] } (or RS256) — never allow \"none\".",
+      "fix_mode": "suggested-diff",
+      "root": "app:lib/tokencheck.ts",
+      "root_cause": "app:JWT-002:lib/tokencheck.ts",
+      "verified": true,
+      "fingerprint": "7631865bee77",
+      "suppression": null
+    },
+    {
+      "id": "JWT-002",
+      "severity": "high",
+      "confidence": "high",
+      "title": "jwt.verify accepts algorithm \"none\" — unsigned tokens pass verification",
+      "file": "app/lib/tokencheck.ts",
+      "line": 14,
+      "evidence": {
+        "type": "jwt_alg_none",
+        "masked": "ignoreExpiration: true,"
+      },
+      "owasp": "A07",
+      "fix": "Pin the expected algorithms explicitly, e.g. { algorithms: [\"HS256\"] } (or RS256) — never allow \"none\".",
+      "fix_mode": "suggested-diff",
+      "root": "app:lib/tokencheck.ts",
+      "root_cause": "app:JWT-002:lib/tokencheck.ts",
+      "verified": true,
+      "fingerprint": "c21c353d0660",
+      "suppression": null
+    },
+    {
+      "id": "JWT-002",
+      "severity": "high",
+      "confidence": "high",
+      "title": "jwt.verify accepts algorithm \"none\" — unsigned tokens pass verification",
+      "file": "app/lib/tokencheck.ts",
+      "line": 15,
+      "evidence": {
+        "type": "jwt_alg_none",
+        "masked": "});"
+      },
+      "owasp": "A07",
+      "fix": "Pin the expected algorithms explicitly, e.g. { algorithms: [\"HS256\"] } (or RS256) — never allow \"none\".",
+      "fix_mode": "suggested-diff",
+      "root": "app:lib/tokencheck.ts",
+      "root_cause": "app:JWT-002:lib/tokencheck.ts",
+      "verified": true,
+      "fingerprint": "f052832b6a0c",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "DEP-002",
+      "severity": "high",
+      "title": "Dependency \"crossenv\" is a documented malicious/compromised package (name match)",
+      "file": "app/package.json",
+      "line": 14,
+      "evidence": {
+        "type": "known_malicious_package",
+        "masked": "crossenv",
+        "note": "package name appears in the bundled known-malicious list — verify the exact version you resolved"
+      },
+      "owasp": "A06",
+      "fix": "Remove \"crossenv\" immediately. It is documented malicious/compromised in the bundled advisory snapshot (MAL list). Rotate any secret the package could have reached (rotate-first), purge lockfile and node_modules, and re-install from a clean source.",
+      "root": "app:crossenv",
+      "root_cause": "app:DEP-002:crossenv",
+      "fingerprint": "d71ec1d448a6",
+      "suppression": null
+    },
+    {
+      "confidence": "medium",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "DEP-003",
+      "severity": "high",
+      "title": "Possible typosquat: \"expres\" is 1 edit(s) from popular \"express\"",
+      "file": "app/package.json",
+      "line": 15,
+      "evidence": {
+        "type": "typosquat_candidate",
+        "masked": "expres",
+        "note": "offline heuristic (distance 1) — verify the intended package is \"express\" or that this is the real, established name"
+      },
+      "owasp": "A06",
+      "fix": "Confirm \"expres\" is the package you intend (it is 1 edits from \"express\"). Typosquats steal install-time secrets. If it is a typo, install \"express\" instead and remove the attacker-controlled name.",
+      "root": "app:expres",
+      "root_cause": "app:DEP-003:expres",
+      "fingerprint": "66b0899c9147",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-003",
+      "severity": "high",
+      "confidence": "medium",
+      "title": "Edge Function uses service_role with no caller-auth check in code — anyone who can invoke it gets admin data access",
+      "file": "app/supabase/functions/admin-export/index.ts",
+      "line": 0,
+      "evidence": {
+        "type": "service_role_no_auth",
+        "masked": "supabase/functions/admin-export/index.ts",
+        "note": "verify the caller (Authorization header / auth.getUser) before using the service client; confirm verify_jwt in config.toml"
+      },
+      "owasp": "A01",
+      "fix": "Verify the caller before any service-role usage: read the Authorization header, call supabase.auth.getUser(token), and reject unauthenticated invokes with 401.",
+      "fix_mode": "suggested-diff",
+      "needs_confirmation": true,
+      "root": "app:supabase/functions/admin-export/index.ts",
+      "root_cause": "app:SUPA-003:supabase/functions/admin-export/index.ts",
+      "verified": true,
+      "fingerprint": "072b77b778fc",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-R08",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Edge Function (notify) disables JWT verification (verify_jwt = false)",
+      "file": "app/supabase/functions/notify/config.toml",
+      "line": 1,
+      "evidence": {
+        "type": "edge_verify_jwt_disabled",
+        "masked": "verify_jwt = false",
+        "note": "anonymous traffic reaches the function — auth must be enforced inside the handler"
+      },
+      "owasp": "A07",
+      "fix": "Set verify_jwt = true (default) or implement explicit in-function auth validation for every request path.",
+      "fix_mode": "suggested-diff",
+      "root": "app:supabase/functions/notify/config.toml",
+      "root_cause": "app:SUPA-R08:supabase/functions/notify/config.toml",
+      "verified": true,
+      "fingerprint": "a737909e7c8a",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-R01",
+      "severity": "high",
+      "confidence": "high",
+      "needs_confirmation": true,
+      "title": "Table public.profiles has no ENABLE ROW LEVEL SECURITY in migrations",
+      "file": "app/supabase/migrations/0001_init.sql",
+      "line": 1,
+      "evidence": {
+        "type": "missing_rls",
+        "masked": "CREATE TABLE public.profiles",
+        "note": "from migrations only — CRITICAL requires confirmation: run `supabase db dump --schema public` (read-only) and pass it via --schema, or use URL Mode live probe (v0.4). RLS may be enabled via dashboard drift."
+      },
+      "owasp": "A01",
+      "fix": "Enable RLS and add scoped policies: ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY; then CREATE POLICY ... USING (auth.uid() = user_id) as appropriate.",
+      "fix_mode": "suggested-diff",
+      "root": "app:public.profiles",
+      "root_cause": "app:SUPA-R01:public.profiles",
+      "verified": true,
+      "fingerprint": "767af50313c5",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-R02",
+      "severity": "high",
+      "confidence": "high",
+      "title": "RLS policy \"everyone_read\" opens public.users to everyone — USING (true)",
+      "file": "app/supabase/migrations/0002_policies.sql",
+      "line": 1,
+      "evidence": {
+        "type": "rls_permissive_policy",
+        "masked": "POLICY everyone_read ON public.users USING (true)",
+        "note": "sensitive table — exploit-ready if exposed via API"
+      },
+      "owasp": "A01",
+      "fix": "Scope the policy to the owner/tenant, e.g. USING (auth.uid() = user_id) — this table looks sensitive. If the table is intentionally public, document it and narrow the columns exposed.",
+      "fix_mode": "suggested-diff",
+      "root": "app:public.users:everyone_read",
+      "root_cause": "app:SUPA-R02:public.users:everyone_read",
+      "verified": true,
+      "fingerprint": "4f091b69aa95",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-R02",
+      "severity": "high",
+      "confidence": "high",
+      "title": "RLS policy \"anon_write_profiles\" opens public.profiles to everyone — USING (true)",
+      "file": "app/supabase/migrations/0002_policies.sql",
+      "line": 4,
+      "evidence": {
+        "type": "rls_permissive_policy",
+        "masked": "POLICY anon_write_profiles ON public.profiles USING (true)",
+        "note": "sensitive table — exploit-ready if exposed via API"
+      },
+      "owasp": "A01",
+      "fix": "Scope the policy to the owner/tenant, e.g. USING (auth.uid() = user_id) — this table looks sensitive. If the table is intentionally public, document it and narrow the columns exposed.",
+      "fix_mode": "suggested-diff",
+      "root": "app:public.profiles:anon_write_profiles",
+      "root_cause": "app:SUPA-R02:public.profiles:anon_write_profiles",
+      "verified": true,
+      "fingerprint": "7146b87028e0",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-R01",
+      "severity": "high",
+      "confidence": "high",
+      "needs_confirmation": true,
+      "title": "Table public.sessions has no ENABLE ROW LEVEL SECURITY in migrations",
+      "file": "app/supabase/migrations/0003_depth2.sql",
+      "line": 2,
+      "evidence": {
+        "type": "missing_rls",
+        "masked": "CREATE TABLE public.sessions",
+        "note": "from migrations only — CRITICAL requires confirmation: run `supabase db dump --schema public` (read-only) and pass it via --schema, or use URL Mode live probe (v0.4). RLS may be enabled via dashboard drift."
+      },
+      "owasp": "A01",
+      "fix": "Enable RLS and add scoped policies: ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY; then CREATE POLICY ... USING (auth.uid() = user_id) as appropriate.",
+      "fix_mode": "suggested-diff",
+      "root": "app:public.sessions",
+      "root_cause": "app:SUPA-R01:public.sessions",
+      "verified": true,
+      "fingerprint": "44dc38af916f",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-R02",
+      "severity": "high",
+      "confidence": "high",
+      "title": "RLS policy \"sessions_read\" opens public.sessions to everyone — USING (true)",
+      "file": "app/supabase/migrations/0003_depth2.sql",
+      "line": 8,
+      "evidence": {
+        "type": "rls_permissive_policy",
+        "masked": "POLICY sessions_read ON public.sessions USING (true)",
+        "note": "sensitive table — exploit-ready if exposed via API"
+      },
+      "owasp": "A01",
+      "fix": "Scope the policy to the owner/tenant, e.g. USING (auth.uid() = user_id) — this table looks sensitive. If the table is intentionally public, document it and narrow the columns exposed.",
+      "fix_mode": "suggested-diff",
+      "root": "app:public.sessions:sessions_read",
+      "root_cause": "app:SUPA-R02:public.sessions:sessions_read",
+      "verified": true,
+      "fingerprint": "b40f8f2ee666",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-002",
+      "severity": "high",
+      "confidence": "high",
+      "title": "RLS policy references auth.user_metadata — users can edit their own metadata ⇒ self-granted access",
+      "file": "app/supabase/migrations/0004_usermeta.sql",
+      "line": 6,
+      "evidence": {
+        "type": "rls_user_metadata",
+        "masked": "using (coalesce(auth.jwt() -> 'user_metadata' ->> 'role', 'user') = 'admin' or a",
+        "note": "user_metadata is writable by the user via updateUser(); use app_metadata (server-managed) or a lookup table"
+      },
+      "owasp": "A01",
+      "fix": "Move the authorization attribute to app_metadata (server-managed) or a dedicated memberships table, and scope the policy to auth.uid() against it.",
+      "fix_mode": "suggested-diff",
+      "needs_confirmation": true,
+      "root": "app:supabase/migrations/0004_usermeta.sql",
+      "root_cause": "app:SUPA-002:supabase/migrations/0004_usermeta.sql",
+      "verified": true,
+      "fingerprint": "296b9a7be30f",
+      "suppression": null
+    },
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "nest-app/anubis-guardian/tests/acceptance-v02.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:9e615fde)",
+        "sha256_prefix": "9e615fde",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:9e615fde",
+      "root_cause": "nest-app:HIST-003:9e615fde",
+      "verified": true,
+      "fingerprint": "441a9518a55d",
+      "suppression": null
+    },
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "nest-app/anubis-guardian/tests/acceptance-v03.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:5a7bec94)",
+        "sha256_prefix": "5a7bec94",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:5a7bec94",
+      "root_cause": "nest-app:HIST-003:5a7bec94",
+      "verified": true,
+      "fingerprint": "e8f3b5c82963",
+      "suppression": null
+    },
+    {
+      "id": "HIST-007",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: DB URL with password",
+      "file": "nest-app/anubis-guardian/tests/honeypot/setup.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "post•••… (first-4 + sha256:d9b8ac26)",
+        "sha256_prefix": "d9b8ac26",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:d9b8ac26",
+      "root_cause": "nest-app:HIST-007:d9b8ac26",
+      "verified": true,
+      "fingerprint": "7a9ca944f0be",
+      "suppression": null
+    },
+    {
+      "id": "HIST-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: JWT-shaped token",
+      "file": "nest-app/anubis-guardian/tests/verify-honeypot.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "eyJh•••… (first-4 + sha256:46e729b3)",
+        "sha256_prefix": "46e729b3",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:46e729b3",
+      "root_cause": "nest-app:HIST-001:46e729b3",
+      "verified": true,
+      "fingerprint": "bbe99f45c8f8",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "NEST-001",
+      "severity": "high",
+      "title": "3 endpoint(s) in app.controller with no guard and no global APP_GUARD",
+      "file": "nest-app/app.controller.ts",
+      "line": 6,
+      "evidence": {
+        "type": "unguarded_controller",
+        "masked": "app: Get(users), Post(users), Post(users/delete)",
+        "note": "no @UseGuards on these routes and no APP_GUARD provider found — they are anonymous surface"
+      },
+      "owasp": "A01",
+      "fix": "Protect the endpoint with an auth guard (@UseGuards(AuthGuard) / RolesGuard) or confirm a global APP_GUARD is registered in the module. A public-by-default endpoint is anonymous internet surface.",
+      "root": "nest-app:app.controller.ts",
+      "root_cause": "nest-app:NEST-001:app.controller.ts",
+      "fingerprint": "b811927fb85f",
+      "suppression": null
+    },
+    {
+      "id": "WS-001",
+      "severity": "high",
+      "confidence": "medium",
+      "title": "WebSocket gateway handles events with no connection auth — any client can join and emit",
+      "file": "nest-app/events.gateway.ts",
+      "line": 0,
+      "evidence": {
+        "type": "socket_no_auth",
+        "masked": "events.gateway.ts",
+        "note": "auth may live in a shared adapter — confirm before treating as exploitable"
+      },
+      "owasp": "A07",
+      "fix": "Authenticate at connection time: verify the token from handshake.auth/handshake.headers in io.use() (or handleConnection / a WsGuard) and reject unauthenticated sockets.",
+      "fix_mode": "suggested-diff",
+      "needs_confirmation": true,
+      "root": "nest-app:events.gateway.ts",
+      "root_cause": "nest-app:WS-001:events.gateway.ts",
+      "verified": true,
+      "fingerprint": "c100897d188d",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "NEST-001",
+      "severity": "high",
+      "title": "2 endpoint(s) in files.controller with no guard and no global APP_GUARD",
+      "file": "nest-app/files.controller.ts",
+      "line": 10,
+      "evidence": {
+        "type": "unguarded_controller",
+        "masked": "files: Get(:name), Get(render)",
+        "note": "no @UseGuards on these routes and no APP_GUARD provider found — they are anonymous surface"
+      },
+      "owasp": "A01",
+      "fix": "Protect the endpoint with an auth guard (@UseGuards(AuthGuard) / RolesGuard) or confirm a global APP_GUARD is registered in the module. A public-by-default endpoint is anonymous internet surface.",
+      "root": "nest-app:files.controller.ts",
+      "root_cause": "nest-app:NEST-001:files.controller.ts",
+      "fingerprint": "898acabe9923",
+      "suppression": null
+    },
+    {
+      "id": "AGENT-001",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "MCP/agent tool server launched unpinned: \"anubis-guard@latest\" (@latest) — supply-chain risk in the dev environment",
+      "file": "app/.claude/settings.json",
+      "line": 10,
+      "evidence": {
+        "type": "mcp_unpinned_package",
+        "masked": "anubis-guard@latest",
+        "note": "a renamed or hijacked package replaces the tool your agent runs with — pin the exact version"
+      },
+      "owasp": "A08",
+      "fix": "Pin the exact version (e.g. \"anubis-guard@latest@1.4.2\") or install it as a dev dependency and reference the local binary. Never @latest in agent config.",
+      "fix_mode": "suggested-diff",
+      "root": "app:.claude/settings.json",
+      "root_cause": "app:AGENT-001:.claude/settings.json:anubis-guard@latest",
+      "verified": true,
+      "fingerprint": "28dd24a54be9",
+      "suppression": null
+    },
+    {
+      "id": "AGENT-004",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "Agent hook executes remote/unpinned code — hooks run automatically on every tool call",
+      "file": "app/.claude/settings.json",
+      "line": 10,
+      "evidence": {
+        "type": "hook_unpinned_remote",
+        "masked": "npx anubis-guard@latest",
+        "note": "hooks are the agent's pre-execution gate — pointing them at unpinned packages hands the gate to npm"
+      },
+      "owasp": "A08",
+      "fix": "Commit the hook script into the repo (pinned by version control) and invoke it locally (node .claude/hooks/<script>.mjs) — never npx/@latest inside hook config.",
+      "fix_mode": "suggested-diff",
+      "root": "app:.claude/settings.json",
+      "root_cause": "app:AGENT-004:.claude/settings.json",
+      "verified": true,
+      "fingerprint": "933140e5357d",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "CI-001",
+      "severity": "medium",
+      "title": "Action pinned by mutable ref (v4) instead of commit SHA",
+      "file": "app/.github/workflows/deploy.yml",
+      "line": 15,
+      "evidence": {
+        "type": "unpinned_action",
+        "masked": "actions/checkout@v4",
+        "note": "tags/branches are moveable — tag hijacking injects code into CI"
+      },
+      "owasp": "A08",
+      "fix": "Pin third-party actions to a full 40-char commit SHA (immutable) instead of a mutable tag/branch, and comment the version above the line. Tags are attacker-moveable; SHAs are not.",
+      "root": "app:.github/workflows/deploy.yml",
+      "root_cause": "app:CI-001:.github/workflows/deploy.yml",
+      "fingerprint": "13b045a641ae",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "CI-001",
+      "severity": "medium",
+      "title": "Action pinned by mutable ref (main) instead of commit SHA",
+      "file": "app/.github/workflows/deploy.yml",
+      "line": 16,
+      "evidence": {
+        "type": "unpinned_action",
+        "masked": "actions/setup-node@main",
+        "note": "tags/branches are moveable — tag hijacking injects code into CI"
+      },
+      "owasp": "A08",
+      "fix": "Pin third-party actions to a full 40-char commit SHA (immutable) instead of a mutable tag/branch, and comment the version above the line. Tags are attacker-moveable; SHAs are not.",
+      "root": "app:.github/workflows/deploy.yml",
+      "root_cause": "app:CI-001:.github/workflows/deploy.yml",
+      "fingerprint": "52cbb00ced56",
+      "suppression": null
+    },
+    {
+      "id": "AGENT-001",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "MCP/agent tool server launched unpinned: \"@modelcontextprotocol/server-filesystem@latest\" (@latest) — supply-chain risk in the dev environment",
+      "file": "app/.mcp.json",
+      "line": 3,
+      "evidence": {
+        "type": "mcp_unpinned_package",
+        "masked": "@modelcontextprotocol/server-filesystem@latest",
+        "note": "a renamed or hijacked package replaces the tool your agent runs with — pin the exact version"
+      },
+      "owasp": "A08",
+      "fix": "Pin the exact version (e.g. \"@modelcontextprotocol/server-filesystem@latest@1.4.2\") or install it as a dev dependency and reference the local binary. Never @latest in agent config.",
+      "fix_mode": "suggested-diff",
+      "root": "app:.mcp.json",
+      "root_cause": "app:AGENT-001:.mcp.json:@modelcontextprotocol/server-filesystem@latest",
+      "verified": true,
+      "fingerprint": "b32b4a54ef7f",
+      "suppression": null
+    },
+    {
+      "id": "AGENT-004",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "Agent hook executes remote/unpinned code — hooks run automatically on every tool call",
+      "file": "app/.mcp.json",
+      "line": 3,
+      "evidence": {
+        "type": "hook_unpinned_remote",
+        "masked": "npx @modelcontextprotocol/server-filesystem@latest",
+        "note": "hooks are the agent's pre-execution gate — pointing them at unpinned packages hands the gate to npm"
+      },
+      "owasp": "A08",
+      "fix": "Commit the hook script into the repo (pinned by version control) and invoke it locally (node .claude/hooks/<script>.mjs) — never npx/@latest inside hook config.",
+      "fix_mode": "suggested-diff",
+      "root": "app:.mcp.json",
+      "root_cause": "app:AGENT-004:.mcp.json",
+      "verified": true,
+      "fingerprint": "25448ea3b538",
+      "suppression": null
+    },
+    {
+      "id": "AGENT-001",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "MCP/agent tool server launched unpinned: \"supa-db-mcp\" — supply-chain risk in the dev environment",
+      "file": "app/.mcp.json",
+      "line": 4,
+      "evidence": {
+        "type": "mcp_unpinned_package",
+        "masked": "supa-db-mcp",
+        "note": "a renamed or hijacked package replaces the tool your agent runs with — pin the exact version"
+      },
+      "owasp": "A08",
+      "fix": "Pin the exact version (e.g. \"supa-db-mcp@1.4.2\") or install it as a dev dependency and reference the local binary. Never @latest in agent config.",
+      "fix_mode": "suggested-diff",
+      "root": "app:.mcp.json",
+      "root_cause": "app:AGENT-001:.mcp.json:supa-db-mcp",
+      "verified": true,
+      "fingerprint": "103d152a4fcb",
+      "suppression": null
+    },
+    {
+      "id": "AGENT-004",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "Agent hook executes remote/unpinned code — hooks run automatically on every tool call",
+      "file": "app/.mcp.json",
+      "line": 4,
+      "evidence": {
+        "type": "hook_unpinned_remote",
+        "masked": "npx supa-db-mcp",
+        "note": "hooks are the agent's pre-execution gate — pointing them at unpinned packages hands the gate to npm"
+      },
+      "owasp": "A08",
+      "fix": "Commit the hook script into the repo (pinned by version control) and invoke it locally (node .claude/hooks/<script>.mjs) — never npx/@latest inside hook config.",
+      "fix_mode": "suggested-diff",
+      "root": "app:.mcp.json",
+      "root_cause": "app:AGENT-004:.mcp.json",
+      "verified": true,
+      "fingerprint": "9cd1f7ac81d9",
+      "suppression": null
+    },
+    {
+      "id": "AGENT-001",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "MCP/agent tool server launched unpinned: \"mcp-server-git\" — supply-chain risk in the dev environment",
+      "file": "app/.mcp.json",
+      "line": 5,
+      "evidence": {
+        "type": "mcp_unpinned_package",
+        "masked": "mcp-server-git",
+        "note": "a renamed or hijacked package replaces the tool your agent runs with — pin the exact version"
+      },
+      "owasp": "A08",
+      "fix": "Pin the exact version (e.g. \"mcp-server-git@1.4.2\") or install it as a dev dependency and reference the local binary. Never @latest in agent config.",
+      "fix_mode": "suggested-diff",
+      "root": "app:.mcp.json",
+      "root_cause": "app:AGENT-001:.mcp.json:mcp-server-git",
+      "verified": true,
+      "fingerprint": "88626c01077e",
+      "suppression": null
+    },
+    {
+      "id": "NEXT-004",
+      "severity": "medium",
+      "confidence": "low",
+      "title": "Mutating endpoint without in-file auth check (middleware exists — verify matcher coverage)",
+      "file": "app/app/api/admin/stats/route.ts",
+      "line": 0,
+      "evidence": {
+        "type": "missing_authz_indicator",
+        "masked": "app/api/admin/stats/route.ts",
+        "note": "middleware.ts present — middleware-only auth is fragile (matchers drift); confirm server-side check"
+      },
+      "owasp": "A01",
+      "fix": "Add an explicit server-side auth check at the top of the handler (verify the session/token server-side, not just middleware), and reject unauthenticated mutations with 401.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/admin/stats/route.ts",
+      "root_cause": "app:NEXT-004:app/api/admin/stats/route.ts",
+      "verified": true,
+      "fingerprint": "6980d98fb3f6",
+      "suppression": null
+    },
+    {
+      "id": "NEXT-004",
+      "severity": "medium",
+      "confidence": "low",
+      "title": "Mutating endpoint without in-file auth check (middleware exists — verify matcher coverage)",
+      "file": "app/app/api/connect/route.ts",
+      "line": 0,
+      "evidence": {
+        "type": "missing_authz_indicator",
+        "masked": "app/api/connect/route.ts",
+        "note": "middleware.ts present — middleware-only auth is fragile (matchers drift); confirm server-side check"
+      },
+      "owasp": "A01",
+      "fix": "Add an explicit server-side auth check at the top of the handler (verify the session/token server-side, not just middleware), and reject unauthenticated mutations with 401.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/connect/route.ts",
+      "root_cause": "app:NEXT-004:app/api/connect/route.ts",
+      "verified": true,
+      "fingerprint": "7cd3ec45e217",
+      "suppression": null
+    },
+    {
+      "id": "TAINT-004",
+      "severity": "medium",
+      "confidence": "medium",
+      "title": "User-controlled value flows into a shell command string — command injection",
+      "file": "app/app/api/convert/route.ts",
+      "line": 8,
+      "evidence": {
+        "type": "taint_flow",
+        "masked": "exec(`convert ${name} out.png`);",
+        "note": "exec(`convert ${req.query.file}`) — ';' or '$(...)' in the query executes as shell"
+      },
+      "owasp": "A03",
+      "fix": "Never interpolate user input into shell strings — use execFile/spawn with an argv array (shell: false) and validate the input against an allowlist.",
+      "fix_mode": "suggested-diff",
+      "needs_confirmation": true,
+      "root": "app:app/api/convert/route.ts",
+      "root_cause": "app:TAINT-004:app/api/convert/route.ts",
+      "verified": true,
+      "fingerprint": "ed03b10f2ac0",
+      "suppression": null
+    },
+    {
+      "id": "TAINT-001",
+      "severity": "medium",
+      "confidence": "medium",
+      "title": "User-controlled value flows into an outbound request URL — SSRF (server can be pointed anywhere)",
+      "file": "app/app/api/fetch-url/route.ts",
+      "line": 7,
+      "evidence": {
+        "type": "taint_flow",
+        "masked": "const upstream = await fetch(target);",
+        "note": "classic vibe-coding SSRF: 'fetch anything by URL' helpers — internal services/metadata IPs become reachable"
+      },
+      "owasp": "A10",
+      "fix": "Validate the destination against a host allowlist (scheme + exact host) before any outbound request; block private/link-local ranges (169.254.x, 127.x, 10.x, 172.16-31.x, 192.168.x) and metadata endpoints.",
+      "fix_mode": "suggested-diff",
+      "needs_confirmation": true,
+      "root": "app:app/api/fetch-url/route.ts",
+      "root_cause": "app:TAINT-001:app/api/fetch-url/route.ts",
+      "verified": true,
+      "fingerprint": "32961f30449a",
+      "suppression": null
+    },
+    {
+      "id": "TAINT-002",
+      "severity": "medium",
+      "confidence": "medium",
+      "title": "User-controlled value flows into a redirect target — open redirect (phishing pivot)",
+      "file": "app/app/api/go/route.ts",
+      "line": 7,
+      "evidence": {
+        "type": "taint_flow",
+        "masked": "return NextResponse.redirect(to);",
+        "note": "redirect(req.query.to) sends users anywhere — tokens/refs in the URL leak to attacker sites"
+      },
+      "owasp": "A01",
+      "fix": "Only redirect to relative paths (reject absolute URLs and protocol-relative //host), or validate the target against an origin allowlist before redirecting.",
+      "fix_mode": "suggested-diff",
+      "needs_confirmation": true,
+      "root": "app:app/api/go/route.ts",
+      "root_cause": "app:TAINT-002:app/api/go/route.ts",
+      "verified": true,
+      "fingerprint": "979343586a13",
+      "suppression": null
+    },
+    {
+      "id": "NEXT-004",
+      "severity": "medium",
+      "confidence": "low",
+      "title": "Mutating endpoint without in-file auth check (middleware exists — verify matcher coverage)",
+      "file": "app/app/api/profile/route.ts",
+      "line": 0,
+      "evidence": {
+        "type": "missing_authz_indicator",
+        "masked": "app/api/profile/route.ts",
+        "note": "middleware.ts present — middleware-only auth is fragile (matchers drift); confirm server-side check"
+      },
+      "owasp": "A01",
+      "fix": "Add an explicit server-side auth check at the top of the handler (verify the session/token server-side, not just middleware), and reject unauthenticated mutations with 401.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/profile/route.ts",
+      "root_cause": "app:NEXT-004:app/api/profile/route.ts",
+      "verified": true,
+      "fingerprint": "919c3f8c85de",
+      "suppression": null
+    },
+    {
+      "id": "NEXT-004",
+      "severity": "medium",
+      "confidence": "low",
+      "title": "Mutating endpoint without in-file auth check (middleware exists — verify matcher coverage)",
+      "file": "app/app/api/webhooks/checkout/route.ts",
+      "line": 0,
+      "evidence": {
+        "type": "missing_authz_indicator",
+        "masked": "app/api/webhooks/checkout/route.ts",
+        "note": "middleware.ts present — middleware-only auth is fragile (matchers drift); confirm server-side check"
+      },
+      "owasp": "A01",
+      "fix": "Add an explicit server-side auth check at the top of the handler (verify the session/token server-side, not just middleware), and reject unauthenticated mutations with 401.",
+      "fix_mode": "suggested-diff",
+      "root": "app:app/api/webhooks/checkout/route.ts",
+      "root_cause": "app:NEXT-004:app/api/webhooks/checkout/route.ts",
+      "verified": true,
+      "fingerprint": "39d39f26a86d",
+      "suppression": null
+    },
+    {
+      "confidence": "medium",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "DOCKER-001",
+      "severity": "medium",
+      "title": "Container runs as root (no USER directive)",
+      "file": "app/Dockerfile",
+      "line": 0,
+      "evidence": {
+        "type": "root_container",
+        "masked": "no USER <non-root>",
+        "note": "add a non-root user and switch before the runtime stage"
+      },
+      "owasp": "A05",
+      "fix": "Run the container as a non-root user: add a dedicated user in the Dockerfile (USER app) or set runAsNonRoot in the deployment. Root containers escalate container escapes.",
+      "root": "app:Dockerfile",
+      "root_cause": "app:DOCKER-001:Dockerfile",
+      "fingerprint": "7f16eca5d333",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "DOCKER-002",
+      "severity": "medium",
+      "title": "Base image pinned to :latest (mutable)",
+      "file": "app/Dockerfile",
+      "line": 2,
+      "evidence": {
+        "type": "unpinned_base_image",
+        "masked": "node:latest"
+      },
+      "owasp": "A08",
+      "fix": "Pin base images by digest or at least a specific version tag — :latest is mutable and breaks reproducibility; a registry compromise silently changes your base.",
+      "root": "app:Dockerfile",
+      "root_cause": "app:DOCKER-002:Dockerfile",
+      "fingerprint": "0f4dfc97a156",
+      "suppression": null
+    },
+    {
+      "confidence": "medium",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "DEP-004",
+      "severity": "medium",
+      "title": "\"some-madeup-util\" cannot be resolved offline and the project has no lockfile",
+      "file": "app/package.json",
+      "line": 16,
+      "evidence": {
+        "type": "unresolved_offline",
+        "masked": "some-madeup-util",
+        "note": "no lockfile proves this package ever resolved — hallucinated/slopsquat candidates land here; re-run with --online to check the registry"
+      },
+      "owasp": "A06",
+      "fix": "Verify \"some-madeup-util\" exists on the npm registry and is the package you intend. Generate a lockfile (npm install --package-lock-only) so dependency resolution becomes reproducible and auditable.",
+      "root": "app:some-madeup-util",
+      "root_cause": "app:DEP-004:some-madeup-util",
+      "fingerprint": "70c544c1cfa6",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-R06",
+      "severity": "medium",
+      "confidence": "medium",
+      "needs_confirmation": true,
+      "title": "Policy \"everyone_read\" on users has no user scoping (auth.uid())",
+      "file": "app/supabase/migrations/0002_policies.sql",
+      "line": 1,
+      "evidence": {
+        "type": "policy_unscoped",
+        "masked": "POLICY everyone_read ON users",
+        "note": "any authenticated client may satisfy this policy — scoping to auth.uid() (or a role check) is expected on user-data tables"
+      },
+      "owasp": "A01",
+      "fix": "Scope the policy: USING (auth.uid() = user_id) (or the correct ownership column), or restrict it TO a specific role.",
+      "fix_mode": "suggested-diff",
+      "root": "app:users:everyone_read",
+      "root_cause": "app:SUPA-R06:users:everyone_read",
+      "verified": true,
+      "fingerprint": "c6ad5770b047",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-R06",
+      "severity": "medium",
+      "confidence": "medium",
+      "needs_confirmation": true,
+      "title": "Policy \"anon_write_profiles\" on profiles has no user scoping (auth.uid())",
+      "file": "app/supabase/migrations/0002_policies.sql",
+      "line": 4,
+      "evidence": {
+        "type": "policy_unscoped",
+        "masked": "POLICY anon_write_profiles ON profiles",
+        "note": "any authenticated client may satisfy this policy — scoping to auth.uid() (or a role check) is expected on user-data tables"
+      },
+      "owasp": "A01",
+      "fix": "Scope the policy: USING (auth.uid() = user_id) (or the correct ownership column), or restrict it TO a specific role.",
+      "fix_mode": "suggested-diff",
+      "root": "app:profiles:anon_write_profiles",
+      "root_cause": "app:SUPA-R06:profiles:anon_write_profiles",
+      "verified": true,
+      "fingerprint": "139ad08ef812",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-R07",
+      "severity": "medium",
+      "confidence": "medium",
+      "needs_confirmation": true,
+      "title": "Buckets created in migrations but no storage.objects RLS policies found",
+      "file": "app/supabase/migrations/0003_depth2.sql",
+      "line": 0,
+      "evidence": {
+        "type": "storage_rls_missing",
+        "masked": "storage.buckets without storage.objects policies",
+        "note": "bucket inserts alone do not protect object access — public/anon policies must exist deliberately"
+      },
+      "owasp": "A01",
+      "fix": "Add explicit storage.objects policies (e.g. USING (bucket_id = 'x' AND auth.role() = 'authenticated')) or confirm the bucket is intentionally public-read.",
+      "fix_mode": "suggested-diff",
+      "root": "app:storage.objects",
+      "root_cause": "app:SUPA-R07:storage.objects",
+      "verified": true,
+      "fingerprint": "19ca563b5a5c",
+      "suppression": null
+    },
+    {
+      "id": "SUPA-R06",
+      "severity": "medium",
+      "confidence": "medium",
+      "needs_confirmation": true,
+      "title": "Policy \"sessions_read\" on sessions has no user scoping (auth.uid())",
+      "file": "app/supabase/migrations/0003_depth2.sql",
+      "line": 8,
+      "evidence": {
+        "type": "policy_unscoped",
+        "masked": "POLICY sessions_read ON sessions",
+        "note": "any authenticated client may satisfy this policy — scoping to auth.uid() (or a role check) is expected on user-data tables"
+      },
+      "owasp": "A01",
+      "fix": "Scope the policy: USING (auth.uid() = user_id) (or the correct ownership column), or restrict it TO a specific role.",
+      "fix_mode": "suggested-diff",
+      "root": "app:sessions:sessions_read",
+      "root_cause": "app:SUPA-R06:sessions:sessions_read",
+      "verified": true,
+      "fingerprint": "710567173db8",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "NEST-002",
+      "severity": "medium",
+      "title": "CORS allows any origin",
+      "file": "nest-app/events.gateway.ts",
+      "line": 5,
+      "evidence": {
+        "type": "cors_wildcard",
+        "masked": "origin: * / true"
+      },
+      "owasp": "A05",
+      "fix": "Restrict CORS to an explicit origin allowlist (cors: { origin: [...], credentials: true }). origin: '*' lets any website read authenticated responses from your API.",
+      "root": "nest-app:events.gateway.ts",
+      "root_cause": "nest-app:NEST-002:events.gateway.ts",
+      "fingerprint": "35060d59e0e4",
+      "suppression": null
+    },
+    {
+      "id": "TAINT-003",
+      "severity": "medium",
+      "confidence": "medium",
+      "title": "User-controlled value flows into a filesystem path — path traversal (../../ out of the data dir)",
+      "file": "nest-app/files.controller.ts",
+      "line": 12,
+      "evidence": {
+        "type": "taint_flow",
+        "masked": "return readFileSync(join('/srv/uploads', name));",
+        "note": "path.join(base, req.params.file) with ../../etc/passwd escapes the base dir"
+      },
+      "owasp": "A01",
+      "fix": "Resolve the final path and assert it is still inside the intended root (path.resolve + startsWith(root)), or reduce the input to path.basename() before joining.",
+      "fix_mode": "suggested-diff",
+      "needs_confirmation": true,
+      "root": "nest-app:files.controller.ts",
+      "root_cause": "nest-app:TAINT-003:files.controller.ts",
+      "verified": true,
+      "fingerprint": "52a3910507b1",
+      "suppression": null
+    },
+    {
+      "id": "TAINT-005",
+      "severity": "medium",
+      "confidence": "medium",
+      "title": "User-controlled value flows into server-rendered HTML — reflected XSS",
+      "file": "nest-app/files.controller.ts",
+      "line": 17,
+      "evidence": {
+        "type": "taint_flow",
+        "masked": "return res.send(`<h1>search: ${q}</h1>`);",
+        "note": "template HTML with ${req.query.x} — script payloads execute in the victim's browser"
+      },
+      "owasp": "A03",
+      "fix": "Escape the value before it enters HTML (or render as text, never raw HTML); if HTML is required, sanitize server-side with an allowlist-based sanitizer.",
+      "fix_mode": "suggested-diff",
+      "needs_confirmation": true,
+      "root": "nest-app:files.controller.ts",
+      "root_cause": "nest-app:TAINT-005:files.controller.ts",
+      "verified": true,
+      "fingerprint": "b9bdb234ccfc",
+      "suppression": null
+    },
+    {
+      "confidence": "medium",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "NEST-003",
+      "severity": "medium",
+      "title": "helmet() not registered — security headers missing",
+      "file": "nest-app/main.ts",
+      "line": 0,
+      "evidence": {
+        "type": "helmet_missing",
+        "masked": "no helmet() in main.ts"
+      },
+      "owasp": "A05",
+      "fix": "Register helmet() (app.use(helmet())) so security headers (HSTS, X-Content-Type-Options, frameguard) are set on every response.",
+      "root": "nest-app:main.ts",
+      "root_cause": "nest-app:NEST-003:main.ts",
+      "fingerprint": "b8d195d344dd",
+      "suppression": null
+    },
+    {
+      "confidence": "medium",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "NEST-004",
+      "severity": "medium",
+      "title": "No rate limiting found (ThrottlerModule / rate-limit)",
+      "file": "nest-app/main.ts",
+      "line": 0,
+      "evidence": {
+        "type": "throttler_missing",
+        "masked": "no ThrottlerModule in the codebase"
+      },
+      "owasp": "A04",
+      "fix": "Add ThrottlerModule + APP_GUARD ThrottlerGuard (or express-rate-limit) so login/OTP/auth routes resist brute force.",
+      "root": "nest-app:main.ts",
+      "root_cause": "nest-app:NEST-004:main.ts",
+      "fingerprint": "466fc7d60221",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "NEST-002",
+      "severity": "medium",
+      "title": "CORS allows any origin",
+      "file": "nest-app/main.ts",
+      "line": 9,
+      "evidence": {
+        "type": "cors_wildcard",
+        "masked": "origin: * / true"
+      },
+      "owasp": "A05",
+      "fix": "Restrict CORS to an explicit origin allowlist (cors: { origin: [...], credentials: true }). origin: '*' lets any website read authenticated responses from your API.",
+      "root": "nest-app:main.ts",
+      "root_cause": "nest-app:NEST-002:main.ts",
+      "fingerprint": "db18b12362a2",
+      "suppression": null
+    },
+    {
+      "id": "SWAGGER-001",
+      "severity": "medium",
+      "confidence": "high",
+      "title": "Swagger/OpenAPI UI served without a production guard — full API surface is public",
+      "file": "nest-app/main.ts",
+      "line": 11,
+      "evidence": {
+        "type": "swagger_public",
+        "masked": "SwaggerModule.setup(\"api-docs\", app, document);"
+      },
+      "owasp": "A05",
+      "fix": "Serve Swagger only outside production: if (process.env.NODE_ENV !== \"production\") SwaggerModule.setup(...).",
+      "fix_mode": "suggested-diff",
+      "root": "nest-app:main.ts",
+      "root_cause": "nest-app:SWAGGER-001:main.ts",
+      "verified": true,
+      "fingerprint": "f82258e08864",
+      "suppression": null
+    },
+    {
+      "confidence": "medium",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "DEP-004",
+      "severity": "medium",
+      "title": "\"reflect-metadata\" cannot be resolved offline and the project has no lockfile",
+      "file": "nest-app/package.json",
+      "line": 8,
+      "evidence": {
+        "type": "unresolved_offline",
+        "masked": "reflect-metadata",
+        "note": "no lockfile proves this package ever resolved — hallucinated/slopsquat candidates land here; re-run with --online to check the registry"
+      },
+      "owasp": "A06",
+      "fix": "Verify \"reflect-metadata\" exists on the npm registry and is the package you intend. Generate a lockfile (npm install --package-lock-only) so dependency resolution becomes reproducible and auditable.",
+      "root": "nest-app:reflect-metadata",
+      "root_cause": "nest-app:DEP-004:reflect-metadata",
+      "fingerprint": "4dabb3be9565",
+      "suppression": null
+    },
+    {
+      "id": "HIST-011",
+      "severity": "low",
+      "confidence": "high",
+      "title": ".gitignore missing entries: .env, *.pem / SSH keys, *.tfstate",
+      "file": "app/.gitignore",
+      "line": 0,
+      "evidence": {
+        "type": "gitignore_incomplete",
+        "masked": ".env, *.pem / SSH keys, *.tfstate"
+      },
+      "owasp": "A05",
+      "fix": "Add .env, *.pem / SSH keys, *.tfstate to .gitignore to prevent accidental commits.",
+      "fix_mode": "suggested-diff",
+      "root": "app:gitignore",
+      "root_cause": "app:HIST-011:gitignore",
+      "verified": true,
+      "fingerprint": "c530d64cfe10",
+      "suppression": null
+    },
+    {
+      "id": "HIST-010",
+      "severity": "low",
+      "confidence": "high",
+      "title": "No .gitignore file",
+      "file": "nest-app/.gitignore",
+      "line": 0,
+      "evidence": {
+        "type": "gitignore_missing",
+        "masked": ".gitignore"
+      },
+      "owasp": "A05",
+      "fix": "Add .gitignore covering .env, .env.*, *.pem, *.tfstate, node_modules, dist.",
+      "fix_mode": "suggested-diff",
+      "root": "nest-app:.gitignore",
+      "root_cause": "nest-app:HIST-010:.gitignore",
+      "verified": true,
+      "fingerprint": "8a6aec925ecb",
+      "suppression": null
+    }
+  ],
+  "inventory": {
+    "routes": [
+      {
+        "path": "/api/admin/stats",
+        "file": "app/app/api/admin/stats/route.ts",
+        "kind": "route",
+        "method": "POST",
+        "guard": "in-file"
+      },
+      {
+        "path": "/api/connect",
+        "file": "app/app/api/connect/route.ts",
+        "kind": "route",
+        "method": "POST",
+        "guard": null
+      },
+      {
+        "path": "/api/convert",
+        "file": "app/app/api/convert/route.ts",
+        "kind": "route",
+        "method": "GET",
+        "guard": null
+      },
+      {
+        "path": "/api/cookie-session",
+        "file": "app/app/api/cookie-session/route.ts",
+        "kind": "route",
+        "method": "POST",
+        "guard": "in-file"
+      },
+      {
+        "path": "/api/fetch-url",
+        "file": "app/app/api/fetch-url/route.ts",
+        "kind": "route",
+        "method": "GET",
+        "guard": null
+      },
+      {
+        "path": "/api/go",
+        "file": "app/app/api/go/route.ts",
+        "kind": "route",
+        "method": "GET",
+        "guard": null
+      },
+      {
+        "path": "/api/profile",
+        "file": "app/app/api/profile/route.ts",
+        "kind": "route",
+        "method": "PATCH",
+        "guard": null
+      },
+      {
+        "path": "/api/webhooks/checkout",
+        "file": "app/app/api/webhooks/checkout/route.ts",
+        "kind": "route",
+        "method": "POST",
+        "guard": null
+      },
+      {
+        "path": "/users",
+        "file": "nest-app/app.controller.ts",
+        "kind": "controller-method",
+        "method": "GET",
+        "guard": "APP_GUARD"
+      },
+      {
+        "path": "/users",
+        "file": "nest-app/app.controller.ts",
+        "kind": "controller-method",
+        "method": "POST",
+        "guard": "APP_GUARD"
+      },
+      {
+        "path": "/users/delete",
+        "file": "nest-app/app.controller.ts",
+        "kind": "controller-method",
+        "method": "POST",
+        "guard": "APP_GUARD"
+      },
+      {
+        "path": "/:name",
+        "file": "nest-app/files.controller.ts",
+        "kind": "controller-method",
+        "method": "GET",
+        "guard": "APP_GUARD"
+      },
+      {
+        "path": "/render",
+        "file": "nest-app/files.controller.ts",
+        "kind": "controller-method",
+        "method": "GET",
+        "guard": "APP_GUARD"
+      }
+    ],
+    "controllers": [
+      {
+        "name": "AdminController",
+        "file": "nest-app/app.controller.ts",
+        "guard": null,
+        "global_guard": true
+      },
+      {
+        "name": "FilesController",
+        "file": "nest-app/files.controller.ts",
+        "guard": null,
+        "global_guard": true
+      }
+    ],
+    "supabase": {
+      "tables": [
+        {
+          "name": "public.profiles",
+          "file": "app/supabase/migrations/0001_init.sql",
+          "rls_enabled": false
+        },
+        {
+          "name": "public.posts",
+          "file": "app/supabase/migrations/0001_init.sql",
+          "rls_enabled": true
+        },
+        {
+          "name": "public.sessions",
+          "file": "app/supabase/migrations/0003_depth2.sql",
+          "rls_enabled": false
+        }
+      ],
+      "rpcs": [],
+      "edge_functions": [
+        "app:admin-export",
+        "app:notify"
+      ]
+    },
+    "socket_events": [
+      {
+        "event": "presence",
+        "file": "nest-app/events.gateway.ts",
+        "gateway": "EventsGateway"
+      },
+      {
+        "event": "admin-broadcast",
+        "file": "nest-app/events.gateway.ts",
+        "gateway": "EventsGateway"
+      }
+    ],
+    "webhooks": [
+      {
+        "path": "/api/webhooks/checkout",
+        "file": "app/app/api/webhooks/checkout/route.ts"
+      }
+    ]
+  },
+  "portfolio": [
+    {
+      "path": "/home/z/my-project/anubis-guardian/tests/honeypot/app",
+      "score": 0,
+      "grade": "F",
+      "findings": 79
+    },
+    {
+      "path": "/home/z/my-project/anubis-guardian/tests/honeypot/nest-app",
+      "score": 0,
+      "grade": "F",
+      "findings": 16
+    }
+  ],
+  "meta": {
+    "no_exec": true,
+    "files_scanned": 39,
+    "git_history_scanned": true
+  }
+}

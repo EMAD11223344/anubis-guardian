@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": ["Bash(npm run test)", "Bash(npm run lint)", "Edit(src/**)"],
+    "deny": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/local-check.mjs" }]
+      }
+    ]
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "tool": "anubis-guardian",
+  "version": "0.4.0",
+  "advisory_snapshot": "2026-10",
+  "target": {
+    "mode": "codebase",
+    "path": "/home/z/my-project/anubis-guardian/tests/clean/app",
+    "stack": [
+      "node",
+      "nextjs",
+      "supabase",
+      "frontend-ui",
+      "supabase-migrations"
+    ]
+  },
+  "score": 100,
+  "grade": "A",
+  "summary": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "info": 1
+  },
+  "coverage": {
+    "checks_run": 28,
+    "checks_applicable": 29,
+    "classes_covered": [
+      "secrets (hardcoded keys, service_role by value, DB creds in headers, seeder credentials)",
+      "git-history secrets + committed env files",
+      "sensitive files (dumps/backups/.npmrc/service-account/tfstate/SSH keys)",
+      "supabase RLS (missing RLS, USING(true), views, SECURITY DEFINER, policy scoping, storage.objects, verify_jwt, dashboard drift via --schema)",
+      "next.js auth basics (tokens in web storage, cookie flags, NEXT_PUBLIC secrets, mutating endpoints without in-file auth)",
+      "nestjs playbook (APP_GUARD-aware unguarded controllers, CORS, helmet, throttler)",
+      "sast-light (SQLi concat, XSS dangerous HTML, eval/exec, weak hashing)",
+      "crypto (Math.random for tokens/OTPs — CRYPTO-001)",
+      "dependencies (CVEs vs bundled advisory snapshot, known-malicious, typosquat, unresolved-no-lockfile, slopsquat via --online)",
+      "ci/supply-chain (GitHub Actions SHA pinning, pull_request_target, script injection, permissions; Dockerfile root/:latest/ARG secrets)",
+      "recon inventory (routes, server actions, controllers w/ guards, supabase tables/RPC/edge functions, socket events, webhooks)",
+      "taint-lite (SSRF, open redirect, path traversal, command injection, reflected XSS — single-file scope, MEDIUM cap, generated canary tests)",
+      "rule packs II (LOGS-001, SUPA-002/003, AUTH-001 middleware-matcher gaps, NEXT-005 CSRF heuristic, MASS-001, WS-001, WEBHOOK-001, JWT-001/002, SWAGGER-001, PRISMA-001 hint)",
+      "agent environment (unpinned MCP servers, secrets in agent configs, permission wildcards/bypass, unpinned hook commands)",
+      "AI review layer with independent verifier (opt-in --ai-review; redaction-before-LLM; verifier-gated; AI findings cap at HIGH)",
+      "authz matrix + generated Supertest/Playwright quarantine tests (test-authz — the tool never executes them)",
+      "agent guard hook (init-hook — PreToolUse prevention of service_role-in-client, RLS-killing SQL, secrets into .env)"
+    ],
+    "classes_not_covered": [
+      "deep multi-file taint flows (taint-lite is single-file + one-level import by design)",
+      "IDOR differential testing / authz matrix execution (v1.0 — restricted; the generated tests are run by the owner, never the tool)",
+      "URL Mode L1–L3: security headers, exposed files, live probing (v0.4 — after Mode 1 completes)",
+      "cookie HttpOnly deep verification beyond the flag-level check + full CSRF semantics (heuristic only)",
+      "business & payment logic (human review by design)",
+      "DAST / wide fuzzing (non-goal by design)",
+      "compliance SOC2/PCI/HIPAA (non-goal by design)",
+      "non-JS/TS languages (non-goal — use the Semgrep adapter)"
+    ]
+  },
+  "score_breakdown": {
+    "base": 100,
+    "total_deducted": 0,
+    "score": 100,
+    "grade": "A",
+    "groups": [],
+    "note": "Low-confidence findings and INFO do not deduct. Repeats of the same root cause add +10% each, capped at 2× the severity weight (v1.3)."
+  },
+  "findings": [
+    {
+      "id": "SUPA-001",
+      "title": "service_role key used in server-only code (documented-correct pattern — verify env hygiene)",
+      "file": ".env",
+      "line": 3,
+      "evidence": {
+        "type": "service_role_jwt",
+        "masked": "eyJh•••… (first-4 + sha256:1df107c6)",
+        "sha256_prefix": "1df107c6",
+        "note": "full value is never written to any report or artifact"
+      },
+      "owasp": "A01",
+      "fix": "Correct placement. Ensure the key never leaks into client bundles and is not committed in plaintext env files.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "supabase",
+        "steps": "1) Rotate the JWT secret / regenerate API keys in the Supabase dashboard 2) Invalidate active sessions 3) Update server-side env with the new key 4) Scrub git history (git filter-repo) 5) Verify the old key is dead",
+        "history_cleanup": "git filter-repo required — deletion from HEAD is not enough"
+      },
+      "root": "1df107c6",
+      "root_cause": "SUPA-001:1df107c6",
+      "verified": true,
+      "severity": "info",
+      "confidence": "high",
+      "fingerprint": "bf9c7f1c9e79",
+      "suppression": null
+    }
+  ],
+  "inventory": {
+    "routes": [
+      {
+        "path": "/api/checkout",
+        "file": "app/api/checkout/route.ts",
+        "kind": "route",
+        "method": "POST",
+        "guard": "in-file"
+      },
+      {
+        "path": "/api/fetch-url",
+        "file": "app/api/fetch-url/route.ts",
+        "kind": "route",
+        "method": "GET",
+        "guard": null
+      },
+      {
+        "path": "/api/go",
+        "file": "app/api/go/route.ts",
+        "kind": "route",
+        "method": "GET",
+        "guard": null
+      },
+      {
+        "path": "/api/orders",
+        "file": "app/api/orders/route.ts",
+        "kind": "route",
+        "method": "POST",
+        "guard": "in-file"
+      }
+    ],
+    "controllers": [],
+    "supabase": {
+      "tables": [],
+      "rpcs": [],
+      "edge_functions": []
+    },
+    "socket_events": [],
+    "webhooks": []
+  },
+  "meta": {
+    "no_exec": true,
+    "files_scanned": 24,
+    "git_history_scanned": true
+  }
+}

@@ -1,0 +1,2 @@
+# honeypot seed: verify_jwt disabled
+verify_jwt = false

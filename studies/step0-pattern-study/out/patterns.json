@@ -1,0 +1,126 @@
+[
+  {
+    "id": "db_creds_in_headers",
+    "label": "DB credentials sent/received in HTTP headers"
+  },
+  {
+    "id": "seeder_credentials",
+    "label": "hardcoded passwords in seeders/fixtures"
+  },
+  {
+    "id": "service_role_lead",
+    "label": "JWT-shaped literals in code/env (service_role leads — engine decodes by value)"
+  },
+  {
+    "id": "committed_env",
+    "label": ".env / .env.production present in worktree"
+  },
+  {
+    "id": "env_in_git_history",
+    "label": "env files ever committed (git log --diff-filter=A)"
+  },
+  {
+    "id": "rls_permissive",
+    "label": "RLS policies USING(true)/WITH CHECK(true)"
+  },
+  {
+    "id": "nextpublic_secret_keys",
+    "label": "secret-looking keys under NEXT_PUBLIC_/VITE_/REACT_APP_"
+  },
+  {
+    "id": "jwt_in_localstorage",
+    "label": "auth tokens stored in localStorage/sessionStorage"
+  },
+  {
+    "id": "hardcoded_secret_generic",
+    "label": "generic credential assignments (api_key/secret/token = long literal)"
+  },
+  {
+    "id": "db_url_with_password",
+    "label": "connection URLs with embedded password"
+  },
+  {
+    "id": "aws_keys",
+    "label": "AWS access keys"
+  },
+  {
+    "id": "stripe_live",
+    "label": "Stripe live keys"
+  },
+  {
+    "id": "private_keys",
+    "label": "private key material"
+  },
+  {
+    "id": "sql_concat",
+    "label": "SQL built by string concatenation"
+  },
+  {
+    "id": "dangerous_html",
+    "label": "dangerouslySetInnerHTML usage (review non-literals)"
+  },
+  {
+    "id": "eval_exec",
+    "label": "eval/exec/new Function usage"
+  },
+  {
+    "id": "weak_hashing",
+    "label": "MD5/SHA1 hashing (password context judged by engine)"
+  },
+  {
+    "id": "math_random_tokens",
+    "label": "Math.random for tokens/OTPs (v0.3 CRYPTO-001 lead)"
+  },
+  {
+    "id": "jwt_decode_usage",
+    "label": "jwt.decode usage (v0.3 JWT-001 lead)"
+  },
+  {
+    "id": "npmrc_token",
+    "label": ".npmrc with _authToken"
+  },
+  {
+    "id": "tfstate",
+    "label": "terraform.tfstate present"
+  },
+  {
+    "id": "service_account_json",
+    "label": "cloud service-account JSON with private key"
+  },
+  {
+    "id": "ci_unpinned_actions",
+    "label": "GitHub Actions using tag/branch refs instead of SHA pinning (CI-001 lead)"
+  },
+  {
+    "id": "ci_pull_request_target",
+    "label": "pull_request_target workflow trigger (CI-002 lead)"
+  },
+  {
+    "id": "dockerfile_latest",
+    "label": "Dockerfile FROM :latest tag (DOCKER-002 lead)"
+  },
+  {
+    "id": "mass_assignment_lead",
+    "label": "NestJS @Body() typed any (MASS-001 lead)"
+  },
+  {
+    "id": "ws_gateway_presence",
+    "label": "Socket.IO @WebSocketGateway present (WS-001 lead)"
+  },
+  {
+    "id": "swagger_setup",
+    "label": "SwaggerModule.setup present (SWAGGER-001 lead)"
+  },
+  {
+    "id": "logs_secret_leak",
+    "label": "console.log printing secret-looking vars (LOGS-001 lead)"
+  },
+  {
+    "id": "supabase_user_metadata",
+    "label": "user_metadata referenced in SQL policies (SUPA-002 lead)"
+  },
+  {
+    "id": "supabase_service_role_fn",
+    "label": "service_role key inside supabase/functions (SUPA-003 lead)"
+  }
+]

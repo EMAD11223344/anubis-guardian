@@ -1,0 +1,318 @@
+{
+  "N": 100,
+  "aiN": 80,
+  "stackN": 20,
+  "totalFiles": 3403,
+  "rows": [
+    {
+      "id": "ci_unpinned_actions",
+      "label": "GitHub Actions using tag/branch refs instead of SHA pinning (CI-001 lead)",
+      "total": 91,
+      "projAffected": 22,
+      "aiTotal": 91,
+      "aiAffected": 22,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "math_random_tokens",
+      "label": "Math.random for tokens/OTPs (v0.3 CRYPTO-001 lead)",
+      "total": 136,
+      "projAffected": 11,
+      "aiTotal": 128,
+      "aiAffected": 8,
+      "stackTotal": 8,
+      "stackAffected": 3
+    },
+    {
+      "id": "dangerous_html",
+      "label": "dangerouslySetInnerHTML usage (review non-literals)",
+      "total": 8,
+      "projAffected": 7,
+      "aiTotal": 6,
+      "aiAffected": 6,
+      "stackTotal": 2,
+      "stackAffected": 1
+    },
+    {
+      "id": "sql_concat",
+      "label": "SQL built by string concatenation",
+      "total": 15,
+      "projAffected": 3,
+      "aiTotal": 1,
+      "aiAffected": 1,
+      "stackTotal": 14,
+      "stackAffected": 2
+    },
+    {
+      "id": "rls_permissive",
+      "label": "RLS policies USING(true)/WITH CHECK(true)",
+      "total": 5,
+      "projAffected": 3,
+      "aiTotal": 3,
+      "aiAffected": 2,
+      "stackTotal": 2,
+      "stackAffected": 1
+    },
+    {
+      "id": "service_role_lead",
+      "label": "JWT-shaped literals in code/env (service_role leads — engine decodes by value)",
+      "total": 3,
+      "projAffected": 3,
+      "aiTotal": 1,
+      "aiAffected": 1,
+      "stackTotal": 2,
+      "stackAffected": 2
+    },
+    {
+      "id": "committed_env",
+      "label": ".env / .env.production present in worktree",
+      "total": 3,
+      "projAffected": 3,
+      "aiTotal": 2,
+      "aiAffected": 2,
+      "stackTotal": 1,
+      "stackAffected": 1
+    },
+    {
+      "id": "env_in_git_history",
+      "label": "env files ever committed (git log --diff-filter=A)",
+      "total": 3,
+      "projAffected": 3,
+      "aiTotal": 2,
+      "aiAffected": 2,
+      "stackTotal": 1,
+      "stackAffected": 1
+    },
+    {
+      "id": "aws_keys",
+      "label": "AWS access keys",
+      "total": 22,
+      "projAffected": 2,
+      "aiTotal": 22,
+      "aiAffected": 2,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "hardcoded_secret_generic",
+      "label": "generic credential assignments (api_key/secret/token = long literal)",
+      "total": 3,
+      "projAffected": 2,
+      "aiTotal": 1,
+      "aiAffected": 1,
+      "stackTotal": 2,
+      "stackAffected": 1
+    },
+    {
+      "id": "nextpublic_secret_keys",
+      "label": "secret-looking keys under NEXT_PUBLIC_/VITE_/REACT_APP_",
+      "total": 2,
+      "projAffected": 2,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 2,
+      "stackAffected": 2
+    },
+    {
+      "id": "private_keys",
+      "label": "private key material",
+      "total": 2,
+      "projAffected": 2,
+      "aiTotal": 2,
+      "aiAffected": 2,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "eval_exec",
+      "label": "eval/exec/new Function usage",
+      "total": 3,
+      "projAffected": 1,
+      "aiTotal": 3,
+      "aiAffected": 1,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "db_url_with_password",
+      "label": "connection URLs with embedded password",
+      "total": 2,
+      "projAffected": 1,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 2,
+      "stackAffected": 1
+    },
+    {
+      "id": "logs_secret_leak",
+      "label": "console.log printing secret-looking vars (LOGS-001 lead)",
+      "total": 1,
+      "projAffected": 1,
+      "aiTotal": 1,
+      "aiAffected": 1,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "supabase_user_metadata",
+      "label": "user_metadata referenced in SQL policies (SUPA-002 lead)",
+      "total": 1,
+      "projAffected": 1,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 1,
+      "stackAffected": 1
+    },
+    {
+      "id": "supabase_service_role_fn",
+      "label": "service_role key inside supabase/functions (SUPA-003 lead)",
+      "total": 1,
+      "projAffected": 1,
+      "aiTotal": 1,
+      "aiAffected": 1,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "db_creds_in_headers",
+      "label": "DB credentials sent/received in HTTP headers",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "seeder_credentials",
+      "label": "hardcoded passwords in seeders/fixtures",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "jwt_in_localstorage",
+      "label": "auth tokens stored in localStorage/sessionStorage",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "stripe_live",
+      "label": "Stripe live keys",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "weak_hashing",
+      "label": "MD5/SHA1 hashing (password context judged by engine)",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "jwt_decode_usage",
+      "label": "jwt.decode usage (v0.3 JWT-001 lead)",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "npmrc_token",
+      "label": ".npmrc with _authToken",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "tfstate",
+      "label": "terraform.tfstate present",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "service_account_json",
+      "label": "cloud service-account JSON with private key",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "ci_pull_request_target",
+      "label": "pull_request_target workflow trigger (CI-002 lead)",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "dockerfile_latest",
+      "label": "Dockerfile FROM :latest tag (DOCKER-002 lead)",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "mass_assignment_lead",
+      "label": "NestJS @Body() typed any (MASS-001 lead)",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "ws_gateway_presence",
+      "label": "Socket.IO @WebSocketGateway present (WS-001 lead)",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    },
+    {
+      "id": "swagger_setup",
+      "label": "SwaggerModule.setup present (SWAGGER-001 lead)",
+      "total": 0,
+      "projAffected": 0,
+      "aiTotal": 0,
+      "aiAffected": 0,
+      "stackTotal": 0,
+      "stackAffected": 0
+    }
+  ]
+}
