@@ -2,6 +2,25 @@ import type { ScanContext, RuleResult } from "../types.js";
 import { rootCause, mkFinding, type MkIn } from "../util.js";
 
 /**
+ * DOCKER-003 ARG-name risk (token-based, substring-free):
+ * "API_URL" must NOT match because it contains "api"; "API_KEY" must.
+ * So tokenize the name on `_` AND camelCase boundaries and require a risky TOKEN,
+ * never a raw substring (the old `/api/i` regex turned every API_URL into a HIGH finding).
+ */
+const ARG_RISKY_TOKENS = new Set([
+  "secret", "password", "passwd", "pass", "pwd", "token", "key",
+  "apikey", "credential", "credentials", "private", "jwt", "oauth", "bearer",
+]);
+
+export function argSecretRisk(name: string): boolean {
+  const tokens = name
+    .replace(/(?<=[a-z0-9])(?=[A-Z])/g, "_") // camelCase → snake splitting
+    .toLowerCase()
+    .split(/[^a-z0-9]+/);
+  return tokens.some((t) => ARG_RISKY_TOKENS.has(t));
+}
+
+/**
  * Layer 5 — CI / supply-chain pack (Plan Section 6, v1.6 item D; v0.2 priority #1
  * per Step 0 sweep: unpinned actions hit 22% of a 100-project sample).
  *
@@ -192,7 +211,7 @@ export function scanCi(ctx: ScanContext): RuleResult {
           if (u !== "root" && u !== "0") hasUser = true;
         }
         const arg = line.match(/^ARG\s+([A-Za-z_][A-Za-z0-9_]*)/i);
-        if (arg && /secret|password|token|key|api|credential|pass/i.test(arg[1])) {
+        if (arg && argSecretRisk(arg[1])) {
           findings.push(ai(ctx, {
             id: "DOCKER-003",
             severity: "high",

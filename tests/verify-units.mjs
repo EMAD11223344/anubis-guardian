@@ -23,6 +23,7 @@ const { parseVer, cmpVer, versionInRange, affects } = await import(d("dist/advis
 const { maskSecret, sha256Prefix, fingerprint, parseInlineIgnores, applySuppression, deducts, uniqBy, globWorkspaces } =
   await import(d("dist/util.js"));
 const { importedFromClient, resolveSpec, classifyFile } = await import(d("dist/rules/context.js"));
+const { argSecretRisk } = await import(d("dist/rules/ci.js"));
 const { parseMatcher, matcherCovers, matcherToRegExp } = await import(d("dist/rules/packs2.js"));
 const { decodeJwtPayload } = await import(d("dist/urlmode/jsassets.js"));
 const { loadOrgRules, runOrgRules } = await import(d("dist/rulesdir.js"));
@@ -156,6 +157,15 @@ check("U7.3 globWorkspaces: nested star", JSON.stringify(gx("*/core")) === JSON.
 check("U7.4 globWorkspaces: dirs without package.json excluded", gx("apps/*").every((p) => !p.includes("nows")));
 check("U7.5 globWorkspaces: no match → empty", gx("missing/*").length === 0);
 rmSync(WS_TMP, { recursive: true, force: true });
+
+// ---------- U8: DOCKER-003 ARG-name risk (token-based, no "api" substring FPs) ----------
+check("U8.1 ARG API_URL does NOT fire (the reported substring FP)", argSecretRisk("API_URL") === false);
+check("U8.2 ARG NEXT_PUBLIC_API_URL does NOT fire", argSecretRisk("NEXT_PUBLIC_API_URL") === false);
+check("U8.3 ARG MONKEY / KEYBOARD do NOT fire (substring 'key' FP class)", argSecretRisk("MONKEY") === false && argSecretRisk("KEYBOARD_LAYOUT") === false);
+check("U8.4 ARG DATABASE_PASSWORD fires (honeypot seed 19 stays detected)", argSecretRisk("DATABASE_PASSWORD") === true);
+check("U8.5 ARG STRIPE_SECRET_KEY / JWT_SECRET / API_KEY fire", argSecretRisk("STRIPE_SECRET_KEY") && argSecretRisk("JWT_SECRET") && argSecretRisk("API_KEY"));
+check("U8.6 camelCase apiKey / refreshToken fire (camel-boundary tokenizing)", argSecretRisk("apiKey") === true && argSecretRisk("refreshToken") === true);
+check("U8.7 ARG REFRESH_TOKEN / AWS_ACCESS_SECRET fire", argSecretRisk("REFRESH_TOKEN") === true && argSecretRisk("AWS_ACCESS_SECRET") === true);
 
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);
