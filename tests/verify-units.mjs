@@ -9,7 +9,7 @@
  *   U6  rulesdir: loadOrgRules (DSL loader, org CRITICAL contract)
  *   U7  util: globWorkspaces (workspace glob subset, moved out of cli.ts for import-safety)
  *   U8  ci: argSecretRisk (DOCKER-003 name-only token policy)
- *   U9  util: excludeToRegExp (--exclude glob subset, v1.0.2)
+ *   U9  util: excludeToRegExp (--exclude glob subset, v1.1.0)
  *   U10 packs2: JWT-002 { algorithms: undefined } is runtime-unpinned (fires MEDIUM)
  *   U11 walk: CRLF EOL robustness (no trailing \r; CI-003 stays alive on CRLF checkouts)
  *   U12 rules/history: gitScope containment (history/ls-files must NEVER import an unrelated ancestor repo)
@@ -69,6 +69,8 @@ check("U1.19 affects: any-range match (multi-range advisories)", affects({ range
 const { nearestPopular } = await import(d("dist/advisory/popular.js"));
 check("U1.20 short legit names NOT typosquat FPs (nyc/hbs/ai/z85)", nearestPopular("nyc") === null && nearestPopular("hbs") === null && nearestPopular("ai") === null && nearestPopular("z85") === null);
 check("U1.21 names ≥ 5 chars keep radius 2 (expres→express d=1 seed 22 stays; config→conf d=2)", JSON.stringify(nearestPopular("expres") ?? {}) === JSON.stringify({ target: "express", distance: 1 }) && nearestPopular("config")?.target === "conf");
+check("U1.22 5-char boundary: 4-char name at d=2 silent (zoab→zod), 5-char takes radius 2 (zodab→zod d=2)", nearestPopular("zoab") === null && JSON.stringify(nearestPopular("zodab") ?? {}) === JSON.stringify({ target: "zod", distance: 2 }));
+check("U1.23 short name at distance 1 still fires (kyi→ky d=1, 3 chars)", JSON.stringify(nearestPopular("kyi") ?? {}) === JSON.stringify({ target: "ky", distance: 1 }));
 
 // ---------- U2: util masking/suppression contracts ----------
 const m = maskSecret("sbp_a1B2c3D4e5F6g7H8i9J0kLmNoPqRsTuV");
@@ -184,7 +186,7 @@ check("U8.7 ARG REFRESH_TOKEN / AWS_ACCESS_SECRET fire", argSecretRisk("REFRESH_
 // a separate future rule, not a name-based flag.
 check("U8.8 ARG DATABASE_URL stays silent (name-only policy; its URL value is NOT evaluated)", argSecretRisk("DATABASE_URL") === false);
 
-// ---------- U9: --exclude glob subset (repo-relative POSIX, v1.0.2) ----------
+// ---------- U9: --exclude glob subset (repo-relative POSIX, v1.1.0) ----------
 const ex = (g) => excludeToRegExp(g);
 check("U9.1 *.min.js: top-level match", ex("*.min.js").test("bundle.min.js"));
 check("U9.2 *.min.js stays within ONE segment (use ** for depth)", !ex("*.min.js").test("a/b/bundle.min.js"));

@@ -42,7 +42,7 @@ export function walk(root: string): ScannedFile[] {
         abs,
         rel: relative(root, abs).split(sep).join("/"),
         content,
-        // EOL robustness (v1.0.2): split on /\r?\n/ so CRLF checkouts (Windows
+        // EOL robustness (v1.1.0): split on /\r?\n/ so CRLF checkouts (Windows
         // autocrlf clones/worktrees) never leave a trailing \r on a line. A bare
         // \r is invisible in rules but fatal to $-anchored regexes like CI-003's
         // /run:\s*(.*)$/ — "." does not match "\r" and "$" will not match before

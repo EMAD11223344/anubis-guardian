@@ -162,7 +162,7 @@ check(Boolean(inv?.routes?.length), "inventory lists routes");
 const html = existsSync(join(art, "r.html")) ? readFileSync(join(art, "r.html"), "utf8") : "";
 check(html.includes("Classes NOT covered") || html.includes("classes NOT covered"), "HTML carries the honesty contract");
 
-// ---------- 8) --exclude / --max-files (v1.0.2) ----------
+// ---------- 8) --exclude / --max-files (v1.1.0) ----------
 const exclDir = join(tmp, "excl-app");
 mkdirSync(join(exclDir, "generated"), { recursive: true });
 writeFileSync(join(exclDir, "generated", "gen.ts"), 'export const dbPass = "postgres://user:SuperSecret123@host/db";\n');

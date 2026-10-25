@@ -105,7 +105,7 @@ export function uniqBy<T>(arr: T[], key: (x: T) => string): T[] {
 }
 
 /**
- * --exclude glob subset (v1.0.2 — scope reduction for huge AI-built trees).
+ * --exclude glob subset (v1.1.0 — scope reduction for huge AI-built trees).
  * Matches repo-relative POSIX paths (the f.rel format of walk()).
  *   "**"  = zero or more whole path segments (any depth)
  *   "*"   = anything within ONE path segment (no "/")

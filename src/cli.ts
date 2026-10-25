@@ -78,8 +78,8 @@ program
   .option("--ai-review", "v0.3: enable the optional AI review layer (needs ANUBIS_AI_API_KEY; redaction-before-LLM + independent verifier; flagged in meta.ai_used)")
   .option("--quarantine <dir>", "v0.3: write generated canary tests for taint findings into this folder (the tool never executes them)")
   .option("--allow-community-rules", "v1.0: bypass the rules-lock supply-chain guard (unpinned/modified rules run, quarantined in meta)")
-  .option("--exclude <glob>", "v1.0.2: skip files matching a repo-relative POSIX glob (repeatable; \"**\" = any depth, \"*\" = one segment; no \"!\" negation — pure whitelist skipper)", collect)
-  .option("--max-files <n>", "v1.0.2: fail-closed size cap — exit 2 WITHOUT a report when the tree has more scannable files (determinism forbids partial reports)")
+  .option("--exclude <glob>", "v1.1.0: skip files matching a repo-relative POSIX glob (repeatable; \"**\" = any depth, \"*\" = one segment; no \"!\" negation — pure whitelist skipper)", collect)
+  .option("--max-files <n>", "v1.1.0: fail-closed size cap — exit 2 WITHOUT a report when the tree has more scannable files (determinism forbids partial reports)")
   .addHelpText("after", [
     "Examples:",
     "  anubis-guardian scan ./my-project",
@@ -98,7 +98,7 @@ program
       process.exit(2);
     }
 
-    // ---- v1.0.2 --exclude / --max-files validation ----
+    // ---- v1.1.0 --exclude / --max-files validation ----
     const exclude = opts.exclude?.length ? opts.exclude : undefined;
     let maxFiles: number | undefined;
     if (opts.maxFiles !== undefined && opts.maxFiles !== "") {

@@ -27,7 +27,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { SEVERITY_ORDER, type Inventory } from "./types.js";
 
-export const VERSION = "1.0.1";
+export const VERSION = "1.1.0";
 export const ADVISORY_SNAPSHOT = "2026-10";
 
 /**
@@ -39,7 +39,7 @@ export const ADVISORY_SNAPSHOT = "2026-10";
  */
 export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
   const walked = walk(rootDir);
-  // --exclude (v1.0.2): ONE filter point right after walk() — rules, the
+  // --exclude (v1.1.0): ONE filter point right after walk() — rules, the
   // reachability graph, inventory, suppression and meta counts all see the
   // same filtered set, so the graph can never form stale edges through an
   // excluded file. Default: no excludes (reports byte-identical to v1.0.1).
@@ -52,7 +52,7 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
       return true;
     });
   }
-  // --max-files (v1.0.2, fail-closed): REFUSAL instead of a partial report —
+  // --max-files (v1.1.0, fail-closed): REFUSAL instead of a partial report —
   // truncating a scan would break the byte-identical determinism contract.
   // Count is post-exclusion (excluded files are deliberately out of scope).
   if (opts.maxFiles !== undefined && files.length > opts.maxFiles) {
@@ -170,8 +170,8 @@ export interface ScanOptions {
   tools?: string[];
   online?: boolean;
   advisoryFile?: string;
-  exclude?: string[];   // v1.0.2 — repo-relative POSIX globs skipped before any rule/graph sees them
-  maxFiles?: number;    // v1.0.2 — fail-closed size cap: refusal (throw) instead of a partial report
+  exclude?: string[];   // v1.1.0 — repo-relative POSIX globs skipped before any rule/graph sees them
+  maxFiles?: number;    // v1.1.0 — fail-closed size cap: refusal (throw) instead of a partial report
   aiReview?: boolean;   // v0.3 — AI review runs at CLI level AFTER the deterministic scan
   quarantine?: string;  // v0.3 — quarantine dir for generated tests (never executed by the tool)
 }

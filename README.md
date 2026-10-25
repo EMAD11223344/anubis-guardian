@@ -8,7 +8,7 @@
 <img src="docs/assets/hero.jpg" alt="Anubis Guardian — deterministic security auditor for AI-built projects: offline static-only scanner with score 100/A" width="100%">
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.1-8b5cf6.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-1.1.0-8b5cf6.svg)](package.json)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-blue.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](tsconfig.json)
 [![Tests](https://img.shields.io/badge/regression%20gates-9%20suites-brightgreen.svg)](#-tests-regression-gates)
