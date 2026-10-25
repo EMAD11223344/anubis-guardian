@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import type { Finding, Confidence } from "./types.js";
 
 /** sha256 hex prefix (8) — links findings across runs without exposing the value. */
@@ -103,3 +105,31 @@ export function uniqBy<T>(arr: T[], key: (x: T) => string): T[] {
 }
 
 export const severityRank: Record<Confidence | string, number> = { high: 0, medium: 1, low: 2 };
+
+/** tiny glob subset for workspaces: "apps/*", "packages/*", exact paths */
+export function globWorkspaces(root: string, pattern: string): string[] {
+  const out: string[] = [];
+  const visit = (base: string, pat: string) => {
+    const [head, ...rest] = pat.split("/");
+    if (!head) return;
+    if (head === "*") {
+      let entries: string[] = [];
+      try { entries = readdirSync(base); } catch { return; }
+      for (const e of entries) {
+        const p = join(base, e);
+        try { if (!statSync(p).isDirectory()) continue; } catch { continue; }
+        if (rest.length === 0) {
+          if (existsSync(join(p, "package.json"))) out.push(resolve(p));
+        } else visit(p, rest.join("/"));
+      }
+    } else {
+      const p = join(base, head);
+      if (!existsSync(p)) return;
+      if (rest.length === 0) {
+        if (existsSync(join(p, "package.json"))) out.push(resolve(p));
+      } else visit(p, rest.join("/"));
+    }
+  };
+  visit(root, pattern);
+  return out;
+}

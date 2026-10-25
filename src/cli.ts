@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { resolve } from "node:path";
 import { writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, basename } from "node:path";
+import { globWorkspaces } from "./util.js";
 import { scan, scanRoots, VERSION, mergeAiFindings } from "./engine.js";
 import { walk } from "./walk.js";
 import { recon } from "./recon.js";
@@ -75,6 +76,15 @@ program
   .option("--ai-review", "v0.3: enable the optional AI review layer (needs ANUBIS_AI_API_KEY; redaction-before-LLM + independent verifier; flagged in meta.ai_used)")
   .option("--quarantine <dir>", "v0.3: write generated canary tests for taint findings into this folder (the tool never executes them)")
   .option("--allow-community-rules", "v1.0: bypass the rules-lock supply-chain guard (unpinned/modified rules run, quarantined in meta)")
+  .addHelpText("after", [
+    "Examples:",
+    "  anubis-guardian scan ./my-project",
+    "  anubis-guardian scan ./my-project --format json -o findings.json --fix-prompt fix.md --compact summary.txt",
+    "  anubis-guardian scan ./frontend ./backend            # cross-root linkage",
+    "  anubis-guardian scan . --workspaces                  # monorepo portfolio",
+    "  anubis-guardian scan ./my-project --fail-on critical # CI gate (exit 1 on critical)",
+    "  anubis-guardian scan ./my-project --schema dump.sql  # confirm Supabase RLS drift",
+  ].join("\n"))
   .action(async (paths: string[], opts: Opts) => {
     const failOn = (opts.failOn ?? "").toLowerCase();
     if (failOn && failOn !== "high" && failOn !== "critical") {
@@ -217,6 +227,18 @@ program
   .option("--fix-prompt <file>", "also write fix-prompt.md (includes the map-endpoints-to-code instruction)")
   .option("--compact <file>", "also write a token-saving compact summary")
   .option("--html <file>", "also write a self-contained HTML report")
+  .addHelpText("after", [
+    "Examples:",
+    "  anubis-guardian scan-url https://example.com                    # L1 passive — free, no ownership",
+    "  anubis-guardian ownership https://example.com                   # print nonce + DNS TXT / .well-known steps",
+    "  anubis-guardian scan-url https://example.com --level 2 --ownership-token <nonce>",
+    "  anubis-guardian scan-url http://127.0.0.1:3000 --level 2 --i-own-this-domain   # local/staging only",
+    "  anubis-guardian scan-url https://example.com --level 3 --ownership-token <nonce> \\",
+    "    --active-tests --identity-a \"X-Test-Role: admin\" --identity-b \"X-Test-Role: restricted\"",
+    "  anubis-guardian scan-url https://example.com --capture capture.json --from-capture capture.json",
+    "",
+    "Ownership gate: public domains require a VERIFIED nonce for L2+ — self-attestation is local-only and labeled.",
+  ].join("\n"))
   .action(async (url: string, opts: Opts & { level: string; ownershipToken?: string; iOwnThisDomain?: boolean; fromCapture?: string; capture?: string; timeoutMs: string; delayMs: string; maxRequests?: string; maxAssets: string; activeTests?: boolean; identityA?: string; identityB?: string; idorPath?: string[] }) => {
     const level = Number(opts.level) as 1 | 2 | 3;
     if (![1, 2, 3].includes(level)) {
@@ -298,6 +320,11 @@ program
   .description("v0.4: generate a domain-ownership nonce + instructions (DNS TXT / .well-known) — or verify a published one with --check")
   .argument("<url>", "target origin (scheme://host[:port])")
   .option("--check <nonce>", "verify a nonce you have already published")
+  .addHelpText("after", [
+    "Examples:",
+    "  anubis-guardian ownership https://example.com            # prints a fresh nonce + both instructions",
+    "  anubis-guardian ownership https://example.com --check <nonce>   # exit 0 = VERIFIED, 1 = mismatch",
+  ].join("\n"))
   .action(async (url: string, opts: { check?: string }) => {
     let u: URL;
     try { u = new URL(url); } catch {
@@ -344,6 +371,12 @@ program
   .option("--quarantine <dir>", "quarantine output directory", "anubis-quarantine")
   .option("--base-url <url>", "staging base URL baked into the generated tests as a comment default")
   .option("--fail-on-risk", "exit 1 when unguarded mutating endpoints exist (CI-usable without executing tests)")
+  .addHelpText("after", [
+    "Examples:",
+    "  anubis-guardian test-authz ./my-project                           # authz matrix + failing-by-expectation tests",
+    "  anubis-guardian test-authz ./my-project --quarantine anubis-quarantine --fail-on-risk",
+    "The generated suite asserts REJECTION (401/403/redirect). YOU run it inside the quarantine folder; the tool never does.",
+  ].join("\n"))
   .action((path: string, opts: { quarantine: string; baseUrl?: string; failOnRisk?: boolean }) => {
     const root = resolve(path);
     const files = walk(root);
@@ -377,6 +410,11 @@ program
   .description("Refresh a local HIGH/CRITICAL advisory snapshot from OSV.dev for this project's dependencies (writes ./anubis-advisories.json)")
   .option("--dir <dir>", "project root (default: current directory)", ".")
   .option("--out <file>", "output snapshot file", "anubis-advisories.json")
+  .addHelpText("after", [
+    "Examples:",
+    "  anubis-guardian update-advisories                 # refresh ./anubis-advisories.json for this project's deps",
+    "  anubis-guardian scan ./my-project --advisories anubis-advisories.json   # scan against the fresh snapshot",
+  ].join("\n"))
   .action(async (opts: { dir: string; out: string }) => {
     const count = await updateAdvisories(resolve(opts.dir), opts.out);
     console.error(`written: ${opts.out} — ${count} HIGH/CRITICAL advisories`);
@@ -388,6 +426,12 @@ program
   .command("rules-lock")
   .description("v1.0: pin a rules directory — writes rules-lock.json (SHA-256 per rule file); scan verifies it and refuses modified/unpinned rules unless --allow-community-rules")
   .argument("<dir>", "rules directory containing the org/community JSON rules")
+  .addHelpText("after", [
+    "Examples:",
+    "  anubis-guardian rules-lock ./org-rules                       # pin (exit 0) — commit rules-lock.json",
+    "  anubis-guardian scan . --rules-dir ./org-rules               # tampered/unpinned rules -> exit 2 refusal",
+    "  anubis-guardian scan . --rules-dir ./org-rules --allow-community-rules   # run quarantined (meta-labeled)",
+  ].join("\n"))
   .action((dir: string) => {
     const d = resolve(dir);
     if (!existsSync(d)) {
@@ -409,6 +453,12 @@ program
   .option("--out <file>", "output yaml path", "")
   .option("--delay-ms <n>", "rate limit baked into the config", "250")
   .option("--max-requests <n>", "request cap baked into the config", "150")
+  .addHelpText("after", [
+    "Examples:",
+    "  anubis-guardian init-zap https://staging.example.com                       # passive baseline config",
+    "  anubis-guardian init-zap https://staging.example.com --active --ownership-token <nonce>",
+    "Public domains with --active require a VERIFIED ownership nonce; run the generated config with ZAP yourself.",
+  ].join("\n"))
   .action(async (url: string, opts: { active?: boolean; ownershipToken?: string; out?: string; delayMs: string; maxRequests: string }) => {
     try {
       const host = new URL(url).hostname;
@@ -546,30 +596,3 @@ function expandWorkspaces(root: string): string[] {
   return unique;
 }
 
-/** tiny glob subset for workspaces: "apps/*", "packages/*", exact paths */
-function globWorkspaces(root: string, pattern: string): string[] {
-  const out: string[] = [];
-  const visit = (base: string, pat: string) => {
-    const [head, ...rest] = pat.split("/");
-    if (!head) return;
-    if (head === "*") {
-      let entries: string[] = [];
-      try { entries = readdirSync(base); } catch { return; }
-      for (const e of entries) {
-        const p = join(base, e);
-        try { if (!statSync(p).isDirectory()) continue; } catch { continue; }
-        if (rest.length === 0) {
-          if (existsSync(join(p, "package.json"))) out.push(resolve(p));
-        } else visit(p, rest.join("/"));
-      }
-    } else {
-      const p = join(base, head);
-      if (!existsSync(p)) return;
-      if (rest.length === 0) {
-        if (existsSync(join(p, "package.json"))) out.push(resolve(p));
-      } else visit(p, rest.join("/"));
-    }
-  };
-  visit(root, pattern);
-  return out;
-}

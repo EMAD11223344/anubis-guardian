@@ -134,6 +134,13 @@ ok(skill.includes("needs_confirmation"), "F3: SKILL.md carries needs_confirmatio
 ok(skill.includes("never print full secret") || skill.includes("masked") || skill.includes("Masking") || skill.includes("masking"), "F4: SKILL.md carries the masking contract");
 ok(skill.includes("Classes not covered") || skill.includes("Classes-not-covered") || skill.includes("classes not covered"), "F5: SKILL.md carries classes-not-covered honesty");
 ok(skill.includes("test-authz") && skill.includes("--ai-review") && skill.includes("init-hook"), "F6: SKILL.md documents the v0.3 commands");
+// F7–F12: command-workflow & semantics depth (the skill must teach WORKING, not just name commands)
+ok(skill.includes("update-advisories") && skill.includes("rules-lock") && skill.includes("init-zap"), "F7: SKILL.md documents the v1.0 commands (update-advisories/rules-lock/init-zap)");
+ok(/exit codes?/i.test(skill) && /exit\s*2/.test(skill) && /exit\s*1/.test(skill), "F8: SKILL.md teaches exit-code branching (0/1/2)");
+ok(skill.includes("--fix-prompt") && skill.includes("--compact") && skill.includes("--capture"), "F9: SKILL.md teaches the artifact workflow (fix-prompt/compact/capture)");
+ok(skill.includes("db dump") && skill.includes("playwright"), "F10: SKILL.md carries verification recipes (schema dump, canary run by the human)");
+ok(/rotate-first/i.test(skill) && /rotate\s*the .*first|START with the rotation/i.test(skill), "F11: SKILL.md mandates rotate-first BEFORE code edits");
+ok(skill.includes("i-own-this-domain") && skill.includes("self-attested"), "F12: SKILL.md honors the ownership gate vocabulary (self-attestation ≠ verification)");
 
 // ---- cleanup ----
 mock.kill();

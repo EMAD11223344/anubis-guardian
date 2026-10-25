@@ -452,8 +452,9 @@ export function scanPacks2(ctx: ScanContext): RuleResult {
 }
 
 // ---------- middleware matcher helpers (AUTH-001) ----------
+// exported for unit tests (tests/verify-units.mjs) — pure pattern functions
 
-function parseMatcher(content: string): string[] | null {
+export function parseMatcher(content: string): string[] | null {
   const m = content.match(/matcher\s*:\s*(\[[\s\S]*?\])/);
   if (!m) return null; // no matcher — middleware runs for everything except its own exclusions; can't reason statically
   try {
@@ -464,7 +465,7 @@ function parseMatcher(content: string): string[] | null {
   }
 }
 
-function matcherCovers(patterns: string[], routePath: string): boolean {
+export function matcherCovers(patterns: string[], routePath: string): boolean {
   for (const p of patterns) {
     // Next.js regex-style matcher: "/((?!api|_next/static|favicon.ico).*)" — covers everything EXCEPT listed prefixes
     const neg = p.match(/\(\?!\s*([^)]+?)\s*\)/);
@@ -480,8 +481,16 @@ function matcherCovers(patterns: string[], routePath: string): boolean {
   return false;
 }
 
-function matcherToRegExp(pattern: string): RegExp | null {
+export function matcherToRegExp(pattern: string): RegExp | null {
   try {
+    // trailing wildcard ("/api/*", "/admin/:path*") = Next-style prefix semantics:
+    // covers the named segment and everything under it — a literal `/ *` regex
+    // ("zero or more slashes") under-covered subtrees and produced matcher-gap FPs.
+    if (/\*$/.test(pattern)) {
+      const base = pattern.replace(/\/(?::path)?\*$/, ""); // strip "/:path*" or "/*" or "/**" suffix
+      const body = base.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(`^${body}(/.*)?/?$`);
+    }
     let body = pattern
       .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
       .replace(/:path\*/g, ".*")

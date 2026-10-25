@@ -5,6 +5,8 @@
 **Deterministic security auditor for AI-built (vibe-coded) projects**
 **ماسح أمني حتمي للمشاريع المبنية بالذكاء الاصطناعي**
 
+<img src="docs/assets/hero.jpg" alt="Anubis Guardian — deterministic security auditor for AI-built projects: offline static-only scanner with score 100/A" width="100%">
+
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.0.1-8b5cf6.svg)](package.json)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-blue.svg)](package.json)
@@ -32,6 +34,8 @@ Existing scanners (Semgrep, Trivy, Gitleaks) are powerful but generic — they w
 - **Data-driven rules** — priorities come from a study of 100 public AI-built projects (top patterns: unpinned CI actions 22% · `Math.random` tokens 11% · `dangerouslySetInnerHTML` 7% · committed `.env` 3%) — see [studies/RESULTS.md](studies/step0-pattern-study/RESULTS.md)
 
 ## 🧪 What It Checks
+
+<img src="docs/assets/modes.jpg" alt="Anubis Guardian Mode 1 (Codebase: secrets, git history, dependencies, SAST, framework playbooks) and Mode 2 (URL: passive, discovery, Supabase live anon probe) with the 100/A score" width="100%">
 
 ### Mode 1 — Codebase (offline, static)
 
@@ -169,6 +173,8 @@ cp skill/SKILL.md ~/.claude/skills/anubis-guardian/SKILL.md   # Claude Code
 
 or commit it and reference it from `CLAUDE.md` / `AGENTS.md`. It teaches the agent to run the scan, read findings honestly (including `needs_confirmation`), point the human at quarantine tests, and propose **suggested diffs only — applying nothing without explicit human approval**.
 
+> Wiring recipes for Claude Code / Cursor / opencode / AGENTS.md, the 30-second audit loop, and the exit-code contract: **[docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md)**
+
 ## ✅ Tests (regression gates)
 
 ```bash
@@ -193,6 +199,7 @@ npm test   # build + reachability + honeypot + clean + sarif + acceptance v02/v0
 | [METHODOLOGY.md](METHODOLOGY.md) | determinism contract, scoring, FP control, URL levels, limitations |
 | [BENCHMARKS.md](BENCHMARKS.md) | measured results only — honeypot recall, clean corpus, wall-time scale |
 | [CONTRIBUTING-RULES.md](CONTRIBUTING-RULES.md) | how to contribute rule packs (clean cases mandatory, CRITICAL gating) |
+| [docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md) | AI-agent wiring: Claude Code skill + hook, Cursor/opencode/AGENTS.md recipes, CI gate |
 | [Anubis-Guardian-OWNER-TESTING-GUIDE.md](Anubis-Guardian-OWNER-TESTING-GUIDE.md) | owner quick-start & verification checklist (EN/AR) |
 | [studies/RESULTS.md](studies/step0-pattern-study/RESULTS.md) | the Step 0 pattern-frequency study (100 projects, 3,403 files) |
 | [PLAN.en.md](PLAN.en.md) · [PLAN.ar.md](PLAN.ar.md) | full design plan (English · Arabic) |

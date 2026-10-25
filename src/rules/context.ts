@@ -80,7 +80,8 @@ export function importedFromClient(ctx: ScanContext): Set<string> {
   return reach;
 }
 
-function resolveSpec(from: ScannedFile, spec: string, byAbs: Map<string, ScannedFile>): string | null {
+/** exported for unit tests (tests/verify-units.mjs) — pure spec→abs resolution */
+export function resolveSpec(from: ScannedFile, spec: string, byAbs: Map<string, ScannedFile>): string | null {
   const baseDir = normalizeAbs(from.abs).replace(/[/\\][^/\\]+$/, "");
   const parts = baseDir.split(/[/\\]/);
   for (const seg of spec.split("/")) {
