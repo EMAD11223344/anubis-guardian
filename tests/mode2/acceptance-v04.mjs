@@ -14,7 +14,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { writeFileSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
@@ -90,7 +90,7 @@ try {
   const c2 = run(["scan-url", BAD, "--level", "2", "--ownership-token", "wrong-nonce-000", "--delay-ms", "5"]);
   check("C3: wrong nonce → exit 2 (level stays locked)", c2.code === 2);
   // DNS TXT unit test — injected resolver (offline)
-  const { verifyDnsTxt } = await import(join(ROOT, "dist", "urlmode", "ownership.js"));
+  const { verifyDnsTxt } = await import(pathToFileURL(join(ROOT, "dist", "urlmode", "ownership.js")).href);
   const fake = async (name) => name.startsWith("_anubis-guardian.") ? [] : [["anubis-guardian-challenge=dnsnonce123"]];
   check("C4: DNS TXT verification (host record) — injected resolver", await verifyDnsTxt("example.test", "dnsnonce123", fake));
   const fake2 = async (name) => name === "example.test" ? [] : [["anubis-guardian-challenge=dnsnonce123"]];
