@@ -24,7 +24,7 @@
     "honeypot:verify": "node tests/honeypot/setup.mjs && node dist/cli.js scan tests/honeypot/app tests/honeypot/nest-app --format json --output tests/honeypot/findings.json && node tests/verify-honeypot.mjs",
     "clean:verify": "node tests/clean/setup.mjs && node dist/cli.js scan tests/clean/app --format json --output tests/clean/findings.json && node tests/verify-clean.mjs",
     "test": "npm run build && npm run reachability:verify && npm run honeypot:verify && npm run clean:verify && npm run sarif:verify && npm run acceptance:v02 && npm run acceptance:v03 && npm run mode2:verify && npm run acceptance:v04 && npm run acceptance:v10",
-    "sarif:verify": "node dist/cli.js scan tests/honeypot/app --format sarif --output /tmp/anubis-test.sarif && node tests/verify-sarif.mjs /tmp/anubis-test.sarif",
+    "sarif:verify": "node dist/cli.js scan tests/honeypot/app --format sarif --output tests/.tmp/anubis-test.sarif && node tests/verify-sarif.mjs tests/.tmp/anubis-test.sarif",
     "reachability:verify": "node tests/verify-reachability.mjs",
     "acceptance:v02": "node tests/acceptance-v02.mjs",
     "acceptance:v03": "node tests/acceptance-v03.mjs",

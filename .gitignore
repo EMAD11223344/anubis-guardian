@@ -9,4 +9,8 @@ tests/mode2/.tmp/
 tests/mode2/.tmp-acc/
 tests/mode2/.tmp-acc10/
 tests/.tmp-reach/
+tests/.tmp/
+dist/
+tests/honeypot/findings.json
+tests/clean/findings.json
 tests/mode2/servers/*.tgz
