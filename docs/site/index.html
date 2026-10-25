@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anubis Guardian — Deterministic security auditor for AI-built projects</title>
+<meta name="description" content="Open-source (MIT) deterministic security auditor for AI vibe-coded projects. Codebase Mode (offline SAST/secrets/SCA) + URL Mode (passive + verified-ownership discovery).">
+<style>
+  :root { --gold: #d4a938; --ink: #16130c; --sand: #f6f0e2; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--sand); color: var(--ink); line-height: 1.6; }
+  header { background: var(--ink); color: var(--sand); padding: 3rem 1.5rem; text-align: center; }
+  header h1 { margin: 0 0 .5rem; font-size: 2rem; letter-spacing: .02em; }
+  header h1 span { color: var(--gold); }
+  header p { margin: .2rem auto; max-width: 46rem; opacity: .9; }
+  main { max-width: 52rem; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .card { background: #fff; border: 1px solid #e4dbc4; border-radius: 10px; padding: 1rem 1.2rem; }
+  .card h3 { margin: 0 0 .4rem; font-size: 1.05rem; color: var(--ink); }
+  code { background: #efe7d2; padding: .1rem .35rem; border-radius: 4px; font-size: .92em; }
+  pre { background: var(--ink); color: var(--sand); padding: 1rem; border-radius: 10px; overflow-x: auto; font-size: .88rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; background: #fff; }
+  th, td { border: 1px solid #e4dbc4; padding: .5rem .7rem; text-align: left; font-size: .95rem; }
+  th { background: #efe7d2; }
+  footer { text-align: center; padding: 1.5rem; font-size: .85rem; opacity: .75; }
+</style>
+</head>
+<body>
+<header>
+  <h1>𓃣 Anubis <span>Guardian</span></h1>
+  <p>Deterministic security auditor for AI-built projects — built for the vibe-coding era.</p>
+  <p>Codebase Mode (offline, static-only) + URL Mode (passive-first, ownership-gated). MIT licensed.</p>
+</header>
+<main>
+  <div class="grid">
+    <div class="card"><h3>Deterministic</h3>Same input → byte-identical report. CI-safe, review-safe, diff-able.</div>
+    <div class="card"><h3>Honest scoring</h3><code>100 − (25C + 10H + 4M + 1L)</code> with root-cause caps. Low-confidence never deducts.</div>
+    <div class="card"><h3>No auto-fix</h3>Suggested diffs + generated tests only. A human applies every change.</div>
+    <div class="card"><h3>Legal URL Mode</h3>L1 is browser-equivalent passive. L2+ requires verified ownership (DNS TXT / .well-known).</div>
+  </div>
+
+  <h2>Quick start</h2>
+  <pre>npm install -g @anubis-guardian/cli
+anubis-guardian scan ./my-ai-project --format all --fail-on critical
+anubis-guardian scan-url https://staging.example.com --level 1     # passive
+anubis-guardian ownership https://staging.example.com              # get a nonce → verify → L2/L3
+anubis-guardian init-ci && anubis-guardian init-hook               # CI gate + agent guard</pre>
+
+  <h2>Documentation</h2>
+  <table>
+    <tr><th>Document</th><th>What's inside</th></tr>
+    <tr><td><a href="https://github.com/anubis-guardian/anubis-guardian#readme">README (EN/AR)</a></td><td>Install, every command, Agent Skill, roadmap</td></tr>
+    <tr><td><a href="https://github.com/anubis-guardian/anubis-guardian/blob/main/METHODOLOGY.md">METHODOLOGY.md</a></td><td>Determinism contract, scoring, FP control, URL levels, limitations</td></tr>
+    <tr><td><a href="https://github.com/anubis-guardian/anubis-guardian/blob/main/BENCHMARKS.md">BENCHMARKS.md</a></td><td>Measured-only numbers (honeypot recall, clean-corpus FP, external suites, perf)</td></tr>
+    <tr><td><a href="https://github.com/anubis-guardian/anubis-guardian/blob/main/CONTRIBUTING-RULES.md">CONTRIBUTING-RULES.md</a></td><td>Rule/playbook contribution guide + the FP contract</td></tr>
+    <tr><td><a href="https://github.com/anubis-guardian/anubis-guardian/blob/main/docs/PLAN.master.md">PLAN.master.md</a></td><td>Full design + decision log (bilingual)</td></tr>
+  </table>
+
+  <h2>Guarantees</h2>
+  <ul>
+    <li>Never executes project code · never auto-applies a fix · never prints a full secret.</li>
+    <li>CRITICAL only from deterministic, verified evidence — AI/probe findings are capped and flagged.</li>
+    <li>Every report carries an authorization record (URL Mode) and a coverage registry (what ran, what didn't).</li>
+  </ul>
+</main>
+<footer>Anubis Guardian · MIT · built with a rotate-first mindset</footer>
+</body>
+</html>

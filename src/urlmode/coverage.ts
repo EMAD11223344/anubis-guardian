@@ -40,6 +40,8 @@ export const URL_CHECKS: UrlCheck[] = [
   { id: "URL-901", level: 2, description: "auth/admin surface mapping (info)" },
   { id: "URL-060", level: 3, description: "Supabase live anon read returns rows (RLS not effective)" },
   { id: "URL-906/907/908", level: 3, description: "Supabase probe info results" },
+  { id: "URL-061", level: 3, description: "differential access: restricted identity receives the privileged response (--active-tests, GET-only, verified ownership)" },
+  { id: "URL-909", level: 3, description: "active-tests differential summary (info)" },
 ];
 
 export const URL_CLASSES_COVERED = [
@@ -50,14 +52,14 @@ export const URL_CLASSES_COVERED = [
   "directory listing / risky HTTP methods / exposed API docs (L2)",
   "source map exposure (L2)",
   "Supabase live anon RLS probe (L3 v0.4 — read-only GET)",
+  "restricted differential access check (L3 v1.0 — --active-tests, GET-only, verified ownership, owner identities)",
 ];
 
 export const URL_CLASSES_NOT_COVERED = [
-  "authenticated-area testing & business-logic flaws",
-  "injection testing (XSS/SQLi canaries — L3 active, v1.0 decision point)",
-  "differential IDOR (v1.0: owner accounts + --active-tests + GET-only)",
-  "full DAST / fuzzing (by design — generate ZAP config instead)",
+  "authenticated-area testing & business-logic flaws beyond the restricted differential check",
+  "injection testing (XSS/SQLi canaries — delegated: init-zap generates the ZAP baseline config, v1.0 decision)",
+  "full DAST / fuzzing (by design — delegated to the generated ZAP config)",
   "server internals, databases, queues (black-box view only — pair with Codebase Mode)",
   "subdomain takeover & DNS-level attacks",
-  "rate-limit/lockout behavior checks (v1.0)",
+  "rate-limit/lockout behavior checks",
 ];

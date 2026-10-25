@@ -1,13 +1,13 @@
 {
   "tool": "anubis-guardian",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "advisory_snapshot": "2026-10",
   "target": {
     "mode": "codebase",
-    "path": "/home/z/my-project/anubis-guardian/tests/honeypot/app + /home/z/my-project/anubis-guardian/tests/honeypot/nest-app",
+    "path": "C:\\Users\\Emad\\anubis-guardian\\tests\\honeypot\\app + C:\\Users\\Emad\\anubis-guardian\\tests\\honeypot\\nest-app",
     "paths": [
-      "/home/z/my-project/anubis-guardian/tests/honeypot/app",
-      "/home/z/my-project/anubis-guardian/tests/honeypot/nest-app"
+      "C:\\Users\\Emad\\anubis-guardian\\tests\\honeypot\\app",
+      "C:\\Users\\Emad\\anubis-guardian\\tests\\honeypot\\nest-app"
     ],
     "stack": [
       "node",
@@ -22,7 +22,7 @@
   "grade": "F",
   "summary": {
     "critical": 10,
-    "high": 53,
+    "high": 58,
     "medium": 31,
     "low": 2,
     "info": 0
@@ -62,7 +62,7 @@
   },
   "score_breakdown": {
     "base": 100,
-    "total_deducted": 824.3,
+    "total_deducted": 874.3,
     "score": 0,
     "grade": "F",
     "groups": [
@@ -424,34 +424,6 @@
         "deducted": 10
       },
       {
-        "rule_id": "HIST-003",
-        "root": "nest-app:9e615fde",
-        "severity": "high",
-        "count": 1,
-        "deducted": 10
-      },
-      {
-        "rule_id": "HIST-003",
-        "root": "nest-app:5a7bec94",
-        "severity": "high",
-        "count": 1,
-        "deducted": 10
-      },
-      {
-        "rule_id": "HIST-007",
-        "root": "nest-app:d9b8ac26",
-        "severity": "high",
-        "count": 1,
-        "deducted": 10
-      },
-      {
-        "rule_id": "HIST-001",
-        "root": "nest-app:46e729b3",
-        "severity": "high",
-        "count": 1,
-        "deducted": 10
-      },
-      {
         "rule_id": "NEST-001",
         "root": "nest-app:app.controller.ts",
         "severity": "high",
@@ -468,6 +440,69 @@
       {
         "rule_id": "NEST-001",
         "root": "nest-app:files.controller.ts",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-003",
+        "root": "nest-app:9e615fde",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-003",
+        "root": "nest-app:5a7bec94",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-001",
+        "root": "nest-app:00a08bdb",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-001",
+        "root": "nest-app:1df107c6",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-007",
+        "root": "nest-app:733c75ff",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-003",
+        "root": "nest-app:2105c29f",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-001",
+        "root": "nest-app:46e729b3",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-007",
+        "root": "nest-app:d9b8ac26",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-003",
+        "root": "nest-app:0a040371",
         "severity": "high",
         "count": 1,
         "deducted": 10
@@ -1985,118 +2020,6 @@
       "suppression": null
     },
     {
-      "id": "HIST-003",
-      "severity": "high",
-      "confidence": "high",
-      "title": "Secret in git history: Stripe live key",
-      "file": "nest-app/anubis-guardian/tests/acceptance-v02.mjs",
-      "line": 0,
-      "evidence": {
-        "type": "secret_in_history",
-        "masked": "sk_l•••… (first-4 + sha256:9e615fde)",
-        "sha256_prefix": "9e615fde",
-        "note": "recovered from `git log -p` added lines — full value never written to reports"
-      },
-      "owasp": "A02",
-      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
-      "fix_mode": "suggested-diff",
-      "remediation": {
-        "type": "rotate-first",
-        "provider": "generic",
-        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
-        "history_cleanup": "git filter-repo required"
-      },
-      "root": "nest-app:9e615fde",
-      "root_cause": "nest-app:HIST-003:9e615fde",
-      "verified": true,
-      "fingerprint": "441a9518a55d",
-      "suppression": null
-    },
-    {
-      "id": "HIST-003",
-      "severity": "high",
-      "confidence": "high",
-      "title": "Secret in git history: Stripe live key",
-      "file": "nest-app/anubis-guardian/tests/acceptance-v03.mjs",
-      "line": 0,
-      "evidence": {
-        "type": "secret_in_history",
-        "masked": "sk_l•••… (first-4 + sha256:5a7bec94)",
-        "sha256_prefix": "5a7bec94",
-        "note": "recovered from `git log -p` added lines — full value never written to reports"
-      },
-      "owasp": "A02",
-      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
-      "fix_mode": "suggested-diff",
-      "remediation": {
-        "type": "rotate-first",
-        "provider": "generic",
-        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
-        "history_cleanup": "git filter-repo required"
-      },
-      "root": "nest-app:5a7bec94",
-      "root_cause": "nest-app:HIST-003:5a7bec94",
-      "verified": true,
-      "fingerprint": "e8f3b5c82963",
-      "suppression": null
-    },
-    {
-      "id": "HIST-007",
-      "severity": "high",
-      "confidence": "high",
-      "title": "Secret in git history: DB URL with password",
-      "file": "nest-app/anubis-guardian/tests/honeypot/setup.mjs",
-      "line": 0,
-      "evidence": {
-        "type": "secret_in_history",
-        "masked": "post•••… (first-4 + sha256:d9b8ac26)",
-        "sha256_prefix": "d9b8ac26",
-        "note": "recovered from `git log -p` added lines — full value never written to reports"
-      },
-      "owasp": "A02",
-      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
-      "fix_mode": "suggested-diff",
-      "remediation": {
-        "type": "rotate-first",
-        "provider": "generic",
-        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
-        "history_cleanup": "git filter-repo required"
-      },
-      "root": "nest-app:d9b8ac26",
-      "root_cause": "nest-app:HIST-007:d9b8ac26",
-      "verified": true,
-      "fingerprint": "7a9ca944f0be",
-      "suppression": null
-    },
-    {
-      "id": "HIST-001",
-      "severity": "high",
-      "confidence": "high",
-      "title": "Secret in git history: JWT-shaped token",
-      "file": "nest-app/anubis-guardian/tests/verify-honeypot.mjs",
-      "line": 0,
-      "evidence": {
-        "type": "secret_in_history",
-        "masked": "eyJh•••… (first-4 + sha256:46e729b3)",
-        "sha256_prefix": "46e729b3",
-        "note": "recovered from `git log -p` added lines — full value never written to reports"
-      },
-      "owasp": "A02",
-      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
-      "fix_mode": "suggested-diff",
-      "remediation": {
-        "type": "rotate-first",
-        "provider": "generic",
-        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
-        "history_cleanup": "git filter-repo required"
-      },
-      "root": "nest-app:46e729b3",
-      "root_cause": "nest-app:HIST-001:46e729b3",
-      "verified": true,
-      "fingerprint": "bbe99f45c8f8",
-      "suppression": null
-    },
-    {
       "confidence": "high",
       "verified": true,
       "source": "builtin",
@@ -2160,6 +2083,258 @@
       "root": "nest-app:files.controller.ts",
       "root_cause": "nest-app:NEST-001:files.controller.ts",
       "fingerprint": "898acabe9923",
+      "suppression": null
+    },
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "nest-app/tests/acceptance-v02.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:9e615fde)",
+        "sha256_prefix": "9e615fde",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:9e615fde",
+      "root_cause": "nest-app:HIST-003:9e615fde",
+      "verified": true,
+      "fingerprint": "0df6167f23ca",
+      "suppression": null
+    },
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "nest-app/tests/acceptance-v03.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:5a7bec94)",
+        "sha256_prefix": "5a7bec94",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:5a7bec94",
+      "root_cause": "nest-app:HIST-003:5a7bec94",
+      "verified": true,
+      "fingerprint": "2d93fa1e5267",
+      "suppression": null
+    },
+    {
+      "id": "HIST-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: JWT-shaped token",
+      "file": "nest-app/tests/honeypot/app/.env",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "eyJh•••… (first-4 + sha256:00a08bdb)",
+        "sha256_prefix": "00a08bdb",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:00a08bdb",
+      "root_cause": "nest-app:HIST-001:00a08bdb",
+      "verified": true,
+      "fingerprint": "b1bf56e8f281",
+      "suppression": null
+    },
+    {
+      "id": "HIST-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: JWT-shaped token",
+      "file": "nest-app/tests/honeypot/app/.env",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "eyJh•••… (first-4 + sha256:1df107c6)",
+        "sha256_prefix": "1df107c6",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:1df107c6",
+      "root_cause": "nest-app:HIST-001:1df107c6",
+      "verified": true,
+      "fingerprint": "6ddea0b30647",
+      "suppression": null
+    },
+    {
+      "id": "HIST-007",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: DB URL with password",
+      "file": "nest-app/tests/honeypot/app/.env.production",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "post•••… (first-4 + sha256:733c75ff)",
+        "sha256_prefix": "733c75ff",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:733c75ff",
+      "root_cause": "nest-app:HIST-007:733c75ff",
+      "verified": true,
+      "fingerprint": "911236b8eae3",
+      "suppression": null
+    },
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "nest-app/tests/honeypot/app/.env.production",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:2105c29f)",
+        "sha256_prefix": "2105c29f",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:2105c29f",
+      "root_cause": "nest-app:HIST-003:2105c29f",
+      "verified": true,
+      "fingerprint": "7b6b95cb9ca6",
+      "suppression": null
+    },
+    {
+      "id": "HIST-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: JWT-shaped token",
+      "file": "nest-app/tests/honeypot/app/lib/logline.ts",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "eyJh•••… (first-4 + sha256:46e729b3)",
+        "sha256_prefix": "46e729b3",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:46e729b3",
+      "root_cause": "nest-app:HIST-001:46e729b3",
+      "verified": true,
+      "fingerprint": "9d782e19bc4f",
+      "suppression": null
+    },
+    {
+      "id": "HIST-007",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: DB URL with password",
+      "file": "nest-app/tests/honeypot/setup.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "post•••… (first-4 + sha256:d9b8ac26)",
+        "sha256_prefix": "d9b8ac26",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:d9b8ac26",
+      "root_cause": "nest-app:HIST-007:d9b8ac26",
+      "verified": true,
+      "fingerprint": "4ccd5f2eb675",
+      "suppression": null
+    },
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "nest-app/tests/mode2/servers.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:0a040371)",
+        "sha256_prefix": "0a040371",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "nest-app:0a040371",
+      "root_cause": "nest-app:HIST-003:0a040371",
+      "verified": true,
+      "fingerprint": "6ed65b02bacd",
       "suppression": null
     },
     {
@@ -3020,16 +3195,16 @@
   },
   "portfolio": [
     {
-      "path": "/home/z/my-project/anubis-guardian/tests/honeypot/app",
+      "path": "C:\\Users\\Emad\\anubis-guardian\\tests\\honeypot\\app",
       "score": 0,
       "grade": "F",
       "findings": 79
     },
     {
-      "path": "/home/z/my-project/anubis-guardian/tests/honeypot/nest-app",
+      "path": "C:\\Users\\Emad\\anubis-guardian\\tests\\honeypot\\nest-app",
       "score": 0,
       "grade": "F",
-      "findings": 16
+      "findings": 21
     }
   ],
   "meta": {

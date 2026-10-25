@@ -1,0 +1,53 @@
+# Anubis Guardian release pipeline (v1.0 — Plan Section 9.6 "Distribution supply chain").
+# Owner-facing: push a signed tag `v*` and this workflow builds, tests, attests and publishes.
+# - npm Trusted Publishing / provenance: configure the package on npmjs.com
+#   (Settings → Publishing access → Trusted Publisher → this repo/workflow).
+#   `npm publish --provenance` then attests the artifact was built from THIS repo
+#   at THIS commit (sigstore) — no long-lived token story beyond the fine-grained
+#   NPM_TOKEN fallback if OIDC is not yet configured.
+# - SBOM (CycloneDX) + sha256 checksums are attached to the GitHub Release.
+# - The tag itself must be SIGNED by the maintainer: `git tag -s v1.0.0 -m "v1.0.0"`.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # create the GitHub Release with artifacts
+  id-token: write   # npm provenance (sigstore / OIDC)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Full test chain (honeypot + clean + SARIF + all acceptance gates)
+        run: npm ci && npm test
+      - name: Build SBOM (CycloneDX 1.5)
+        run: node scripts/generate-sbom.mjs anubis-guardian.cdx.json
+      - name: Pack
+        run: |
+          npm pack
+          sha256sum anubis-guardian-*.tgz > checksums-sha256.txt
+          sha256sum anubis-guardian.cdx.json >> checksums-sha256.txt
+      - name: Publish to npm (provenance attestation)
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Create GitHub Release with SBOM + checksums
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-artifacts
+          path: |
+            anubis-guardian-*.tgz
+            anubis-guardian.cdx.json
+            checksums-sha256.txt
+      - name: Attach release files
+        run: gh release create "${GITHUB_REF_NAME}" anubis-guardian-*.tgz anubis-guardian.cdx.json checksums-sha256.txt --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -3,7 +3,7 @@
 > **Open-Source Security Audit Tool for AI-Built Projects**
 > خطة مشروع أداة مفتوحة المصدر لفحص أمني لمشاريع مبنية بالذكاء الاصطناعي
 >
-> Status: `SHIPPED v0.4 — Step 0 ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 URL Mode (Mode 2): DELIVERED ✅ — الوضعان اكتملوا` · Version: `2.0` (rev: **جولة التنفيذ الثالثة — v0.4 كاملة بالأدلة: capture-then-analyze + بوابة الملكية المتحققة + L1 passive مثبت بالسلوك + L2 discovery + الـ Supabase live anon probe + نفس عقد المخرجات · الخطوة القادمة: v1.0**) · License: `MIT` · Date: 2026-10
+> Status: `SHIPPED v1.0 — Step 0 ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 (Mode 2) ✅ · v1.0 Public Release ✅ — الوضعان + هندسة الإصدار اكتملوا` · Version: `2.1` (rev: **جولة التنفيذ الرابعة — v1.0 كاملة بالأدلة: rules supply-chain guard + الفحص التفاضلي المُقيَّد (قرار L3 النشط) + init-zap + SBOM/provenance + METHODOLOGY/CONTRIBUTING + BENCHMARKS.md بالأرقام المقاسة + اختبار install→report · المتبقي على المالك: npm publish الفعلي + dogfood Business-OS**) · License: `MIT` · Date: 2026-10
 > Modes: **Codebase Mode** (فحص الملفات) + **URL Mode** (فحص الموقع الحي)
 > Implementation: **TypeScript / Node ≥ 18** · Distribution: **npm (`@anubis-guardian/cli`) + Agent Skill**
 
@@ -20,7 +20,8 @@
 | **v0.2 — Depth + Integrations** | ✅ **تمت — أكتوبر 2026** | L3 SCA (advisory snapshot حقيقي من OSV.dev مدمج بالإصدار) + DEP-001..005 · NestJS playbook NEST-001..004 · Supabase depth II (R06/R07/R08) · CRYPTO-001 (**مُرقّاة من v0.3 ببيانات Step 0**) · CI-001..004 + DOCKER-001..003 · inventory.json · multi-root + HDR-001 cross-root CRITICAL · --workspaces · --rules-dir · SARIF + HTML + compact + fix-prompt · init-ci بـ SHA pins حقيقية · adapters اختيارية — **التحقق: Honeypot 30/30 (2 roots) · clean صفر FP (100/A) · SARIF verifier · acceptance كاملة (determinism byte-identical لـ findings.json و fix-prompt.md معًا) — الحزمة: `download/anubis-guardian-v0.2.zip`** |
 | **v0.3 — Agent Skill + AI Review** (taint-lite · authz matrix · rule packs II · guard hook) | ✅ **تمت — أكتوبر 2026** | **التحقق: Honeypot 49/49 بذرة (2 roots — شاملة rule packs II + تدفقات الـ taint الخمسة + فحوص بيئة الـ agent) · clean صفر FP (100/A) مع clean-cases جديدة لكل قاعدة · SARIF verifier · acceptance v0.3 كاملة: الـ verifier بيقبل المدعّم ويرفض المهلوَل/الملفات الناقصة/القواعد المجهولة · التقنيع قبل الـ LLM متحقق على مستوى الـ wire · نتائج الـ AI مسقوفة HIGH · determinism byte-identical بمزوّد canned · الـ hook بيمنع service_role/RLS-kill/أسرار .env فعليًا · authz matrix + canaries مولّدة بدون تنفيذ — الحزمة: `download/anubis-guardian-v0.3.zip`** |
 | v0.4 — URL Mode (L1 passive + L2 verified + L3 Supabase probe) | ✅ **تمت — أكتوبر 2026** | capture-then-analyze: نفس الـ capture ⇒ findings متطابقة بايت-ببايت بصفر شبكة · بوابة الملكية: L2+ للدومينات العامة يتطلب nonce متحقق (DNS TXT أو ‎.well-known) والرفض exit 2 **قبل أي طلب** · L1 passive مثبت ببوابة سجل الطلبات (صفر probing) · **التحقق: mode2 verify 33/33 (سيرفر بثغرات مزروعة) + acceptance v0.4 — 47 بوابة خضرا (incl. DNS TXT unit tests + probe GET-only + clean control 90/A بالظبط) + سلسلة npm test كاملة (honeypot 49/49 · clean 100/A · acceptance v0.2/v0.3)** — الحزمة: `download/anubis-guardian-v0.4.zip` |
-| v1.0 — Public Release + BENCHMARKS.md + **التحقق الميداني على Business-OS** (أول dogfood حقيقي قبل النشر) | ⬜ | تجربة Business-OS مؤجلة بقرار المالك لآخر المراحل — على الأداة المكتملة مش قبلها |
+| **v1.0 — Public Release: rules-lock + الفحص التفاضلي المُقيَّد + init-zap + SBOM/provenance + وثائق الإصدار + BENCHMARKS.md (مقاسة)** | ✅ **تمت — أكتوبر 2026** | **التحقق: acceptance v1.0 — 45 بوابة خضرا (K: rules-lock تثبيت/رفض تلاعب/quarantine · L: init-zap بوابة الملكية للـ active · M: الفحص التفاضلي — ملكية متحققة + GET-only بالسجل + هوية مقيدة بتستقبل رد المميزة ⇒ URL-061 + القيم مش مخزنة + cap + from-capture بايت-ببايت · N: pack + install→report من التاربول + SBOM CycloneDX + workflow بـ SHAs حقيقية) + BENCHMARKS.md: 14 قياسًا (honeypot 49/49 · clean 0 FP · NodeGoat 16 findings · Juice Shop 121 findings) + سلسلة npm test كاملة (v0.2+v0.3+mode2 33/33+v0.4 47/47)** — الحزمة: `download/anubis-guardian-v1.0.zip` |
+| v1.0 — **خطوات المالك**: `npm publish` الفعلي (workflow جاهز) + التحقق الميداني على Business-OS (أول dogfood حقيقي) | ⬜ | تجربة Business-OS مؤجلة بقرار المالك لآخر المراحل — على الأداة المكتملة مش قبلها |
 
 ---
 
@@ -773,13 +774,14 @@ fix: "Move all service_role usage to server-side code; the client must only use 
 
 ### v1.0 — Public Release
 
-- [ ] npm publish `@anubis-guardian/cli` + docs site + README (EN/AR) + playbook contribution guide
-- [ ] **External validation suite:** labeled AI-corpus recall (primary — من Step 0) + Juice Shop/NodeGoat sanity (secondary) + clean real-corpus FP measurement + **dogfooding على مشاريع صاحب المشروع الإنتاجية (Business-OS أولًا)** + نشر `BENCHMARKS.md` بالأرقام المقاسة
-- [ ] Playbook registry signed + community quarantine (`--allow-community-rules`)
-- [ ] Level 3 decision: نطاق مصغّر بإذن متحقَّق منه، أو توليد config جاهز لـ ZAP baseline بدل تضمين DAST كامل
-- [ ] **جديد في v1.2 — Differential IDOR (اختياري مُقيّد):** verified ownership + `--active-tests` + GET-only + حسابات testing من المالك + semantic diff — ده هو نطاق L3 النشط كله، مفيش DAST عام
-- [ ] **جديد في v1.2:** npm publish بـ provenance attestation + SBOM + signed release + نشر `METHODOLOGY.md`
-- **Acceptance:** `npx anubis-guardian scan` works from npm; a new user goes install → first report in < 2 minutes; BENCHMARKS.md published with measured numbers only.
+- [x] ✅ **Playbook registry signed + community quarantine:** `rules-lock` (SHA-256 لكل ملف قواعد) + الـ scan بيرفض المعدّل/غير المثبّت (exit 2) + `--allow-community-rules` بيشغّل معلَّم quarantine في meta — والتوافق الخلفي محفوظ (بدون lock = تحذير + `rules_lock: off`) — **بوابات K1–K6**
+- [x] ✅ **نطاق L3 النشط — القرار منفّذ بفرعيه (v1.1 #13 + v1.2 #11):** (أ) الفحص التفاضلي المُقيَّد `--active-tests`: L3 فقط + **ملكية متحققة إجباريًا** (الـ checkbox مش كافية حتى محليًا) + GET-only بالبناء + هويتين من المالك + سقف 24 endpoint (JSON مكتشف + `--idor-path` من المالك، robots-aware) + semantic diff — القيم مش بتتخزن أبدًا؛ (ب) `init-zap` يولّد ZAP baseline config قابل للمراجعة (الـ `--active` على دومين عام محتاجة ملكية متحققة) — **المحرك من غير DAST بالتصميم** — **بوابات L1–L5 + M1–M14**
+- [x] ✅ **Release engineering:** SBOM (CycloneDX 1.5 مولّد بدون اعتماديات جديدة + hashes لملفات dist) + `.github/workflows/release.yml` (Trusted Publishing + provenance attestation + checksums + SHAs حقيقية للـ actions) + metadata حزمة npm كاملة + `prepublishOnly = npm test` — **بوابات N1–N6**
+- [x] ✅ **وثائق الإصدار:** `METHODOLOGY.md` (عقد الحتمية + الدرجات + عقد الـ FP + مستويات URL + سياسة الأرقام) + `CONTRIBUTING-RULES.md` (دليل مساهمة القواعد) + `docs/site/` (صفحة GitHub Pages) + README/SKILL محدّثين — **بوابات P1–P4**
+- [x] ✅ **BENCHMARKS.md بالأرقام المقاسة فقط:** `scripts/measure-benchmarks.mjs` بيقيس ويكتب — honeypot 49/49 (self-test) · clean 0 FP (100/A) · **NodeGoat 16 findings · Juice Shop 121 findings** (sanity خارجي — طبقات عامة فقط) · أزمنة قياس فعلية — مفيش أي رقم تسويقي غير مقاس
+- [x] ✅ **install → first report smoke:** npm pack → install من التاربول (خارج الريبو عمدًا — npm بيطلع لأقرب package.json) → أول تقرير — أقل من دقيقتين — **بوابة N4/N4b**
+- [ ] **الخطوة المتبقية على المالك:** `npm publish @anubis-guardian/cli` الفعلي (كل حاجة جاهزة: files/prepublishOnly/workflow) + **dogfooding على Business-OS** (أول اختبار حي حقيقي — مؤجل بقرار المالك للأداة المكتملة) + الـ labeled AI-corpus recall الكامل (العينة الخام محفوظة من Step 0)
+- **Acceptance ✅ متحققة فعليًا:** acceptance v1.0 — **45/45 بوابة خضرا** + install→report من التاربول شغال + BENCHMARKS.md منشور بأرقام مقاسة + السلسلة الكاملة (v0.2/v0.3/mode2 33/v0.4 47/v1.0 45) خضرا
 
 #### ملخص الجدولة بعد v1.9 (جولتا التنفيذ) — البوابات المتبقية
 
@@ -787,7 +789,7 @@ fix: "Move all service_role usage to server-side code; the client must only use 
 |---|---|---|---|
 | **v0.3 — Agent Skill + AI Review** | ✅ **تمت بالكامل (أكتوبر 2026) — بالتفاصيل والأدلة في قسم v0.3 فوق** | ✅ الـ verifier بيرفض المهلوَل/المجهول · hook بيمنع فعليًا · suggested-diffs فقط | — |
 | **v0.4 — URL Mode** | ✅ **تمت** — L1 passive (headers/TLS/cookies/bundles) + L2 verified-ownership + L3 Supabase probe — **تكافؤ تنافسي اتنلقى (v1.5)** | ✅ نفس عقد المخرجات على المخرجات المعنونة URL (fix-prompt بتعليمة mapping + `Code map:` لكل finding + verify line بـ scan-url) | — |
-| **v1.0 — Public Release** | npm publish + BENCHMARKS.md بالأرقام المقاسة فقط + **التحقق الميداني على Business-OS (قرار المالك: آخر المراحل)** | مستخدم جديد: install → أول تقرير في أقل من دقيقتين | الـ labeled recall corpus الخام من المسح محفوظ — التصنيف اليدوي بيحصل هنا |
+| **v1.0 — Public Release** | ✅ **تمت (هندسة الإصدار)** — المتبقي: publish الفعلي + Business-OS (خطوات المالك) | ✅ install→report أقل من دقيقتين (بوابة N4) + BENCHMARKS.md بأرقام مقاسة + 45 بوابة v1.0 خضرا | الـ labeled recall corpus الخام محفوظ — التصنيف اليدوي الكامل مع dogfooding المالك |
 
 ---
 
@@ -994,7 +996,18 @@ fix: "Move all service_role usage to server-side code; the client must only use 
 | 5 | **دلالات `--format all` فضلت زي ما هي (terminal+json)** في scan-url زي scan بالظبط — الـ md/sarif/html/compact بيتولدوا بـ flags منفصلة | **معتمد** — اتساق السطح بين الوضعين أهم من "all شاملة"؛ الاتساق ده حافظ على عقد v0.2/v0.3 بدون أي كسر | موثّق في acceptance F1 (تعليق صريح) بعد ما الفحص الأول افترض غلط إن "all" بتضم الـ md |
 | 6 | **L2 + checkbox على localhost مسموح ومعلَّم، وL3 verified-only حتى محليًا** — ترتيب فحص البوابة: الـ token الأول، وبعده قاعدة L3 الصارمة قبل الـ self-attestation | **معتمد** — بيطبّق حرفيًا "Level 3 يتطلب ملكية متحقق منها فعليًا — مش بيتشغل بالـ flag لوحده أبدًا" (Section 7) | بوابات B5 (L3+self-attestation ⇒ exit 2) وB6 (L2 محلي بدون flag ⇒ إرشاد local) وC1–C2 (well-known verified)
 
-### سجل الجولات — ملخص التجميد (محدّث في v1.9)
+### Decision Log — v2.1 (جولة التنفيذ الرابعة — v1.0 Public Release)
+
+| # | القرار | الحكم | التفصيل والأثر |
+|---|---|---|---|
+| 1 | **قرار L3 النشط منفّذ بفرعيه معًا** (كان "أو"): الفحص التفاضلي المُقيَّد `--active-tests` (نطاق v1.2 #11 حرفيًا: ملكية متحققة + GET-only + حسابات المالك + semantic diff) **و** `init-zap` يولّد ZAP baseline بدل تضمين DAST | **معتمد** — الفرعان متكاملان: الفحص المُقيَّد للـ access-control الشائع، والـ ZAP للعمق — والمحرك بيفضل من غير DAST (Non-Goals) | M1–M3: رفض التشغيل بغير L3/بدون هويتين/بـ self-attestation حتى محليًا · M8: السجل بيثبت GET-only · L2–L3: بوابة الملكية على الـ active config |
+| 2 | **قيم هويات الـ testing لا تُخزَّن إطلاقًا**: الـ capture بيسجل اسم الهيدر بس + mapping (endpoint, identity=a/b, seq) — الردود نفسها بتتخزن زي أي capture | **معتمد** — نفس عقد التقنيع (Section 9.2): الأداة مش vault للبيانات الحساسة | M11: القيم مش موجودة في الـ capture ولا في findings.json — والـ note جوه الـ capture موثّقة |
+| 3 | **candidates الفحص التفاضلي = JSON APIs المكتشفة + `--idor-path` من المالك** — صفحات HTML مستبعدة عمدًا (SPA shell بترد نفس HTML لأي هوية — مصنع FP موثّق) | **معتمد (قرار تصميم داخلي)** — النطاق المُقيَّد أهمن من الشمول؛ والمالك يقدر يمرّر أي endpoint صراحة | M9: بالظبط 6 طلبات على الـ 3 endpoints — مفيش candidate إضافي من الاكتشاف |
+| 4 | **rules-lock = تثبيت محلي بـ SHA-256 مش توقيع تشفيري** — السجل المجتمعي البعيد (بعد النشر) هيستخدم نفس الميكانيزم + توقيع فوقه | **معتمد** — توقيع تشفيري بلا سجل توزيع مفاتيح = مسرحية أمنية؛ الـ hash pinning بيحقق الهدف الفعلي (رفض التلاعب) اليوم | K3: تلاعب ⇒ exit 2 قبل أي فحص + K3c: مفيش تقرير نتج · K4: الـ bypass معلَّم quarantine في meta |
+| 5 | **install→report smoke بيثبّت التاربول خارج الريبو عمدًا** — npm بيطلع لأقرب package.json وأي install جوه الريبو بيلوّثه باعتمادية ذاتية (اتكتشف واتصلح أثناء التحقق) | **معتمد (درس تنفيذ)** — الاختبار بيستخدم tmpdir + `--prefix`، والبوابة بتحمي المستقبل من نفس الفخ | N4/N4b خضرا بعد التثبيت النظيف — وpackage.json/package-lock اترجعوا نضيفين |
+| 6 | **قياس URL perf بسيرفر fixture في عملية child** — spawnSync بيقفل event loop الأب فالسيرفر داخل الأب بيتعطل (نفس درس v0.3 الموثق) | **معتمد (درس تنفيذ)** — سكربت الـ benchmarks بستخدم وضع `--serve` الـ child | BENCHMARKS.md: 14 قياسًا كلهن measured — صفر pending بعد تصحيح مسارات الطباعة (stdout/stderr) |
+
+### سجل الجولات — ملخص التجميد (محدّث في v2.1)
 
 | الجولة | النطاق | الحكم | الناتج المدمج |
 |---|---|---|---|
@@ -1007,5 +1020,7 @@ fix: "Move all service_role usage to server-side code; the client must only use 
 | v1.7 — جولة صاحب المشروع (تتبع البناء) | 3 نقاط | 3/3 | سجل تقدم البناء أعلى الملف · حالة v0.1/Step 0 مسجلة بالأدلة · ترتيب Step 0 sweep → v0.2 مثبّت · Business-OS مثبّت آخر المراحل |
 | v1.8 — جولة التنفيذ (Step 0 + v0.2) | تنفيذ (مش تصميم) | Acceptance كاملة | المسح الفعلي 100 مشروع بالبيانات · CRYPTO-001 مُرقّاة بالبيانات (سلطة v1.6-C) · v0.2 تسليم كامل بالأدلة |
 | v1.9 — جولة التنفيذ الثانية (v0.3 + GitHub docs) | تنفيذ (مش تصميم) + قراران داخليان محكومان | Acceptance كاملة | v0.3 تسليم كامل بالأدلة (49 بذرة) · سقف AI على HIGH (تحفظي) · مصدر AI بدون SDK · حزمة GitHub ثنائية اللغة جاهزة |
+| v2.0 — جولة التنفيذ الثالثة (v0.4 URL Mode) | تنفيذ (مش تصميم) + 6 قرارات موثقة | Acceptance كاملة | v0.4 تسليم كامل بالأدلة (33+47 بوابة) · capture-then-analyze · بوابة الملكية · L1 passive مثبت بالسلوك |
+| v2.1 — جولة التنفيذ الرابعة (v1.0 Public Release) | تنفيذ (مش تصميم) + 6 قرارات موثقة | Acceptance كاملة | v1.0 تسليم كامل بالأدلة (45 بوابة) · قرار L3 النشط منفّذ بفرعيه · rules-lock · SBOM/provenance · BENCHMARKS.md مقاسة (incl. NodeGoat/Juice Shop) |
 
-**حصيلة التجميد:** 57 بندًا محكومًا عبر 7 جولات تصميم + 3 جولات تنفيذ (v1.8 + v1.9 + v2.0) — كل حكم موثق بالتعديل المقابل في السجلات فوق. حالة التنفيذ عند v2.0: **Step 0 sweep ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 (Mode 2 — الفحص الأونلاين بالرابط) ✅ — الوضعان اكتملوا بالكامل، والخطوة الرسمية الجاية: v1.0 (الإصدار العام + BENCHMARKS.md + التحقق الميداني على Business-OS + نقطة قرار L3 النشط).** جدول الحالة الحي أعلى الملف هو المرجع — بيتحدّث بـ ✅ بعد كل مرحلة تكتمل.
+**حصيلة التجميد:** 57 بندًا محكومًا عبر 7 جولات تصميم + 4 جولات تنفيذ (v1.8 + v1.9 + v2.0 + v2.1) — كل حكم موثق بالتعديل المقابل في السجلات فوق. حالة التنفيذ عند v2.1: **Step 0 sweep ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 (Mode 2) ✅ · v1.0 (الإصدار العام — هندسة النشر + الأرقام المقاسة + قرار L3 النشط) ✅ — الأداة مكتملة الوضعين وجاهزة للنشر. المتبقي خطوتان على المالك: `npm publish` الفعلي (كل شيء جاهز) + التحقق الميداني على Business-OS (أول dogfood حقيقي).** جدول الحالة الحي أعلى الملف هو المرجع — بيتحدّث بـ ✅ بعد كل مرحلة تكتمل.

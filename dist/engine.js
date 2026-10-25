@@ -25,7 +25,7 @@ import { loadOrgRules, runOrgRules } from "./rulesdir.js";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { SEVERITY_ORDER } from "./types.js";
-export const VERSION = "0.4.0";
+export const VERSION = "1.0.0";
 export const ADVISORY_SNAPSHOT = "2026-10";
 /**
  * Scan engine orchestrator.

@@ -2,9 +2,9 @@
 
 > **أداة مفتوحة المصدر للفحص الأمني لمشاريع الـ vibe coding المبنية بالذكاء الاصطناعي**
 >
-> الحالة: `اتسلم v0.4 — Step 0 ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 (Mode 2) ✅ — الوضعان اكتملوا · الجاي v1.0` · المرجع الأصلي: `v2.0` · الرخصة: `MIT` · التاريخ: 2026-10
+> الحالة: `اتسلم v1.0 — Step 0 ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 (Mode 2) ✅ · v1.0 الإصدار العام ✅ — الوضعان + هندسة الإصدار اكتملوا` · المرجع الأصلي: `v2.1` · الرخصة: `MIT` · التاريخ: 2026-10
 > الوضعان: **Mode 1 — فحص ملفات الكود** (متاح) · **Mode 2 — الفحص الأونلاين بالرابط** (اتسلم في v0.4)
-> التنفيذ: TypeScript / Node ≥ 18 · التوزيع: من المصدر حاليًا؛ npm (`@anubis-guardian/cli`) في v1.0 + Agent Skill
+> التنفيذ: TypeScript / Node ≥ 18 · التوزيع: المصدر + جاهزية npm كاملة (`@anubis-guardian/cli` — workflow النشر متسلم: Trusted Publishing + provenance + SBOM) + Agent Skill
 >
 > نفس الخطة بالإنجليزي: [`PLAN.en.md`](PLAN.en.md) · سجل التصميم التفصيلي ثنائي اللغة + Decision Log: [`docs/PLAN.master.md`](docs/PLAN.master.md)
 
@@ -99,7 +99,7 @@ L1 مكافئ-للمتصفح بالبناء (الصفحة + robots.txt + sitemap
 
 - **Level 1 — مسح خارجي passive (الافتراضي):** طلبات مكافئة للمتصفح بس — security headers، TLS، cookie flags، + تنزيل وتحليل ملفات JS العامة (الأسرار المتشحّنة بتتشاف هنا — بالظبط زي ما المتصفح شايفها).
 - **Level 2 — discovery:** فحص مسارات حساسة (`.env` مكشوف، `.git`، directory listing) — للدومينات العامة **إثبات الملكية إجباري**؛ والتصريح الذاتي محصور على localhost/staging ومعلَّم دايمًا.
-- **Level 3 — نطاق v0.4 = L2 + الـ Supabase live anon probe** (GET قراءة فقط، وملكية متحققة مفروضة — عمره ما بيتشغل بالـ flag لوحده). أما الاختبار النشط الكامل (canaries منعكسة، IDOR تفاضلي) فبيفضل **نقطة قرار v1.0**: اختبارات نشطة مصغّرة أو توليد config لـ ZAP baseline — من غير محرك DAST بالتصميم.
+- **Level 3 — نطاق v0.4 = L2 + الـ Supabase live anon probe** (GET قراءة فقط، وملكية متحققة مفروضة — عمره ما بيتشغل بالـ flag لوحده). **v1.0 نفّذت قرار النطاق النشط بفرعيه معًا:** الفحص التفاضلي المُقيَّد (`--active-tests` — GET فقط، ملكية متحققة، هويتين testing من المالك، سقف 24 endpoint، قيم الهويات عمرها ما بتتخزن) **و** `init-zap` اللي بيولّد ZAP baseline config قابل للمراجعة — والمحرك لسه من غير DAST بالتصميم.
 
 **إثبات الملكية:** DNS TXT record باسم `anubis-guardian-challenge` أو nonce على `/.well-known/anubis-guardian/`. وكل تقرير URL بيحمل طريقة إثبات الملكية المستخدمة. وطبقة الـ URL فيها consent banner وrate limiting وrobots awareness وسجلات تفويض.
 
@@ -164,9 +164,9 @@ score = 100 − (25 × CRITICAL + 10 × HIGH + 4 × MEDIUM + 1 × LOW)     در�
 - **مفيش تنفيذ لكود المشروع المفحوص** (§9.7 في الخطة الأم): قراءة ملفات + git plumbing بس؛ والاختبارات المولّدة/مجلدات الـ quarantine اللي بتشغلها المالك مش الأداة.
 - **التقرير نفسه ممنوع يسرب** (§9.2): تقنيع إجباري في كل حتة، بما فيها artifacts الـ CI والـ SARIF.
 - **بروتوكول طبقة الـ AI** (§9): تقنيع قبل إرسال أي حاجة للـ LLM، بروتوكول بيانات غير موثوقة ضد حقن التعليمات، suggested-diff بس — مفيش auto-apply.
-- **القواعد المؤسسية كسلسلة توريد** (§9.4): `--rules-dir` بيشترط clean-cases لكل قاعدة؛ والـ CRITICAL المؤسسي بيتفرض عليه `needs_confirmation`؛ وسجل القواعد المجتمعية (v1.0) هيبقى موقّع مع checksum pinning وquarantine ورا opt-in صريح.
+- **القواعد المؤسسية كسلسلة توريد** (§9.4): `--rules-dir` بيشترط clean-cases لكل قاعدة؛ والـ CRITICAL المؤسسي بيتفرض عليه `needs_confirmation`؛ **وv1.0 سلّمت `rules-lock`** — تثبيت SHA-256 لكل ملف قواعد، والـ scan بيرفض المعدّل/غير المثبّت، و`--allow-community-rules` بيشتغل معلَّم quarantine في meta؛ والسجل المجتمعي البعيد هيبني فوق نفس الميكانيزم.
 - **إساءة استخدام URL Mode** (§9.5): مستويات متدرجة، بوابات إثبات ملكية، rate limits، سجلات تفويض.
-- **سلسلة توريد التوزيع** (§9.6): عند v1.0 — npm provenance attestation + SBOM + إصدارات موقّعة؛ وإصدارات الـ hook/plugin مثبّتة بإصدار صريح (عمرها ما `@latest`).
+- **سلسلة توريد التوزيع** (§9.6) — **اتسلمت في v1.0:** مولّد SBOM (CycloneDX 1.5) + `.github/workflows/release.yml` (npm Trusted Publishing + provenance attestation + checksums + actions مثبتة بـ SHAs حقيقية) + تعليمات التاج الموقّع؛ وإصدارات الـ hook/plugin مثبّتة بإصدار صريح (عمرها ما `@latest`).
 - **تعارض الاسم** ("Anubis" مستخدم في OSS تانية زي TecharoHQ/anubis): دايمًا الاسم الكامل **Anubis Guardian**، ونطاق npm `@anubis-guardian/cli`.
 
 ## 9. ترتيب الأولويات بالبيانات — دراسة Step 0
@@ -196,7 +196,8 @@ score = 100 − (25 × CRITICAL + 10 × HIGH + 4 × MEDIUM + 1 × LOW)     در�
 | **v0.2 — العمق والتكاملات** | ✅ **أكتوبر 2026** | Honeypot 30/30 (2 roots) · clean صفر FP (100/A) · SARIF verifier · acceptance كاملة (بما فيها byte-identical لـ `findings.json` + `fix-prompt.md`) |
 | **v0.3 — Agent Skill + AI Review** (taint-lite · authz matrix · rule packs II · guard hook) | ✅ **أكتوبر 2026** | Honeypot 49/49 · clean صفر FP (100/A) · SARIF + acceptance v0.2/v0.3 خضرا: الـ verifier بيرفض المهلوَل/الملفات الناقصة/القواعد المجهولة، التقنيع متحقق على الـ wire، نتائج الـ AI مسقوفة على HIGH، منع الـ hook شغال، والـ authz matrix + canaries مولّدة (عمرها ما اتنفذت) |
 | **v0.4 — URL Mode / Mode 2** (L1 passive + L2 بإثبات ملكية + L3 probe الـ Supabase) | ✅ **أكتوبر 2026** | `npm test` السلسلة كاملة خضرا: mode2 verify **33/33** (سيرفر بثغرات مزروعة: ‎.env بـ CRITICAL، ‎.git بـ HIGH، SQL dump بـ CRITICAL، directory listing، TRACE، Swagger، sourcemap، سرّين في الـ JS bundle بـ CRITICAL، الكوكيز، الهيدرز، احترام robots-skip، والتقنيع) + acceptance **47 بوابة**: إثبات إن L1 passive فعليًا من سجل الطلبات (مفيش probing خالص) · رفض L2 لدومين عام بدون بوابة ⇒ exit 2 قبل أي طلب · رفض checkbox للدومينات العامة ⇒ exit 2 · رفض L3 بالـ self-attestation ⇒ exit 2 · تحقق ‎.well-known حي + اختبارات وحدة لـ DNS TXT · تحليل probe الـ Supabase (GET فقط) من ردود ملتقطة · حتمية from-capture بايت-ببايت وإعادة تحليل بصفر شبكة · كل الـ renderers (SARIF/fix-prompt/md/compact/html) على نتائج URL · rate limiting · clean control بالظبط 90/A · أمر ownership |
-| v1.0 — الإصدار العام + BENCHMARKS.md + **التحقق الميداني على Business-OS** (مشروع المالك الحقيقي — أول dogfood فعلي، مؤجل بوعي لآخر المراحل) | ⬜ | — |
+| **v1.0 — الإصدار العام: rules-lock + الفحص التفاضلي المُقيَّد + init-zap + SBOM/provenance + METHODOLOGY/CONTRIBUTING + BENCHMARKS.md (مقاسة فقط) + اختبار install→report** | ✅ **تمت** — acceptance v1.0: 45/45 بوابة · BENCHMARKS.md: 14 قياسًا (honeypot 49/49 · clean 0 FP · NodeGoat 16 · Juice Shop 121) | `download/anubis-guardian-v1.0.zip` |
+| v1.0 — خطوات المالك: `npm publish` الفعلي + التحقق الميداني على Business-OS (أول dogfood فعلي، مؤجل بوعي لآخر المراحل) | ⬜ المالك | — |
 
 **البوابات المتبقية:**
 
@@ -204,7 +205,7 @@ score = 100 − (25 × CRITICAL + 10 × HIGH + 4 × MEDIUM + 1 × LOW)     در�
 |---|---|
 | v0.3 | "audit this project" جوه IDE بتشغل الأداة end-to-end وتقترح suggested diffs لأهم النتائج — **من غير تطبيق أي حاجة بدون موافقة بشرية صريحة** |
 | ~~v0.4~~ ✅ | **اتحققت:** نفس عقد المخرجات على نتائج الـ URL (الـ fix-prompt فيه تعليمة mapping الـ endpoints للكود) · L2 بيرفض بدون بوابة (مثبت: دومين عام، checkbox، وL3 بالـ self-attestation) · طريقة الملكية + سجل التفويض في كل تقرير · قبول الـ demo deployment: كل هيدر ناقص مزروع + ‎.env مكشوف + سر في الـ JS bundle اتكشفوا |
-| v1.0 | `npx anubis-guardian scan` شغال من npm؛ ومستخدم جديد: install → أول تقرير في أقل من دقيقتين؛ وBENCHMARKS.md منشور بأرقام مقاسة فقط؛ و**نقطة قرار L3 النشط** (اختبارات نشطة مصغّرة أو توليد config لـ ZAP) |
+| v1.0 | ✅ install→أول تقرير متحقق منه من التاربول المعبأ (أقل من دقيقتين — بوابة N4) · BENCHMARKS.md منشور بأرقام مقاسة فقط · **قرار L3 النشط منفّذ** (`--active-tests` المُقيَّد + توليد config لـ ZAP) · npm publish جاهزة (الخطوة على المالك) |
 
 ## 11. التحقق والاختبار
 

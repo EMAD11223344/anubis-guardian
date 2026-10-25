@@ -5,3 +5,6 @@ node_modules/
 tmp/
 /tmp
 anubis-advisories.json
+tests/mode2/.tmp/
+tests/mode2/.tmp-acc/
+tests/mode2/.tmp-acc10/

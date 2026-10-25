@@ -47,6 +47,12 @@ export interface CaptureBundle {
   requests: CapturedResponse[];
   robots: { skipped: string[]; disallow_all: boolean };
   notes: string[];
+  idor?: {                      // v1.0 — present only when --active-tests ran (values NEVER stored)
+    endpoints: Array<{ url: string; path: string }>;
+    requests: Array<{ endpoint: string; identity: "a" | "b"; seq: number }>;
+    identities: string[];       // header NAMES only (e.g. ["authorization", "cookie"])
+    note: string;
+  };
 }
 
 export interface OwnershipResult {
@@ -63,6 +69,11 @@ export interface UrlScanOptions {
   delayMs?: number;           // min interval between same-host requests, default 250
   maxRequests?: number;       // hard cap; default per level (40 / 120 / 150)
   maxAssets?: number;         // max JS bundles fetched at L1, default 10
+  // v1.0 — restricted differential IDOR (Plan v1.2 #11 — the whole L3-active scope):
+  activeTests?: boolean;      // --active-tests — explicit opt-in, verified ownership enforced
+  identityA?: string;         // "Header-Name: value" — privileged testing identity (value never stored)
+  identityB?: string;         // "Header-Name: value" — RESTRICTED testing identity (value never stored)
+  idorPaths?: string[];       // owner-supplied extra endpoints (repeatable --idor-path)
 }
 
 // UrlMeta (authorization record) lives in the canonical contract: ../types.js (single source of truth)

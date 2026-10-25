@@ -2,9 +2,9 @@
 
 > **Open-source security audit tool for AI-built (vibe-coded) projects**
 >
-> Status: `SHIPPED v0.4 — Step 0 ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 (Mode 2) ✅ — both modes complete · v1.0 next` · Master plan rev: `v2.0` · License: `MIT` · Date: 2026-10
+> Status: `SHIPPED v1.0 — Step 0 ✅ · v0.1 ✅ · v0.2 ✅ · v0.3 ✅ · v0.4 (Mode 2) ✅ · v1.0 Public Release ✅ — both modes + release engineering complete` · Master plan rev: `v2.1` · License: `MIT` · Date: 2026-10
 > Modes: **Mode 1 — Codebase** (scan project files, shipped) · **Mode 2 — URL** (scan a live site by its URL, shipped v0.4)
-> Implementation: TypeScript / Node ≥ 18 · Distribution: source today; npm (`@anubis-guardian/cli`) at v1.0 + Agent Skill
+> Implementation: TypeScript / Node ≥ 18 · Distribution: source + npm-ready (`@anubis-guardian/cli` — publish workflow shipped: Trusted Publishing + provenance + SBOM) + Agent Skill
 >
 > Same plan in Arabic: [`PLAN.ar.md`](PLAN.ar.md) · Full bilingual design + decision log: [`docs/PLAN.master.md`](docs/PLAN.master.md)
 
@@ -99,7 +99,7 @@ Scanning a deployed site **by its URL**, in three graduated levels:
 
 - **Level 1 — passive external scan (default):** browser-equivalent requests only — security headers, TLS, cookie flags, plus downloading and analyzing public JS bundles (shipped secrets surface here, exactly like a browser sees them).
 - **Level 2 — discovery:** sensitive-path probing (exposed `.env`, `.git`, directory listings) — for public domains, **verified ownership is REQUIRED**; self-attestation is confined to localhost/staging and always marked.
-- **Level 3 — v0.4 scope = L2 + the Supabase live anon probe** (read-only GET, verified ownership enforced — never the flag alone). Full active testing (reflected-input canaries, differential IDOR) remains the **v1.0 decision point**: minimal active tests OR a generated ZAP baseline config — no DAST engine by design.
+- **Level 3 — v0.4 scope = L2 + the Supabase live anon probe** (read-only GET, verified ownership enforced — never the flag alone). **v1.0 implemented the active-scope decision in BOTH branches:** the restricted differential access check (`--active-tests` — GET-only, verified ownership, two owner-provided testing identities, ≤24 endpoints, identity values never stored) **and** `init-zap`, which generates a reviewable OWASP ZAP baseline config — the engine still embeds no DAST by design.
 
 **Ownership verification:** DNS TXT record `anubis-guardian-challenge` or a nonce at `/.well-known/anubis-guardian/`. Every URL report carries the ownership method used. Consent banner, rate limiting, robots awareness, and authorization records are part of the layer.
 
@@ -164,9 +164,9 @@ Masking is mandatory in every output: secret evidence = type + location + first-
 - **No execution of scanned code** (plan §9.7): file reads + git plumbing only; generated tests/quarantine folders are run by the owner, never by the tool.
 - **The report itself must not leak** (§9.2): mandatory masking everywhere, including CI artifacts and SARIF.
 - **AI layer protocol** (§9): redaction-before-LLM, untrusted-data protocol against prompt injection, suggested-diff only — no auto-apply.
-- **Organizational rules as supply chain** (§9.4): `--rules-dir` requires clean-cases per rule; org CRITICAL is forced to `needs_confirmation`; the community registry (v1.0) ships signed with checksum pinning + quarantine behind explicit opt-in.
+- **Organizational rules as supply chain** (§9.4): `--rules-dir` requires clean-cases per rule; org CRITICAL is forced to `needs_confirmation`; **v1.0 ships `rules-lock`** — SHA-256 pinning per rule file, scan refuses modified/unpinned rules, `--allow-community-rules` runs quarantined (meta-labeled); the remote community registry will ride on this mechanism.
 - **URL Mode abuse** (§9.5): graduated levels, verified ownership gates, rate limits, authorization records.
-- **Distribution supply chain** (§9.6): at v1.0 — npm provenance attestation + SBOM + signed releases; hook/plugin versions pinned to explicit versions (never `@latest`).
+- **Distribution supply chain** (§9.6) — **shipped v1.0:** CycloneDX 1.5 SBOM generator + `.github/workflows/release.yml` (npm Trusted Publishing + provenance attestation + checksums + real-SHA-pinned actions) + signed-tag instructions; hook/plugin versions pinned to explicit versions (never `@latest`).
 - **Name collision** ("Anubis" is used by other OSS, e.g. TecharoHQ/anubis): always the full name **Anubis Guardian**, npm scope `@anubis-guardian/cli`.
 
 ## 9. Data-driven prioritization — the Step 0 study
@@ -196,7 +196,8 @@ The raw sample (`sweep.json`, `totals.json`, clone list) is preserved for re-ana
 | **v0.2 — Depth + integrations** | ✅ **Oct 2026** | Honeypot 30/30 (2 roots) · clean 0 FP (100/A) · SARIF verifier · full acceptance (incl. byte-identical `findings.json` + `fix-prompt.md`) |
 | **v0.3 — Agent Skill + AI Review** (taint-lite · authz matrix · rule packs II · guard hook) | ✅ **Oct 2026** | Honeypot 49/49 · clean 0 FP (100/A) · SARIF + acceptance v0.2/v0.3 green: verifier rejects hallucinated/missing-file/unknown-rule claims, redaction verified on the wire, AI findings capped at HIGH, hook blocks enforced, authz matrix + canaries generated (never executed) |
 | **v0.4 — URL Mode / Mode 2** (L1 passive + L2 verified + L3 Supabase probe) | ✅ **Oct 2026** | `npm test` full chain green: mode2 verify **33/33** (planted-hole server: .env CRITICAL, .git HIGH, SQL dump CRITICAL, listing, TRACE, Swagger, sourcemap, bundle secrets ×2 CRITICAL, cookies, headers, robots-skip honored, masking) + acceptance **47 gates**: L1 passivity proven from the request log (no probing at all), public-domain L2 un-gated → exit 2 before any request, checkbox-for-public → exit 2, L3 self-attested → exit 2, .well-known verification live + DNS TXT unit tests, Supabase anon probe (GET-only) from captured responses, byte-identical from-capture determinism + zero-network re-analysis, all renderers (SARIF/fix-prompt/md/compact/html) on URL findings, rate limiting, clean control exactly 90/A, ownership command |
-| v1.0 — Public release + BENCHMARKS.md + **field validation on Business-OS** (owner's real project — the first true dogfood, deliberately last) | ⬜ | — |
+| **v1.0 — Public release: rules-lock + restricted differential IDOR + init-zap + SBOM/provenance + METHODOLOGY/CONTRIBUTING + BENCHMARKS.md (measured only) + install→report smoke** | ✅ **done** — acceptance v1.0: 45/45 gates · BENCHMARKS.md: 14 measurements (honeypot 49/49 · clean 0 FP · NodeGoat 16 · Juice Shop 121 findings) | `download/anubis-guardian-v1.0.zip` |
+| v1.0 owner actions — actual `npm publish` + field validation on Business-OS (the first true dogfood, deliberately last) | ⬜ owner | — |
 
 **Remaining gates:**
 
@@ -204,7 +205,7 @@ The raw sample (`sweep.json`, `totals.json`, clone list) is preserved for re-ana
 |---|---|
 | v0.3 | "audit this project" inside an agent IDE runs the tool end-to-end and proposes suggested diffs for top findings — applying nothing without explicit human approval |
 | ~~v0.4~~ ✅ | **met:** same output contract on URL findings (fix-prompt carries the map-endpoints-to-code instruction) · L2 refuses un-gated (proven for public domains, checkbox, and L3-self-attested) · ownership method + authorization record in every report · demo deployment acceptance: planted missing headers + exposed `.env` + shipped JS-bundle secret all detected |
-| v1.0 | `npx anubis-guardian scan` works from npm; new user: install → first report < 2 minutes; BENCHMARKS.md published with measured numbers only; **L3-active decision point** (minimal active tests OR generated ZAP config) |
+| v1.0 | ✅ install→first-report verified from the packed tarball (< 2 min, gate N4) · BENCHMARKS.md published with measured numbers only · **L3-active decision implemented** (restricted `--active-tests` + generated ZAP config) · npm publish ready (owner runs it) |
 
 ## 11. Validation & testing
 

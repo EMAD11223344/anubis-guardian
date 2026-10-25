@@ -98,6 +98,29 @@ export function createBadServer({ port = 0 } = {}) {
     if (u === "/swagger/index.html") return send(200, "<html><head><title>Swagger UI</title></head><body class='swagger-ui'></body></html>", { "content-type": "text/html" });
     if (u === "/admin") return send(200, "<html><head><title>Admin Panel</title></head><body><div id=\"app\">login</div></body></html>", { "content-type": "text/html" });
 
+    // v1.0 IDOR fixture endpoints (identity = x-test-role header, values never stored by the tool)
+    // identity values used by the acceptance: "admin-secret-777" (privileged) / "restricted-secret-888" (restricted)
+    // /api/admin-panel: PLANTED broken access control — EVERY authenticated identity gets the SAME privileged payload
+    if (u === "/api/admin-panel") {
+      const role = req.headers["x-test-role"] ?? "anon";
+      if (role === "anon") return send(401, JSON.stringify({ error: "authentication required" }), { "content-type": "application/json" });
+      return send(200, JSON.stringify({ panel: "admin", revenue: 999999, users: 4211 }), { "content-type": "application/json" });
+    }
+    // /api/orders: correct boundary — the privileged identity sees orders, the restricted one is denied
+    if (u === "/api/orders") {
+      const role = req.headers["x-test-role"] ?? "anon";
+      if (role === "admin-secret-777") return send(200, JSON.stringify({ orders: [{ id: 1, total: 42 }] }), { "content-type": "application/json" });
+      if (role.startsWith("restricted")) return send(403, JSON.stringify({ error: "forbidden" }), { "content-type": "application/json" });
+      return send(401, JSON.stringify({ error: "authentication required" }), { "content-type": "application/json" });
+    }
+    // /api/stats: correct boundary — restricted denied with 403
+    if (u === "/api/stats") {
+      const role = req.headers["x-test-role"] ?? "anon";
+      if (role.startsWith("restricted")) return send(403, JSON.stringify({ error: "forbidden" }), { "content-type": "application/json" });
+      if (role === "anon") return send(401, JSON.stringify({ error: "authentication required" }), { "content-type": "application/json" });
+      return send(200, JSON.stringify({ visits: 1337 }), { "content-type": "application/json" });
+    }
+
     if (u === "/.well-known/anubis-guardian/" + OWNING_NONCE) return send(200, "anubis-guardian ownership verification: " + OWNING_NONCE);
     if (u.startsWith("/.well-known/anubis-guardian/")) return send(404, "wrong nonce");
 

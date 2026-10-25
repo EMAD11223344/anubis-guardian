@@ -134,6 +134,9 @@ export interface ScanResult {
     online_used?: boolean;    // --online registry checks ran (non-deterministic — excluded from default runs)
     adapters_used?: string[]; // external tools merged (run only when explicitly requested)
     ai_used?: boolean;        // v0.3: AI review layer ran (--ai-review) — non-deterministic, flagged
+    rules_lock?: "verified" | "off" | "bypassed"; // v1.0: rules supply-chain guard state (--rules-dir)
+    community_rules?: boolean;   // v1.0: unpinned/bypassed org rules ran (quarantine label)
+    active_tests?: boolean;      // v1.0: restricted differential IDOR ran (--active-tests, verified ownership)
   };
 }
 

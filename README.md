@@ -7,7 +7,7 @@
 
 Offline · Static-only · Never executes scanned code · MIT
 
-`v0.4.0` · `Node ≥ 18` · `TypeScript` · `License: MIT`
+`v1.0.0` (npm: `@anubis-guardian/cli`) · `Node ≥ 18` · `TypeScript` · `License: MIT`
 
 **[English](#-why-anubis-guardian)** · **[العربية](#-الشرح-بالعربية--full-guide-in-arabic)**
 
@@ -70,7 +70,7 @@ npm link            # then just:
 anubis-guardian scan ./my-project
 ```
 
-> An npm registry package (`@anubis-guardian/cli`) is planned for the **v1.0** public release. Until then, run from source as above.
+> npm (`@anubis-guardian/cli`) is **release-ready in v1.0** — the publish workflow (Trusted Publishing + provenance + SBOM + checksums) ships in `.github/workflows/release.yml`; until the owner runs the actual publish, install from source as above.
 
 ## ⌨️ Commands & flags
 
@@ -241,9 +241,10 @@ npm test   # build + honeypot + clean + sarif + acceptance v0.2 + v0.3 + mode2 +
 | v0.2 — Depth + integrations (SCA, NestJS, CI/Docker, SARIF, init-ci, multi-root) | ✅ done |
 | v0.3 — Agent Skill + AI Review + taint-lite + authz matrix + rule packs II + guard hook | ✅ done |
 | **v0.4 — URL Mode (Mode 2): L1 passive + L2 verified ownership + L3 Supabase probe (this release)** | ✅ **done** |
-| v1.0 — Public release: npm publish + BENCHMARKS.md + field validation on real projects (Business-OS first) + L3-active decision point | ⬜ next |
+| **v1.0 — Public release: rules supply-chain guard + restricted differential IDOR + init-zap + SBOM/provenance + METHODOLOGY.md + BENCHMARKS.md (measured only) + install→report smoke (this release)** | ✅ **done** |
+| v1.0 owner actions — `npm publish` to the registry + field validation on Business-OS (the real dogfood) | ⬜ owner |
 
-> **Both modes shipped.** Mode 1 (codebase) completed through v0.3; Mode 2 (URL) completed through v0.4. What remains for v1.0 is release engineering + measured benchmarks + the L3-active scope decision (minimal active tests OR generated ZAP config).
+> **Both modes shipped + release engineering done.** The v1.0 L3-active decision is implemented: the restricted differential access check (`--active-tests`: GET-only, verified ownership, owner identities, ≤24 endpoints, values never stored) + `init-zap` delegates everything deeper to a reviewable ZAP config — the engine still embeds no DAST. Remaining owner actions: the actual `npm publish` (workflow ready: `.github/workflows/release.yml` — Trusted Publishing + provenance + SBOM + checksums) and the Business-OS field validation.
 
 ## 📁 Repo layout
 
@@ -303,7 +304,7 @@ npm link          # بعدها تقدر تكتب مباشرة:
 anubis-guardian scan ./my-project
 ```
 
-> حزمة npm على السجل العام (`@anubis-guardian/cli`) مخطط ليها في إصدار **v1.0**. لحد ساعتها شغّل من المصدر زي فوق.
+> npm (`@anubis-guardian/cli`) **جاهزة للنشر في v1.0** — workflow النشر (Trusted Publishing + provenance + SBOM + checksums) موجود في `.github/workflows/release.yml`؛ ولحد ما المالك ينفّذ publish الفعلي، ثبّت من المصدر زي فوق.
 
 ## أهم أوامر الفحص — بالعربي
 
@@ -365,6 +366,14 @@ node dist/cli.js update-advisories                     # تحديث محلي ل�
 - **نفس عقد المخرجات:** `findings.json` + كل الصيغ + `fix-prompt.md` — وكل finding معاها إرشاد **"فين في الكود"** حسب الـ framework المكتشف، والـ verify line بتقول `scan-url` بنفس المستوى
 - **الحتمية في Mode 2:** نفس الـ capture ⇒ نفس `findings.json` بايت-ببايت (`--from-capture` — صفر شبكة) — لأن الـ wire نفسه متغير بالطبيعة، فالحتمية معرّفة على الـ capture
 
+## الجديد في v1.0 — بالعربي (الإصدار العام)
+
+- **rules-lock (حرس سلسلة توريد القواعد):** `anubis-guardian rules-lock <dir>` بيثبّت ملفات القواعد بـ SHA-256 — والـ scan بيرفض أي ملف معدّل/غير مثبّت (exit 2) إلا لو `--allow-community-rules` (وقتها التقرير بيتعلّم `meta.rules_lock: bypassed` + `community_rules: true` — quarantine صريح)
+- **الفحص التفاضلي المُقيَّد (`--active-tests` — قرار L3 النشط):** L3 بس + **ملكية متحققة إجباريًا** (الـ checkbox عمرها ما تكفي حتى محليًا) + **GET فقط بالبناء** + هويتين testing من المالك (`--identity-a` المميّزة و`--identity-b` المقيدة) + سقف 24 endpoint (مسارات JSON مكتشفة + `--idor-path` من المالك) + semantic diff — والـ **قيم الهويات عمرها ما بتتخزن** في الـ capture ولا في أي تقرير. النتيجة: `URL-061` HIGH مع `needs_confirmation` لما الهوية المقيدة تستقبل نفس رد المميزة — و`URL-909` ملخص إعلامي
+- **init-zap (التفويض بدل التضمين):** توليد config جاهز لـ OWASP ZAP baseline على staging بتاعك — `--active` على دومين عام محتاجة nonce متحقق منه — **المحرك لسه من غير DAST بالتصميم**
+- **هندسة النشر:** SBOM (CycloneDX 1.5) + provenance attestation + checksums + workflow إصدار موقّع (`.github/workflows/release.yml` بمسارات actions مثبتة بـ SHAs حقيقية) + `METHODOLOGY.md` + `CONTRIBUTING-RULES.md` + موقع docs جاهز لـ GitHub Pages + **`BENCHMARKS.md` بالأرقام المقاسة فقط** (honeypot 49/49 · clean 0 FP · NodeGoat وJuice Shop كمجموعات sanity خارجية)
+- **اختبار install→report:** الحزمة بتعمل pack وتنصّب وتطلّع أول تقرير في أقل من دقيقتين — متحقق منه في بوابات الـ acceptance (45 بوابة جديدة)
+
 ## نظام الدرجات
 
 ```
@@ -403,7 +412,7 @@ cp skill/SKILL.md ~/.claude/skills/anubis-guardian/SKILL.md   # Claude Code
 ## الاختبارات — بوابات الانحدار
 
 ```bash
-npm test   # build + honeypot + clean + sarif + acceptance v0.2 + v0.3 + mode2 + acceptance v0.4
+npm test   # build + honeypot + clean + sarif + acceptance v0.2 + v0.3 + mode2 + v0.4 + v1.0
 ```
 
 - `tests/honeypot/` — **49 بذرة مزروعة** عبر root اتنين: أسرار، headers، seeders، RLS عمق تاني، CI، Docker، اعتماديات، crypto، rule packs II، تدفقات الـ taint الخمسة، وبيئة الـ agent
@@ -419,9 +428,10 @@ npm test   # build + honeypot + clean + sarif + acceptance v0.2 + v0.3 + mode2 +
 | v0.2 — العمق والتكاملات (SCA، NestJS، CI/Docker، SARIF، multi-root) | ✅ تمت |
 | **v0.3 — Agent Skill + AI Review + taint-lite + authz matrix + rule packs II + guard hook** | ✅ **تمت** |
 | **v0.4 — Mode 2: الفحص بالرابط — L1 passive + L2 بإثبات ملكية + L3 probe الـ Supabase (الإصدار ده)** | ✅ **تمت** |
-| v1.0 — الإصدار العام: npm publish + BENCHMARKS.md + تحقق ميداني (Business-OS أولًا) + قرار نطاق L3 النشط | ⬜ الجاي |
+| **v1.0 — الإصدار العام: rules-lock + الفحص التفاضلي المُقيَّد + init-zap + SBOM/provenance + METHODOLOGY.md + BENCHMARKS.md (أرقام مقاسة فقط) + اختبار install→report (الإصدار ده)** | ✅ **تمت** |
+| v1.0 — خطوات المالك: `npm publish` الفعلي على السجل + التحقق الميداني على Business-OS | ⬜ المالك |
 
-> **الوضعين اتنين اكتملوا.** Mode 1 (الكود) اكتمل عبر v0.3، وMode 2 (الرابط) اكتمل عبر v0.4. اللي فاضل في v1.0: هندسة الإصدار العام + الأرقام المقاسة + قرار نطاق L3 النشط (اختبارات نشطة مصغّرة أو توليد config لـ ZAP).
+> **الوضعين اكتملوا + هندسة الإصدار تمت.** قرار L3 النشط اتنفّذ: الفحص التفاضلي المُقيَّد (`--active-tests`: GET فقط، ملكية متحققة، هويات من المالك، ≤24 endpoint، القيم عمرها ما بتتخزن) + `init-zap` بيفوّض الأعمق لـ config لـ ZAP — والمحرك من غير DAST بالتصميم. المتبقي على المالك: `npm publish` الفعلي (الـ workflow جاهز: Trusted Publishing + provenance + SBOM + checksums) والتحقق الميداني على Business-OS.
 
 ## ملفات الشرح والخطة في الريبو
 

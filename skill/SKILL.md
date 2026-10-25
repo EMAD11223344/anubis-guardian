@@ -3,7 +3,7 @@ name: anubis-guardian
 description: Security audit for AI-built (vibe-coded) projects — deterministic, offline-first, static-only. TWO modes: (1) Codebase — scans code for leaked secrets (service_role keys by value, DB creds in HTTP headers, seeder credentials, committed env files, git history leaks, secrets in logs), Supabase RLS gaps (incl. policy scoping, storage, verify_jwt, user_metadata policies, unauthed service_role edge functions), Next.js auth mistakes (middleware matcher gaps, CSRF heuristic), NestJS guards/CORS/helmet + unauthenticated Socket.IO gateways, dependency CVEs (bundled OSV snapshot) + hallucinated/typosquat packages, Math.random crypto misuse, mass assignment, unverified webhooks, jwt.decode authorization, exposed Swagger, taint-lite flows, CI/supply-chain mistakes, and agent-environment risks (unpinned MCP servers, secrets in agent configs, permission wildcards). (2) URL — scans a LIVE deployed site: L1 passive (TLS/cert, security headers, cookie flags, secrets shipped in public JS bundles — browser-equivalent requests only), L2 discovery (exposed .env/.git/backups, directory listing, TRACE, exposed API docs, source maps — requires VERIFIED domain ownership via DNS TXT or .well-known nonce), L3 = L2 + Supabase live anon RLS probe (GET-only). Produces findings.json + scored report (A–F) + fix-prompt.md + SARIF + scan authorization record. Optional AI review layer with an independent verifier (--ai-review). Use when the user asks to "audit this project", "audit this site", "check security", "scan for leaked keys", or before shipping any AI-generated app.
 ---
 
-# Anubis Guardian — Security Audit Skill (v0.4)
+# Anubis Guardian — Security Audit Skill (v1.0)
 
 You are running the Anubis Guardian audit skill. The tool is deterministic and offline-first: Codebase Mode never touches the network; URL Mode only talks to the single target origin the user named. It never installs, builds, or runs the target project's code (static files + git plumbing only). Generated tests land in a quarantine folder — **the tool never executes them; the human does**.
 
@@ -62,6 +62,16 @@ npx anubis-guardian scan-url https://example.com --level 3 --ownership-token <no
 
 # Reproducibility: save the capture, re-analyze offline (byte-identical)
 npx anubis-guardian scan-url https://example.com --capture capture.json --from-capture capture.json
+
+# v1.0 — restricted differential access check (L3 + verified ownership + BOTH
+# owner-provided testing identities; GET-only, <=24 endpoints, values never stored):
+npx anubis-guardian scan-url https://example.com --level 3 --ownership-token <nonce> \
+  --active-tests --identity-a "Authorization: Bearer <PRIVILEGED>" --identity-b "Authorization: Bearer <RESTRICTED>" \
+  --idor-path /api/admin-panel --idor-path /api/orders
+
+# v1.0 — delegate deeper active testing to OWASP ZAP (the engine embeds no DAST):
+npx anubis-guardian init-zap https://staging.example.com            # passive baseline config
+npx anubis-guardian init-zap https://staging.example.com --active --ownership-token <nonce>
 ```
 
 **URL Mode hard rules for you (the agent):**
@@ -69,6 +79,7 @@ npx anubis-guardian scan-url https://example.com --capture capture.json --from-c
 2. **Never scan a URL the user does not control or explicitly name.** The report carries a scan authorization record (URL, timestamp, level, ownership method) — do not edit or hide it.
 3. **Self-attestation ≠ verification.** A `self-attested (local only)` label means localhost/staging — say so when presenting results.
 4. Every URL finding pairs with a `Code map:` hint — offer to run Codebase Mode on the repo to get exact file:line.
+5. **`--active-tests` identities come from the OWNER, never from you.** You do not invent, guess, reuse, or store credentials for the differential probe. If the user has not provided both testing identities and verified ownership, do not run it. The tool caps it: GET-only, ≤24 endpoints, identity values never stored.
 
 Read `findings.json` (not the terminal) — each finding has: `id`, `severity`, `file:line`, masked `evidence`, `confidence`, `needs_confirmation`, `fix`, and for secrets a `remediation.rotate-first` plan.
 
@@ -81,6 +92,16 @@ Read `findings.json` (not the terminal) — each finding has: `id`, `severity`, 
 5. **No test tampering, no scope creep.** Fix the finding; do not modify tests to pass, do not refactor beyond the fix.
 6. **Quarantine tests are the OWNER's.** `test-authz` / `--quarantine` generate failing-by-expectation tests. Point the human at them; never wire them into CI and never execute them yourself as part of the audit.
 7. **Read "Classes not covered".** The report lists what the tool does NOT check (business logic, deep multi-file taint, URL Mode, compliance…). An A grade means "nothing found by these checks", not "secure". Tell the user this.
+
+## v1.0 — supply-chain guard for org rules
+
+```bash
+npx anubis-guardian rules-lock ./org-rules      # pin the rules dir (sha256 per file) — commit rules-lock.json
+npx anubis-guardian scan . --rules-dir ./org-rules   # refuses modified/unpinned rules (exit 2)
+npx anubis-guardian scan . --rules-dir ./org-rules --allow-community-rules  # run quarantined (meta-labeled)
+```
+
+`meta.rules_lock` is `verified | off | bypassed` — when it is not `verified`, say so when presenting results (the rules ran unverified / quarantined).
 
 ## Interpreting v0.3 result shapes
 
@@ -99,4 +120,4 @@ Read `findings.json` (not the terminal) — each finding has: `id`, `severity`, 
 
 ## Scope
 
-v0.4 covers Codebase Mode fully (rules packs I+II, taint-lite, agent environment, optional AI review with verifier, authz matrix + quarantine, guard hook) **and URL Mode L1+L2+L3-Supabase-probe** (passive scan, verified-ownership discovery, live anon probe — full active DAST stays out of scope by design; a ZAP-baseline config path is the v1.0 decision point).
+v1.0 covers Codebase Mode fully (rules packs I+II, taint-lite, agent environment, optional AI review with verifier, authz matrix + quarantine, guard hook, rules supply-chain guard) **and URL Mode L1+L2+L3** (passive scan, verified-ownership discovery, live anon probe, restricted differential access check via `--active-tests`). Full active DAST stays out of scope by design — `init-zap` generates the OWASP ZAP baseline config for the owner to run themselves. Release engineering ships with v1.0: npm provenance attestation + CycloneDX SBOM + signed releases + `BENCHMARKS.md` (measured numbers only).

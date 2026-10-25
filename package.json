@@ -1,7 +1,7 @@
 {
   "name": "@anubis-guardian/cli",
-  "version": "0.4.0",
-  "description": "Deterministic security auditor for AI-built projects — Codebase Mode + URL Mode (offline-first, MIT).",
+  "version": "1.0.0",
+  "description": "Deterministic security auditor for AI-built projects \u2014 Codebase Mode + URL Mode (offline-first, MIT).",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -23,22 +23,30 @@
     "honeypot:setup": "node tests/honeypot/setup.mjs",
     "honeypot:verify": "node tests/honeypot/setup.mjs && node dist/cli.js scan tests/honeypot/app tests/honeypot/nest-app --format json --output tests/honeypot/findings.json && node tests/verify-honeypot.mjs",
     "clean:verify": "node tests/clean/setup.mjs && node dist/cli.js scan tests/clean/app --format json --output tests/clean/findings.json && node tests/verify-clean.mjs",
-    "test": "npm run build && npm run honeypot:verify && npm run clean:verify && npm run sarif:verify && npm run acceptance:v02 && npm run acceptance:v03 && npm run mode2:verify && npm run acceptance:v04",
+    "test": "npm run build && npm run honeypot:verify && npm run clean:verify && npm run sarif:verify && npm run acceptance:v02 && npm run acceptance:v03 && npm run mode2:verify && npm run acceptance:v04 && npm run acceptance:v10",
     "sarif:verify": "node dist/cli.js scan tests/honeypot/app --format sarif --output /tmp/anubis-test.sarif && node tests/verify-sarif.mjs /tmp/anubis-test.sarif",
     "acceptance:v02": "node tests/acceptance-v02.mjs",
     "acceptance:v03": "node tests/acceptance-v03.mjs",
     "mode2:verify": "node tests/mode2/verify-mode2.mjs",
-    "acceptance:v04": "node tests/mode2/acceptance-v04.mjs"
+    "acceptance:v04": "node tests/mode2/acceptance-v04.mjs",
+    "prepublishOnly": "npm test",
+    "sbom": "node scripts/generate-sbom.mjs",
+    "benchmarks": "node scripts/measure-benchmarks.mjs",
+    "acceptance:v10": "node tests/mode2/acceptance-v10.mjs"
   },
   "keywords": [
-    "security",
-    "audit",
-    "sast",
-    "secrets",
-    "supabase",
-    "nextjs",
-    "url-scanner",
     "ai-generated-code",
+    "audit",
+    "benchmarks",
+    "dast",
+    "nextjs",
+    "sast",
+    "sbom",
+    "secrets",
+    "security",
+    "supabase",
+    "supply-chain",
+    "url-scanner",
     "vibe-coding"
   ],
   "dependencies": {
@@ -47,5 +55,14 @@
   "devDependencies": {
     "@types/node": "^22.7.0",
     "typescript": "^5.6.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anubis-guardian/anubis-guardian.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anubis-guardian/anubis-guardian/issues"
+  },
+  "homepage": "https://github.com/anubis-guardian/anubis-guardian#readme",
+  "sideEffects": false
 }

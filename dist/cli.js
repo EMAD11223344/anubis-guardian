@@ -19,6 +19,8 @@ import { updateAdvisories } from "./adapters.js";
 import { generateWorkflow } from "./initci.js";
 import { captureUrl, analyzeBundle, fromCapture, resolveOwnership, GateError } from "./urlmode/analyze.js";
 import { isLocalOrPrivate, generateNonce, instructions } from "./urlmode/ownership.js";
+import { writeRulesLock, checkRulesLock } from "./ruleslock.js";
+import { generateZapConfig } from "./initzap.js";
 const program = new Command();
 program
     .name("anubis-guardian")
@@ -45,6 +47,7 @@ program
     .option("--advisories <file>", "use a local advisory snapshot (from --update-advisories) instead of the bundled one")
     .option("--ai-review", "v0.3: enable the optional AI review layer (needs ANUBIS_AI_API_KEY; redaction-before-LLM + independent verifier; flagged in meta.ai_used)")
     .option("--quarantine <dir>", "v0.3: write generated canary tests for taint findings into this folder (the tool never executes them)")
+    .option("--allow-community-rules", "v1.0: bypass the rules-lock supply-chain guard (unpinned/modified rules run, quarantined in meta)")
     .action(async (paths, opts) => {
     const failOn = (opts.failOn ?? "").toLowerCase();
     if (failOn && failOn !== "high" && failOn !== "critical") {
@@ -60,6 +63,25 @@ program
         }
         roots = expandWorkspaces(roots[0]);
     }
+    // ---- v1.0 rules supply-chain guard (Plan Section 9.4): lock verify BEFORE any scan ----
+    if (opts.rulesDir) {
+        const lock = checkRulesLock(resolve(opts.rulesDir));
+        if (lock.status === "failed" && !opts.allowCommunityRules) {
+            console.error(`\nrules supply-chain guard: refusing to run with modified/unpinned rules:`);
+            for (const f of lock.failures)
+                console.error(`  - ${f}`);
+            console.error(`\nFix the directory or re-pin it (anubis-guardian rules-lock <dir>), or pass --allow-community-rules to run quarantined.`);
+            process.exit(2);
+        }
+        if (lock.status === "failed" && opts.allowCommunityRules) {
+            console.error(`rules supply-chain guard BYPASSED (--allow-community-rules) — findings are quarantined-labeled:`);
+            for (const f of lock.failures)
+                console.error(`  - ${f}`);
+        }
+        if (lock.warning)
+            console.error(lock.warning);
+        // the meta fields are attached after the scan below
+    }
     let result;
     try {
         result = roots.length === 1 ? scan(roots[0], { schemaDump: opts.schema, rulesDir: opts.rulesDir, tools: parseTools(opts.tools), online: opts.online, advisoryFile: opts.advisories })
@@ -68,6 +90,13 @@ program
     catch (e) {
         console.error(`scan failed: ${e instanceof Error ? e.message : String(e)}`);
         process.exit(2);
+    }
+    // ---- v1.0 rules-lock state lands in meta (quarantine labels, Section 9.4) ----
+    if (opts.rulesDir) {
+        const lock = checkRulesLock(resolve(opts.rulesDir));
+        result.meta.rules_lock = lock.status === "failed" ? "bypassed" : lock.status;
+        if (lock.status !== "verified")
+            result.meta.community_rules = true;
     }
     // ---- v0.3 AI review layer (opt-in; verifier-gated; flagged in meta) ----
     if (opts.aiReview) {
@@ -157,6 +186,10 @@ program
     .option("--delay-ms <n>", "minimum delay between same-host requests (rate limit)", "250")
     .option("--max-requests <n>", "hard request cap (default per level: 40/120/150)")
     .option("--max-assets <n>", "max public JS bundles fetched at L1", "10")
+    .option("--active-tests", "v1.0: L3 only — run the RESTRICTED differential access check (GET-only, verified ownership + both testing identities required, ≤24 endpoints, identity values never stored)")
+    .option("--identity-a <spec>", "privileged testing identity: \"Header-Name: value\" (used in-flight only — never stored)")
+    .option("--identity-b <spec>", "RESTRICTED testing identity: \"Header-Name: value\" (the account that must be denied)")
+    .option("--idor-path <path>", "owner-supplied extra endpoint to differentially test (repeatable, same-origin, robots-aware)", collect)
     .option("-f, --format <format>", "output format: terminal | json | md | sarif | html | compact | all", "terminal")
     .option("-o, --output <file>", "write output to file instead of stdout")
     .option("--fail-on <severity>", "exit 1 when findings at/above this severity exist: high | critical")
@@ -168,6 +201,15 @@ program
     const level = Number(opts.level);
     if (![1, 2, 3].includes(level)) {
         console.error("--level accepts 1 | 2 | 3");
+        process.exit(2);
+    }
+    // v1.0 gates: the restricted active probe is L3 scope + needs both identities
+    if (opts.activeTests && level < 3) {
+        console.error("--active-tests runs the restricted differential probe — it is L3 scope by design. Pass --level 3.");
+        process.exit(2);
+    }
+    if (opts.activeTests && !(opts.identityA && opts.identityB)) {
+        console.error("--active-tests needs BOTH testing identities (e.g. --identity-a \"Authorization: Bearer admin-token\" --identity-b \"Authorization: Bearer restricted-token\"). Values stay in-flight — they are never stored.");
         process.exit(2);
     }
     // ---- from-capture path: deterministic re-analysis, zero network ----
@@ -215,6 +257,10 @@ program
             delayMs: Number(opts.delayMs),
             maxRequests: opts.maxRequests ? Number(opts.maxRequests) : undefined,
             maxAssets: Number(opts.maxAssets),
+            activeTests: opts.activeTests,
+            identityA: opts.identityA,
+            identityB: opts.identityB,
+            idorPaths: opts.idorPath,
         }, ownership);
     }
     catch (e) {
@@ -317,11 +363,68 @@ program
     console.error(`Re-run the scan with --advisories ${opts.out} to use it (bundled snapshot stays the deterministic default).`);
     process.exit(0);
 });
+program
+    .command("rules-lock")
+    .description("v1.0: pin a rules directory — writes rules-lock.json (SHA-256 per rule file); scan verifies it and refuses modified/unpinned rules unless --allow-community-rules")
+    .argument("<dir>", "rules directory containing the org/community JSON rules")
+    .action((dir) => {
+    const d = resolve(dir);
+    if (!existsSync(d)) {
+        console.error(`rules-lock: directory not found: ${d}`);
+        process.exit(2);
+    }
+    const { file, count } = writeRulesLock(d);
+    console.error(`written: ${file} — ${count} rule file(s) pinned (sha256)`);
+    console.error(`Commit rules-lock.json with your rules. scan --rules-dir ${dir} now refuses any modified/unpinned rule file (or --allow-community-rules to run quarantined).`);
+    process.exit(0);
+});
+program
+    .command("init-zap")
+    .description("v1.0 (L3 decision): generate an OWASP ZAP baseline config for YOUR OWN staging target — the engine embeds no DAST by design; you review and run ZAP yourself")
+    .argument("<url>", "target origin to bake into the config")
+    .option("--active", "enable ZAP active_scan in the generated config — for PUBLIC domains this requires verified ownership (--ownership-token)")
+    .option("--ownership-token <nonce>", "verified nonce (DNS TXT / .well-known) — required for --active on public domains")
+    .option("--out <file>", "output yaml path", "")
+    .option("--delay-ms <n>", "rate limit baked into the config", "250")
+    .option("--max-requests <n>", "request cap baked into the config", "150")
+    .action(async (url, opts) => {
+    try {
+        const host = new URL(url).hostname;
+        const publicDomain = !isLocalOrPrivate(host);
+        if (opts.active && publicDomain) {
+            await resolveOwnership(url, { level: 2, ownershipToken: opts.ownershipToken });
+        }
+        const r = generateZapConfig(url, {
+            active: !!opts.active,
+            out: opts.out || undefined,
+            delayMs: Number(opts.delayMs),
+            maxRequests: Number(opts.maxRequests),
+        });
+        console.error(`${r.created ? "created" : "exists (left untouched)"}: ${r.file}`);
+        console.error(r.active
+            ? "active_scan ENABLED — you verified ownership. Review the config, then run ZAP yourself against staging."
+            : "passive baseline — review the config, then run ZAP yourself. Pass --active (+ verified ownership on public domains) to enable active_scan.");
+        process.exit(0);
+    }
+    catch (e) {
+        if (e instanceof GateError) {
+            console.error(`\nGate: ${e.message}`);
+            if (e.help)
+                console.error(`\n${e.help}\n`);
+            process.exit(2);
+        }
+        console.error(`init-zap failed: ${e instanceof Error ? e.message : String(e)}`);
+        process.exit(2);
+    }
+});
 program.parseAsync(process.argv).catch((e) => {
     console.error(e instanceof Error ? e.message : String(e));
     process.exit(2);
 });
 // ---- helpers ----
+function collect(value, previous = []) {
+    return previous.concat([value]);
+}
 function writeArtifact(path, content) {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, content, "utf8");
@@ -388,7 +491,7 @@ function printConsentBanner(url, level, ownership, delayMs) {
     console.error(`  target:    ${url}`);
     console.error(`  level:     ${level} — ${nature}`);
     console.error(`  ownership: ${ownership.verified ? `verified via ${ownership.method}` : ownership.method === "none" ? "none (Level 1 needs none)" : ownership.method}`);
-    console.error(`  pace:      hard rate-limit ${delayMs}ms between requests · per-level request cap · no credentialed scanning · no DoS patterns`);
+    console.error(`  pace:      hard rate-limit ${delayMs}ms between requests · per-level request cap · no credentialed scanning (exception: --active-tests sends ONLY owner-provided identities, GET-only, ≤24 endpoints) · no DoS patterns`);
     console.error(`  record:    an authorization record (URL, timestamp, level, ownership) is written into the report`);
     console.error(`  legal:     scanning systems you do not own/operate without written permission is illegal in most jurisdictions (incl. Egyptian law 175/2018).\n`);
 }

@@ -29,9 +29,9 @@ export class Fetcher {
     get exhausted() {
         return this.seq >= this.maxRequests;
     }
-    /** GET with capture. Returns null when the cap was reached. */
-    async get(url) {
-        return this.send("GET", url);
+    /** GET with capture. Returns null when the cap was reached. init.headers allowed (v1.0 active-tests identities — in-flight only). */
+    async get(url, init) {
+        return this.send("GET", url, init);
     }
     /** Raw method request (TRACE/OPTIONS probes at L2). TRACE uses node:http (fetch spec forbids it). */
     async send(method, url, init) {

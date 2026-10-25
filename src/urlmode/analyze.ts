@@ -13,6 +13,7 @@ import { LEVEL_REQUEST_CAPS } from "./types.js";
 import { runL1, extractScriptUrls } from "./checks-l1.js";
 import { runL2, PROBES, LISTING_PATHS, APIDOC_PATHS, SURFACE_PATHS } from "./checks-l2.js";
 import { detectSupabaseTarget, runSupabaseProbe, type SupabaseTarget } from "./checks-l3.js";
+import { analyzeIdor, selectIdorCandidates, IDOR_ENDPOINT_CAP } from "./idor.js";
 import { URL_CHECKS, URL_CLASSES_COVERED, URL_CLASSES_NOT_COVERED } from "./coverage.js";
 import { scanBundle } from "./jsassets.js";
 
@@ -242,6 +243,47 @@ export async function captureUrl(targetUrl: string, opts: UrlScanOptions, owners
     }
   }
 
+  // v1.0 — restricted differential IDOR (Plan v1.2 #11): --active-tests + VERIFIED
+  // ownership + GET-only + owner identities + discovered/owner endpoints, capped.
+  let idorRecord: CaptureBundle["idor"];
+  if (opts.activeTests && opts.level >= 3 && ownership.verified && opts.identityA && opts.identityB) {
+    const identities = [opts.identityA, opts.identityB].map((s) => {
+      const i = s.indexOf(":");
+      return i > 0 ? { name: s.slice(0, i).trim().toLowerCase(), value: s.slice(i + 1).trim() } : null;
+    });
+    if (identities.some((x) => !x || !x.name || !x.value)) {
+      throw new GateError('identities must be "Header-Name: value" pairs (e.g. --identity-a "Authorization: Bearer …")');
+    }
+    const [idA, idB] = identities as [{ name: string; value: string }, { name: string; value: string }];
+    const mini: CaptureBundle = {
+      capture_version: 1,
+      meta: { url: targetUrl, captured_at: new Date().toISOString(), level: opts.level, ownership, tool: "anubis-guardian", version: "0", max_requests: 0, delay_ms: 0 },
+      tls: null,
+      requests: fetcher.requests,
+      robots: { skipped: robotsSkipped, disallow_all: robots.disallowAll },
+      notes: [],
+    };
+    const endpoints = selectIdorCandidates(mini, (opts.idorPaths ?? []).map((p) => new URL(p, origin + "/").toString()));
+    const pairs: Array<{ endpoint: string; identity: "a" | "b"; seq: number }> = [];
+    for (const ep of endpoints) {
+      if (fetcher.exhausted) break;
+      if (!robotAllows(new URL(ep.url).pathname)) { fetcher.skipForRobots(new URL(ep.url).pathname + " (idor)"); continue; }
+      const ra = await fetcher.get(ep.url, { headers: { [idA.name]: idA.value } });
+      if (ra) pairs.push({ endpoint: ep.path, identity: "a", seq: ra.seq });
+      if (fetcher.exhausted) break;
+      const rb = await fetcher.get(ep.url, { headers: { [idB.name]: idB.value } });
+      if (rb) pairs.push({ endpoint: ep.path, identity: "b", seq: rb.seq });
+    }
+    const names = [...new Set([idA.name, idB.name])];
+    idorRecord = {
+      endpoints: endpoints.map((e) => ({ url: e.url, path: e.path })),
+      requests: pairs,
+      identities: names,
+      note: "differential IDOR (GET-only, verified ownership). Identity VALUES are used in-flight only and are NEVER stored in this capture or any report.",
+    };
+    notes.push(`active-tests: differential IDOR — ${endpoints.length} endpoint(s) × 2 identities (GET-only, cap ${IDOR_ENDPOINT_CAP}); header names used: ${names.join(", ")}`);
+  }
+
   const tls = await inspectTls(u, opts.timeoutMs ?? 10_000);
 
   return {
@@ -260,6 +302,7 @@ export async function captureUrl(targetUrl: string, opts: UrlScanOptions, owners
     requests: fetcher.requests,
     robots: { skipped: fetcher.robotsSkipped, disallow_all: robots.disallowAll },
     notes,
+    ...(idorRecord ? { idor: idorRecord } : {}),
   };
 }
 
@@ -288,6 +331,9 @@ export function analyzeBundle(bundle: CaptureBundle): ScanResult {
     }
   }
 
+  // v1.0 — differential IDOR verdict (pure function of the bundle — from-capture safe)
+  if (bundle.idor) raw.push(...analyzeIdor(bundle).findings);
+
   // suppression (no inline ignores in URL mode — fingerprints + dedupe only)
   const findings: Finding[] = [];
   const seen = new Set<string>();
@@ -310,7 +356,7 @@ export function analyzeBundle(bundle: CaptureBundle): ScanResult {
   const byMethod: Record<string, number> = {};
   for (const r of bundle.requests) byMethod[r.method] = (byMethod[r.method] ?? 0) + 1;
 
-  const levelsRun = ["L1-passive", ...(level >= 2 ? ["L2-discovery"] : []), ...(level >= 3 ? ["L3-supabase-probe"] : [])];
+  const levelsRun = ["L1-passive", ...(level >= 2 ? ["L2-discovery"] : []), ...(level >= 3 ? ["L3-supabase-probe"] : []), ...(bundle.idor ? ["L3-active-tests"] : [])];
 
   return {
     tool: "anubis-guardian",
@@ -350,6 +396,7 @@ export function analyzeBundle(bundle: CaptureBundle): ScanResult {
       no_exec: true,
       files_scanned: bundle.requests.length,
       git_history_scanned: false,
+      ...(bundle.idor ? { active_tests: true } : {}),
     },
   };
 }
