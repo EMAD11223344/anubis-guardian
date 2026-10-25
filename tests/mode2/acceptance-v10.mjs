@@ -154,7 +154,7 @@ try {
 
   const logBefore = (await requestLog()).length;
   const cap = join(TMP, "idor-capture.json");
-  const m4 = run(["scan-url", BAD, "--level", "3", "--ownership-token", NONCE, "--active-tests",
+  const m4 = run(["scan-url", BAD, "--level", "3", "--ownership-token", NONCE, "--active-tests", "--allow-private",
     "--identity-a", IDENT_A, "--identity-b", IDENT_B,
     "--idor-path", "/api/admin-panel", "--idor-path", "/api/orders", "--idor-path", "/api/stats",
     "--delay-ms", "5", "--capture", cap, "--format", "json", "-o", join(TMP, "m4.json")]);
@@ -188,7 +188,7 @@ try {
   // cap
   const paths30 = [];
   for (let i = 0; i < 30; i++) paths30.push("--idor-path", `/api/p${i}`);
-  const m12 = run(["scan-url", BAD, "--level", "3", "--ownership-token", NONCE, "--active-tests",
+  const m12 = run(["scan-url", BAD, "--level", "3", "--ownership-token", NONCE, "--active-tests", "--allow-private",
     "--identity-a", IDENT_A, "--identity-b", IDENT_B, ...paths30, "--delay-ms", "2", "--format", "json", "-o", join(TMP, "m12.json")]);
   const m12r = m12.code === 0 ? JSON.parse(readFileSync(join(TMP, "m12.json"), "utf8")) : null;
   check("M12: hard cap ≤24 endpoints enforced", m12.code === 0 && !!m12r, `exit=${m12.code}`);

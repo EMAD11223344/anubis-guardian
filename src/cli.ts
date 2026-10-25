@@ -228,6 +228,7 @@ program
   .option("-l, --level <1|2|3>", "scan level: 1 passive (default) · 2 discovery (ownership-gated) · 3 = 2 + Supabase anon probe (verified ownership only)", "1")
   .option("--ownership-token <nonce>", "verify a nonce you published (DNS TXT anubis-guardian-challenge=… or /.well-known/anubis-guardian/<nonce>)")
   .option("--i-own-this-domain", "self-attestation — honored ONLY for localhost/127.0.0.1/*.local/private staging (labeled in the report; never enough for L3)")
+  .option("--allow-private", "v1.1.1: let the SSRF guard dial local/private/loopback targets (CLI operator choice; IGNORED when ANUBIS_SERVICE=1). Required for scan-url on localhost since the guard now blocks private ranges by default.", undefined)
   .option("--from-capture <file>", "re-analyze a saved capture bundle (--capture) — zero network, byte-identical")
   .option("--capture <file>", "save the raw capture bundle (evidence + reproducibility)")
   .option("--timeout-ms <n>", "per-request timeout", "10000")
@@ -250,14 +251,14 @@ program
     "  anubis-guardian scan-url https://example.com                    # L1 passive — free, no ownership",
     "  anubis-guardian ownership https://example.com                   # print nonce + DNS TXT / .well-known steps",
     "  anubis-guardian scan-url https://example.com --level 2 --ownership-token <nonce>",
-    "  anubis-guardian scan-url http://127.0.0.1:3000 --level 2 --i-own-this-domain   # local/staging only",
+    "  anubis-guardian scan-url http://127.0.0.1:3000 --level 2 --i-own-this-domain --allow-private   # local/staging only",
     "  anubis-guardian scan-url https://example.com --level 3 --ownership-token <nonce> \\",
     "    --active-tests --identity-a \"X-Test-Role: admin\" --identity-b \"X-Test-Role: restricted\"",
     "  anubis-guardian scan-url https://example.com --capture capture.json --from-capture capture.json",
     "",
     "Ownership gate: public domains require a VERIFIED nonce for L2+ — self-attestation is local-only and labeled.",
   ].join("\n"))
-  .action(async (url: string, opts: Opts & { level: string; ownershipToken?: string; iOwnThisDomain?: boolean; fromCapture?: string; capture?: string; timeoutMs: string; delayMs: string; maxRequests?: string; maxAssets: string; activeTests?: boolean; identityA?: string; identityB?: string; idorPath?: string[] }) => {
+  .action(async (url: string, opts: Opts & { level: string; ownershipToken?: string; iOwnThisDomain?: boolean; allowPrivate?: boolean; fromCapture?: string; capture?: string; timeoutMs: string; delayMs: string; maxRequests?: string; maxAssets: string; activeTests?: boolean; identityA?: string; identityB?: string; idorPath?: string[] }) => {
     const level = Number(opts.level) as 1 | 2 | 3;
     if (![1, 2, 3].includes(level)) {
       console.error("--level accepts 1 | 2 | 3");
@@ -293,7 +294,7 @@ program
       const isLocal = isLocalOrPrivate(host);
       if (level >= 2 && !opts.ownershipToken && !(opts.iOwnThisDomain && isLocal)) {
         // let resolveOwnership produce the exact refusal + instructions
-        await resolveOwnership(url, { level, ownershipToken: opts.ownershipToken, selfAttest: opts.iOwnThisDomain });
+        await resolveOwnership(url, { level, ownershipToken: opts.ownershipToken, selfAttest: opts.iOwnThisDomain, allowPrivate: opts.allowPrivate === true });
       }
     } catch (e) {
       if (e instanceof GateError) {
@@ -305,7 +306,7 @@ program
       process.exit(2);
     }
 
-    const ownership = await resolveOwnership(url, { level, ownershipToken: opts.ownershipToken, selfAttest: opts.iOwnThisDomain });
+    const ownership = await resolveOwnership(url, { level, ownershipToken: opts.ownershipToken, selfAttest: opts.iOwnThisDomain, allowPrivate: opts.allowPrivate === true });
     printConsentBanner(url, level, ownership, Number(opts.delayMs));
 
     let bundle;
@@ -314,6 +315,7 @@ program
         level,
         ownershipToken: opts.ownershipToken,
         selfAttest: opts.iOwnThisDomain,
+        allowPrivate: opts.allowPrivate === true,
         timeoutMs: Number(opts.timeoutMs),
         delayMs: Number(opts.delayMs),
         maxRequests: opts.maxRequests ? Number(opts.maxRequests) : undefined,
@@ -338,12 +340,14 @@ program
   .description("v0.4: generate a domain-ownership nonce + instructions (DNS TXT / .well-known) — or verify a published one with --check")
   .argument("<url>", "target origin (scheme://host[:port])")
   .option("--check <nonce>", "verify a nonce you have already published")
+  .option("--allow-private", "v1.1.1: let the SSRF guard verify .well-known on local/private hosts (CLI operator choice; IGNORED when ANUBIS_SERVICE=1)")
   .addHelpText("after", [
     "Examples:",
     "  anubis-guardian ownership https://example.com            # prints a fresh nonce + both instructions",
     "  anubis-guardian ownership https://example.com --check <nonce>   # exit 0 = VERIFIED, 1 = mismatch",
+    "  anubis-guardian ownership http://127.0.0.1:3000 --check <nonce> --allow-private   # local/staging verification",
   ].join("\n"))
-  .action(async (url: string, opts: { check?: string }) => {
+  .action(async (url: string, opts: { check?: string; allowPrivate?: boolean }) => {
     let u: URL;
     try { u = new URL(url); } catch {
       console.error("ownership: pass a full origin, e.g. https://example.com");
@@ -352,7 +356,7 @@ program
     const nonce = opts.check ?? generateNonce();
     if (opts.check) {
       try {
-        const res = await resolveOwnership(u.origin, { level: 2, ownershipToken: nonce });
+        const res = await resolveOwnership(u.origin, { level: 2, ownershipToken: nonce, allowPrivate: opts.allowPrivate === true });
         console.error(res.verified
           ? `VERIFIED via ${res.method} — Level 2 is unlocked for ${u.host}. Re-run scan-url with --ownership-token ${nonce} --level 2 (or 3).`
           : `NOT verified — the nonce was not found (DNS TXT or /.well-known). Level 2 stays locked.`);

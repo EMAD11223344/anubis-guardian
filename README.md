@@ -70,7 +70,7 @@ Existing scanners (Semgrep, Trivy, Gitleaks) are powerful but generic — they w
 | **L2 — discovery** | exposed `.env` / `.git` / SQL dumps / backups · directory listing · TRACE (XST) + risky `Allow` methods · exposed Swagger/GraphiQL · source maps shipping sources · auth/admin surface | **verified** — DNS TXT `anubis-guardian-challenge=<nonce>` or `/.well-known/anubis-guardian/<nonce>` (self-attestation is local-only and labeled) |
 | **L3 — verified-only** | L2 + **Supabase live anon probe** (`GET /rest/v1/<table>?limit=1` with the anon key from the public JS — live proof whether RLS holds) + **restricted differential access check** (`--active-tests`: GET-only, ≤24 endpoints, your two identities, values never stored) | **verified** — never the flag alone |
 
-Every URL report carries a **scan authorization record** (URL, timestamp, level, ownership method), hard rate limits (default 250 ms between requests, per-level caps 40/120/150), and `robots.txt` awareness.
+Every URL report carries a **scan authorization record** (URL, timestamp, level, ownership method), hard rate limits (default 250 ms between requests, per-level caps 40/120/150), and `robots.txt` awareness. Since the SSRF guard, `scan-url` never dials private/loopback/link-local/cloud-metadata ranges by default — every DNS result is canonicalized and range-checked, then the connection pins the resolved IP (rebinding-proof); redirects are re-validated per hop (cap 10), https→http demotion and non-http(s) schemes refused. Local/staging targets need `--allow-private` (CLI only — ignored when `ANUBIS_SERVICE=1`).
 
 > ⚠️ **The legal gate:** scanning systems you do not own is illegal in most jurisdictions. L2+ on a public domain requires a *verified* ownership nonce — `--i-own-this-domain` is a checkbox, not proof, and is only honored for localhost/private ranges.
 
@@ -153,7 +153,7 @@ node dist/cli.js scan-url https://example.com                 # L1 passive — f
 node dist/cli.js ownership https://example.com                # prints nonce + DNS TXT / .well-known instructions
 node dist/cli.js ownership https://example.com --check <nonce>
 node dist/cli.js scan-url https://example.com --level 2 --ownership-token <nonce>   # L2 (verified)
-node dist/cli.js scan-url http://127.0.0.1:3000 --level 2 --i-own-this-domain       # local/staging only (labeled)
+node dist/cli.js scan-url http://127.0.0.1:3000 --level 2 --i-own-this-domain --allow-private   # local/staging (labeled; guard needs the flag for private ranges)
 node dist/cli.js scan-url https://example.com --level 3 --ownership-token <nonce>   # L3 probe (verified)
 
 # v1.0 — restricted differential access check (L3 only, GET-only, your own site):

@@ -65,6 +65,7 @@ export interface UrlScanOptions {
   level: 1 | 2 | 3;
   ownershipToken?: string;    // user-published nonce to verify (DNS TXT / .well-known)
   selfAttest?: boolean;       // --i-own-this-domain — honored ONLY for local/private hosts
+  allowPrivate?: boolean;     // --allow-private (CLI mode) — let the SSRF guard dial local/private ranges; IGNORED when ANUBIS_SERVICE=1
   timeoutMs?: number;         // per request, default 10_000
   delayMs?: number;           // min interval between same-host requests, default 250
   maxRequests?: number;       // hard cap; default per level (40 / 120 / 150)

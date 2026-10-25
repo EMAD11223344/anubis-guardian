@@ -127,15 +127,23 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
   `git log` / `git ls-files` are never imported into the report (no foreign
   HIST findings, no foreign tracked-file paths). `ls-files` output is always
   rebased target-relative.
-- URL Mode performs **no private-IP / redirect-hop / DNS-rebinding network
-  validation**: `Fetcher` follows redirects anywhere (fetch: `redirect:"follow"`,
-  TRACE via raw node:http) and `isLocalOrPrivate` is checked on the hostname
-  *string* for ownership labeling — never against the RESOLVED address. That is
-  fine for the operator-run CLI model (the operator already owns the machine),
-  and UNSAFE if `scan-url` were ever exposed as a hosted service (SSRF into
-  RFC1918/loopback/link-local/cloud-metadata, incl. redirect + rebind bypasses).
-  An SSRF guard (resolve→pin→re-validate every hop) is REQUIRED before any
-  web-service deployment — proposed, not yet implemented.
+- URL Mode network exposure — CLOSED by the SSRF guard (v1.1.1 hardening,
+  `src/urlmode/ssrf-guard.ts`, zero new deps): every `Fetcher` dial (and the
+  `inspectTls` probe) now runs resolve→pin→connect — one `dns.lookup(all:true)`
+  per hop, EVERY returned address validated against binary-canonical forms of
+  the blocked ranges (loopback, RFC1918, link-local, CGNAT, ULA, v4-mapped/NAT64
+  IPv6), then the connection is dialed to the PINNED IP with Host/SNI of the
+  original hostname (DNS rebinding closed by construction). Redirects are
+  followed manually (cap 10): every hop re-runs the full guard; https→http
+  demotion and non-http(s) schemes are refused. CLI mode blocks private
+  ranges by default (`--allow-private` re-opens them for local/staging
+  targets, per the documented Local staging contract; the ownership gate on
+  top is unchanged); cloud metadata endpoints (169.254.169.254 et al.) are
+  never dialable in any mode, flag or not. `ANUBIS_SERVICE=1` (service mode)
+  ignores `--allow-private`, allows ports 80/443/8080/8443 only, and enforces
+  5 MB response caps + 10s/30s timeouts. Residual, deliberately Phase 2:
+  the service-mode hard-exit-2 CLI wiring and any hosted deployment still
+  need their own review before exposure.
 - The advisory snapshot is a point-in-time capture per release; run
   `update-advisories` (or `--online`) for current registry state.
 - Dockerfile **ARG/ENV values are not evaluated** — DOCKER-003 is name-only by

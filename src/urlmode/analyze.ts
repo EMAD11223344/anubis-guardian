@@ -5,6 +5,7 @@ import { applySuppression, type RawFinding } from "../util.js";
 import { ADVISORY_SNAPSHOT, VERSION } from "../engine.js";
 import { SEVERITY_ORDER } from "../types.js";
 import { Fetcher } from "./fetcher.js";
+import { isServiceMode, assertPinnedTarget, SsrfRefusedError } from "./ssrf-guard.js";
 import {
   generateNonce, instructions, isLocalOrPrivate, verifyOwnership,
 } from "./ownership.js";
@@ -32,15 +33,30 @@ export class GateError extends Error {
 }
 
 /** TLS facts captured out-of-band (tls.connect) — deterministic per scan instant. */
-export function inspectTls(url: URL, timeoutMs: number): Promise<TlsInfo | null> {
+export async function inspectTls(url: URL, timeoutMs: number, allowPrivate = false): Promise<TlsInfo | null> {
+  if (url.protocol !== "https:") return null;
+  // The TLS probe is a REAL dial like any other — it goes through the same
+  // resolve→pin→connect guard (a raw tls.connect to the hostname would
+  // bypass the fetcher's protection and re-open the SSRF surface).
+  let pinned: { ip: string; host: string; port: number };
+  try {
+    const t = await assertPinnedTarget(url, { allowPrivate });
+    pinned = t;
+  } catch (e) {
+    if (e instanceof SsrfRefusedError) {
+      return { protocol: null, authorized: false, daysLeft: null, valid_from_iso: null, valid_to_iso: null, error: e.message };
+    }
+    throw e;
+  }
+  const port = url.port ? Number(url.port) : 443;
+  void pinned.port; // URL's own default-port resolution governs; pinned.port equals it
   return new Promise((resolve) => {
-    if (url.protocol !== "https:") return resolve(null);
-    const port = url.port ? Number(url.port) : 443;
     const done = (info: TlsInfo) => resolve(info);
     let settled = false;
     const finish = (info: TlsInfo) => { if (!settled) { settled = true; try { sock.destroy(); } catch { /* already closed */ } done(info); } };
+    // connect to the PINNED IP; SNI + cert subject stay the original hostname
     const sock = tlsConnect(
-      { host: url.hostname, port, servername: url.hostname, rejectUnauthorized: false, timeout: timeoutMs },
+      { host: pinned.ip, port, servername: pinned.host, rejectUnauthorized: false, timeout: timeoutMs },
       () => {
         const cert = sock.getPeerCertificate();
         const proto = sock.getProtocol();
@@ -90,7 +106,7 @@ export async function resolveOwnership(
   // explicit token → verify (DNS TXT first, then .well-known)
   if (opts.ownershipToken) {
     const check = verify ?? ((o: string, n: string) => {
-      const f = new Fetcher({ delayMs: opts.delayMs, timeoutMs: opts.timeoutMs, maxRequests: 4 });
+      const f = new Fetcher({ delayMs: opts.delayMs, timeoutMs: opts.timeoutMs, maxRequests: 4, allowPrivate: opts.allowPrivate === true });
       return verifyOwnership({ host, origin: o, nonce: n, fetcher: f });
     });
     const res = await check(origin, opts.ownershipToken);
@@ -157,6 +173,7 @@ export async function captureUrl(targetUrl: string, opts: UrlScanOptions, owners
     delayMs: opts.delayMs ?? 250,
     timeoutMs: opts.timeoutMs ?? 10_000,
     maxRequests: opts.maxRequests ?? cap,
+    allowPrivate: opts.allowPrivate === true,
   });
   const notes: string[] = [];
 
@@ -284,7 +301,14 @@ export async function captureUrl(targetUrl: string, opts: UrlScanOptions, owners
     notes.push(`active-tests: differential IDOR — ${endpoints.length} endpoint(s) × 2 identities (GET-only, cap ${IDOR_ENDPOINT_CAP}); header names used: ${names.join(", ")}`);
   }
 
-  const tls = await inspectTls(u, opts.timeoutMs ?? 10_000);
+  const tls = await inspectTls(u, opts.timeoutMs ?? 10_000, opts.allowPrivate === true);
+
+  // SSRF guard refusals are RECORDS, not network events: surface them in notes
+  // (a refusal never dialed — the report just shows which attempts were refused)
+  if (fetcher.guardRefusals.length > 0) {
+    notes.push(`ssrf-guard refusals: ${fetcher.guardRefusals.length} request(s) refused without dialing${isServiceMode() ? " (service mode)" : ""}`);
+    for (const r of fetcher.guardRefusals.slice(0, 10)) notes.push(`  ${r}`);
+  }
 
   return {
     capture_version: 1,

@@ -277,6 +277,194 @@ check("U13.5 sanitizer in window (escapeHtml) → clean", !taintIds('import { es
 check("U13.6 fixed-string send (no taint) → clean", !taintIds('app.get("/x", (req, res) => {\n  res.send("<h1>Welcome</h1>");\n});\n').includes("TAINT-005"));
 check("U13.7 concat send with GUARD var only (no source in args) → clean", !taintIds('app.post("/x", (req, res) => {\n  const token = req.headers.authorization;\n  if (!token) return res.send("<h1>Denied</h1>");\n  res.send("<h1>Ok</h1>");\n});\n').includes("TAINT-005"));
 
+// ---------- U14 — SSRF guard (v1.1.1 hardening) ----------
+// Contract under test (src/urlmode/ssrf-guard.ts):
+//   * canonicalize → binary range check (WHATWG URL + node:net IP.parse w/ manual fallback)
+//   * check runs on the RESOLVED address (dns.lookup all:true, every result validated)
+//   * resolve→pin→connect closes DNS rebinding by construction
+//   * manual redirects: cap 10, https→http demotion + non-http(s) refused
+//   * service mode (ANUBIS_SERVICE=1): ports 80/443/8080/8443 only, allowPrivate ignored
+const guard = await import(d("dist/urlmode/ssrf-guard.js"));
+const { parseIp, blockedAddressReason, validateAddress, assertPinnedTarget, assertNextHop,
+  SsrfRefusedError, isServiceMode, resetServiceModeCache, serviceMaxResponseBytes, SERVICE_ALLOWED_PORTS } = guard;
+const fetcherMod = await import(d("dist/urlmode/fetcher.js"));
+const { Fetcher } = fetcherMod;
+
+// refused literal forms — one check each (checked through the real entry path: WHATWG URL first)
+const refusedForms = [
+  ["U14.1", "http://127.0.0.1/", "loopback (127.0.0.0/8)"],
+  ["U14.2", "http://0x7f.0.0.1/", "loopback (127.0.0.0/8)"],          // WHATwg-normalized to 127.0.0.1
+  ["U14.3", "http://2130706433/", "loopback (127.0.0.0/8)"],          // uint32 form of the same address
+  ["U14.4", "http://[::1]/", "IPv6 loopback (::1)"],
+  ["U14.5", "http://[::ffff:127.0.0.1]/", "mapped IPv6 → loopback (127.0.0.0/8)"],
+  ["U14.6", "http://[::ffff:7f00:1]/", "mapped IPv6 → loopback (127.0.0.0/8)"],
+  ["U14.7", "http://10.0.0.1/", "RFC1918 private (10.0.0.0/8)"],
+  ["U14.8", "http://172.16.0.1/", "RFC1918 private (172.16.0.0/12)"],
+  ["U14.9", "http://192.168.1.1/", "RFC1918 private (192.168.0.0/16)"],
+  ["U14.10", "http://169.254.169.254/", "169.254.169.254 (cloud metadata)"],
+  ["U14.11", "http://[fc00::1]/", "IPv6 unique-local (fc00::/7)"],
+  ["U14.12", "http://[fe80::1]/", "IPv6 link-local (fe80::/10)"],
+  ["U14.13", "http://100.64.0.1/", "CGNAT shared address space (100.64.0.0/10)"],
+  ["U14.14", "http://0.0.0.0/", "this-network (0.0.0.0/8)"],
+];
+for (const [id, u, want] of refusedForms) {
+  let threw = null;
+  try { await assertPinnedTarget(u); } catch (e) { threw = e; }
+  check(`${id}: guard refuses ${u} — ${want}`,
+    threw instanceof SsrfRefusedError && threw.message.includes(want) && threw.message.startsWith("SSRF-REFUSED"),
+    threw ? threw.message.slice(0, 120) : "was allowed");
+}
+check("U14.1b: binary canonicalization agrees on all refused forms",
+  validateAddress("127.0.0.1") === null && validateAddress("0.0.0.0") === null
+  && validateAddress("10.0.0.1") === null && validateAddress("169.254.169.254") === null
+  && parseIp("::ffff:7f00:1") !== null
+  && blockedAddressReason(parseIp("::ffff:7f00:1"))?.includes("mapped") === true
+  && validateAddress("93.184.216.34") !== null && validateAddress("2606:2800:220:1:248:1893:25c8:1946") !== null);
+
+// the check runs on the RESOLVED address, not the hostname string
+const lookup10 = async () => [{ address: "10.0.0.7", family: 4 }];
+let t15 = null;
+try { await assertPinnedTarget("http://internal.example/", { lookup: lookup10 }); } catch (e) { t15 = e; }
+check("U14.15: hostname resolving to a private range is refused (check on RESOLVED addr)",
+  t15 instanceof SsrfRefusedError && /resolved to a blocked range/.test(t15.message), t15?.message.slice(0, 100));
+
+const PUB = { address: "93.184.216.34", family: 4 };
+let pinned = null;
+try { pinned = await assertPinnedTarget("http://example.test/", { lookup: async () => [PUB] }); } catch (e) { pinned = e; }
+check("U14.16: resolve→pin — public resolution pins the IP + keeps hostname for Host/SNI",
+  pinned && !(pinned instanceof Error) && pinned.ip === "93.184.216.34" && pinned.family === 4
+  && pinned.host === "example.test" && pinned.port === 80
+  && pinned.candidates.length === 1 && pinned.candidates[0].address === "93.184.216.34",
+  JSON.stringify(pinned));
+
+// ---------- U14 E2E fixture: in-process local server for redirect-hop refusals ----------
+const { createServer } = await import("node:http");
+const e2e = createServer((req, res) => {
+  if (req.url === "/meta") { res.writeHead(302, { location: "http://169.254.169.254/latest/meta-data/" }); return res.end(); }
+  if (req.url === "/ftp") { res.writeHead(302, { location: "ftp://rebind.example/x" }); return res.end(); }
+  if (req.url === "/hop") { res.writeHead(302, { location: "/ok" }); return res.end(); }
+  res.writeHead(200, { "content-type": "text/plain", "x-method": req.method ?? "", "x-echo-host": req.headers.host ?? "" });
+  res.end(String(req.method));
+});
+await new Promise((r) => e2e.listen(0, "127.0.0.1", r));
+const e2ePort = e2e.address().port;
+const e2eBase = `http://127.0.0.1:${e2ePort}`;
+try {
+  const fbasic = new Fetcher({ delayMs: 1, timeoutMs: 3_000, maxRequests: 5, allowPrivate: true });
+  const basic = await fbasic.get(`${e2eBase}/ok`);
+  check("U14.29: rewritten transport still dials localhost (pinned-IP request, 200 + body)",
+    basic !== null && basic.status === 200 && basic.body === "GET" && basic.final_url === `${e2eBase}/ok` && basic.error === undefined,
+    JSON.stringify(basic));
+  check("U14.29b: pinned dial sends Host of the original hostname (echoed by the fixture)",
+    fbasic.requests[0]?.headers["x-echo-host"] === `127.0.0.1:${e2ePort}`,
+    JSON.stringify(fbasic.requests[0]?.headers));
+  check("U14.30: TRACE probe rides the same guarded dial (no redirects sent)",
+    (async () => {
+      const f = new Fetcher({ delayMs: 1, timeoutMs: 3_000, maxRequests: 5, allowPrivate: true });
+      const r = await f.send("TRACE", `${e2eBase}/ok`);
+      return r !== null && r.status === 200 && r.method === "TRACE" && r.body === "TRACE";
+    })());
+  check("U14.31: manual redirect hop loop follows same-scheme 302 (final captured, hops re-guarded)",
+    (async () => {
+      const f = new Fetcher({ delayMs: 1, timeoutMs: 3_000, maxRequests: 5, allowPrivate: true });
+      const r = await f.get(`${e2eBase}/hop`);
+      return r !== null && r.status === 200 && r.final_url === `${e2eBase}/ok`;
+    })());
+
+  const fmeta = new Fetcher({ delayMs: 1, timeoutMs: 3_000, maxRequests: 5, allowPrivate: true });
+  const meta = await fmeta.get(`${e2eBase}/meta`);
+  check("U14.17: 302 redirect to 169.254.169.254 refused mid-hop (via real local server)",
+    meta !== null && meta.status === 302 && meta.error?.startsWith("SSRF-REFUSED")
+    && /cloud metadata/.test(meta.error) && fmeta.guardRefusals.length === 1,
+    JSON.stringify({ status: meta?.status, error: meta?.error, refusals: fmeta.guardRefusals }));
+  check("U14.17b: cloud metadata refused EVEN WITH --allow-private (flag never spends metadata)",
+    (async () => {
+      try { await assertPinnedTarget("http://169.254.169.254/", { allowPrivate: true }); return false; }
+      catch (e) { return e instanceof SsrfRefusedError && /cloud metadata/.test(e.message); }
+    })());
+
+  const fftp = new Fetcher({ delayMs: 1, timeoutMs: 3_000, maxRequests: 5, allowPrivate: true });
+  const ftp = await fftp.get(`${e2eBase}/ftp`);
+  check("U14.19: 302 redirect to non-http(s) scheme (ftp) refused mid-hop",
+    ftp !== null && ftp.status === 302 && ftp.error?.startsWith("SSRF-REFUSED") && /non-http\(s\)/.test(ftp.error),
+    JSON.stringify({ status: ftp?.status, error: ftp?.error }));
+} finally {
+  e2e.close();
+}
+
+// unit-level hop-policy checks (demotion needs an https hop — covered at policy level)
+let dem = null;
+try { assertNextHop(new URL("https://public.example/a"), "http://public.example/b"); } catch (e) { dem = e; }
+check("U14.18: https→http redirect demotion refused", dem instanceof SsrfRefusedError && /demotion/.test(dem.message), dem?.message?.slice(0, 100));
+check("U14.18b: relative + absolute http(s) hops accepted",
+  assertNextHop(new URL("http://a.example/x"), "/y") === "http://a.example/y"
+  && assertNextHop(new URL("http://a.example/x"), "https://b.example/z") === "https://b.example/z");
+let badLoc = null;
+try { assertNextHop(new URL("http://a.example/x"), "http://[bad"); } catch (e) { badLoc = e; }
+check("U14.18c: unparseable Location refused", badLoc instanceof SsrfRefusedError);
+
+// pinned rebinding: one lookup per hop, flipped DNS answers cannot slip through
+const rebindSeq = [PUB, { address: "127.0.0.1", family: 4 }];
+const rebindLookup = async () => rebindSeq.shift() ?? PUB;
+check("U14.20: sequential-lookup rebinding — public first, loopback second → second REFUSED",
+  (async () => {
+    try { await assertPinnedTarget("http://rebind.example/", { lookup: rebindLookup }); }
+    catch { return false; } // first lookup must succeed
+    try { await assertPinnedTarget("http://rebind.example/", { lookup: rebindLookup }); return false; }
+    catch (e) { return e instanceof SsrfRefusedError && /resolved to a blocked range/.test(e.message); }
+  })());
+check("U14.21: pin closes the rebinding window — ONE lookup per hop by contract",
+  (async () => {
+    let calls = 0;
+    const counting = async () => { calls += 1; return [PUB]; };
+    await assertPinnedTarget("http://pin.example/", { lookup: counting });
+    await assertPinnedTarget("http://pin.example/", { lookup: counting });
+    return calls === 2; // exactly one lookup per guarded hop
+  })());
+
+// ---------- service mode (ANUBIS_SERVICE=1) ----------
+process.env.ANUBIS_SERVICE = "1";
+resetServiceModeCache();
+try {
+  for (const [id, port] of [["U14.22", 6379], ["U14.23", 22], ["U14.24", 3306]]) {
+    let t = null;
+    try { await assertPinnedTarget(`http://127.0.0.1:${port}/`, { allowPrivate: true }); } catch (e) { t = e; }
+    check(`${id}: service mode refuses port ${port} (allowlist 80/443/8080/8443)`,
+      t instanceof SsrfRefusedError && /80\/443\/8080\/8443/.test(t.message), t?.message?.slice(0, 110));
+  }
+  let t25 = null;
+  try { await assertPinnedTarget("http://127.0.0.1/", { allowPrivate: true }); } catch (e) { t25 = e; }
+  check("U14.25: service mode IGNORES allow-private — loopback refused even with the flag",
+    t25 instanceof SsrfRefusedError && /service mode/.test(t25.message), t25?.message?.slice(0, 110));
+  check("U14.26: service mode still serves the default ports (policy positive)",
+    (async () => {
+      try { await assertPinnedTarget("http://127.0.0.1/", { allowPrivate: true }); return false; } // loopback must stay refused
+      catch { /* refused for the RANGE, not the port — prove via a public pin */ }
+      const p8080 = await assertPinnedTarget("http://service.test:8080/", { lookup: async () => [PUB] });
+      const p8443 = await assertPinnedTarget("https://service.test:8443/", { lookup: async () => [PUB] });
+      const p80 = await assertPinnedTarget("http://service.test/", { lookup: async () => [PUB] });
+      return p8080.port === 8080 && p8443.port === 8443 && p80.port === 80;
+    })());
+} finally {
+  delete process.env.ANUBIS_SERVICE;
+  resetServiceModeCache();
+}
+check("U14.27: CLI mode (no ANUBIS_SERVICE) — --allow-private lets localhost through",
+  (await assertPinnedTarget("http://127.0.0.1:3000/", { allowPrivate: true })).ip === "127.0.0.1"
+  && !isServiceMode());
+check("U14.28: service limits — 5 MB default response cap, env-overridable, ports set exact",
+  serviceMaxResponseBytes() === 5 * 1024 * 1024
+  && JSON.stringify([...SERVICE_ALLOWED_PORTS].sort((a, b) => a - b)) === JSON.stringify([80, 443, 8080, 8443]));
+{
+  process.env.ANUBIS_MAX_RESPONSE_BYTES = "1024";
+  try {
+    const n = serviceMaxResponseBytes();
+    process.env.ANUBIS_MAX_RESPONSE_BYTES = "bogus";
+    const n2 = serviceMaxResponseBytes();
+    check("U14.28b: ANUBIS_MAX_RESPONSE_BYTES honored, garbage ignored", n === 1024 && n2 === 5 * 1024 * 1024);
+  } finally { delete process.env.ANUBIS_MAX_RESPONSE_BYTES; }
+}
+
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);
 if (FAILS.length) {

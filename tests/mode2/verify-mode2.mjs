@@ -45,7 +45,7 @@ process.on("SIGINT", cleanup);
 try {
   // ---- L2 self-attested scan (localhost → self-attestation honored + labeled) ----
   const findingsPath = join(TMP, "findings-l2.json");
-  const r = spawnSync("node", [CLI, "scan-url", BASE, "--level", "2", "--i-own-this-domain",
+  const r = spawnSync("node", [CLI, "scan-url", BASE, "--level", "2", "--i-own-this-domain", "--allow-private",
     "--delay-ms", "5", "--format", "json", "--output", findingsPath], { encoding: "utf8" });
   check("L2 self-attested scan exits 0", r.status === 0, `exit=${r.status} stderr=${r.stderr?.slice(0, 400)}`);
 
@@ -104,7 +104,7 @@ try {
   check("score/grade consistent with findings", typeof result.score === "number" && result.score < 40 && result.grade === "F");
 
   // ---- CI gate ----
-  const gate = spawnSync("node", [CLI, "scan-url", BASE, "--level", "1", "--delay-ms", "5", "--fail-on", "high"], { encoding: "utf8" });
+  const gate = spawnSync("node", [CLI, "scan-url", BASE, "--level", "1", "--allow-private", "--delay-ms", "5", "--fail-on", "high"], { encoding: "utf8" });
   check("--fail-on high exits 1 on planted findings", gate.status === 1, `exit=${gate.status}`);
 } finally {
   cleanup();

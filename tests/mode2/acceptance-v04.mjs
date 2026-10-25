@@ -67,7 +67,7 @@ const requestLog = async () => {
 try {
   // ================= A — L1 is truly passive =================
   const l1cap = join(TMP, "l1-capture.json");
-  const a = run(["scan-url", BAD, "--level", "1", "--delay-ms", "5", "--capture", l1cap, "--format", "json", "-o", join(TMP, "l1.json")]);
+  const a = run(["scan-url", BAD, "--level", "1", "--allow-private", "--delay-ms", "5", "--capture", l1cap, "--format", "json", "-o", join(TMP, "l1.json")]);
   check("A1: L1 scan exits 0 with no ownership", a.code === 0, `exit=${a.code}`);
   const l1 = JSON.parse(readFileSync(join(TMP, "l1.json"), "utf8"));
   const l1log = await requestLog();
@@ -97,12 +97,12 @@ try {
   check("B6: local target L2 without any ownership flag → exit 2 with local-path hint", b4.code === 2 && /--i-own-this-domain/.test(b4.err));
 
   // ================= C — verified ownership =================
-  const c1 = run(["scan-url", BAD, "--level", "2", "--ownership-token", NONCE, "--delay-ms", "5", "--format", "json", "-o", join(TMP, "c1.json")]);
+  const c1 = run(["scan-url", BAD, "--level", "2", "--ownership-token", NONCE, "--allow-private", "--delay-ms", "5", "--format", "json", "-o", join(TMP, "c1.json")]);
   check("C1: L2 with correct .well-known nonce exits 0", c1.code === 0, `exit=${c1.code}`);
   const c1r = JSON.parse(readFileSync(join(TMP, "c1.json"), "utf8"));
   check("C2: ownership method = well-known, verified = true",
     c1r.url_meta.authorization.ownership_method === "well-known" && c1r.url_meta.authorization.ownership_verified === true);
-  const c2 = run(["scan-url", BAD, "--level", "2", "--ownership-token", "wrong-nonce-000", "--delay-ms", "5"]);
+  const c2 = run(["scan-url", BAD, "--level", "2", "--ownership-token", "wrong-nonce-000", "--allow-private", "--delay-ms", "5"]);
   check("C3: wrong nonce → exit 2 (level stays locked)", c2.code === 2);
   // DNS TXT unit test — injected resolver (offline)
   const { verifyDnsTxt } = await import(pathToFileURL(join(ROOT, "dist", "urlmode", "ownership.js")).href);
@@ -175,13 +175,13 @@ try {
 
   // ================= G — rate limiting =================
   const g0 = Date.now();
-  run(["scan-url", BAD, "--level", "1", "--delay-ms", "150", "--format", "json", "-o", join(TMP, "g.json")]);
+  run(["scan-url", BAD, "--level", "1", "--allow-private", "--delay-ms", "150", "--format", "json", "-o", join(TMP, "g.json")]);
   const gElapsed = Date.now() - g0;
   const gCount = (await requestLog()).length; // cumulative; the L1 run above adds ~6
   check("G1: rate limit enforced (parallel browser-equivalent batches, min-interval pacing ⇒ ≥450ms wall)", gElapsed >= 450, `elapsed=${gElapsed}ms`);
 
   // ================= H — clean control =================
-  const h = run(["scan-url", CLEAN, "--level", "1", "--delay-ms", "5", "--format", "json", "-o", join(TMP, "h.json")]);
+  const h = run(["scan-url", CLEAN, "--level", "1", "--allow-private", "--delay-ms", "5", "--format", "json", "-o", join(TMP, "h.json")]);
   const h1 = JSON.parse(readFileSync(join(TMP, "h.json"), "utf8"));
   const hIds = h1.findings.filter((f) => f.suppression === null).map((f) => f.id).sort();
   check("H1: clean site exits 0", h.code === 0);
@@ -192,9 +192,9 @@ try {
   // ================= I — ownership command =================
   const i1 = run(["ownership", BAD]);
   check("I1: ownership generates nonce + both instructions", i1.code === 0 && /anubis-guardian-challenge=/.test(i1.err) && /\/\.well-known\/anubis-guardian\//.test(i1.err));
-  const i2 = run(["ownership", BAD, "--check", NONCE]);
+  const i2 = run(["ownership", BAD, "--check", NONCE, "--allow-private"]);
   check("I2: ownership --check verifies the published nonce (exit 0)", i2.code === 0, `exit=${i2.code} ${i2.err.slice(0, 120)}`);
-  const i3 = run(["ownership", BAD, "--check", "nope"]);
+  const i3 = run(["ownership", BAD, "--check", "nope", "--allow-private"]);
   check("I3: ownership --check wrong nonce → exit 1", i3.code === 1);
 
   // ================= J — gates + help surface =================
