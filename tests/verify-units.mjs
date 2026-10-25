@@ -12,10 +12,12 @@
  *   U9  util: excludeToRegExp (--exclude glob subset, v1.0.2)
  *   U10 packs2: JWT-002 { algorithms: undefined } is runtime-unpinned (fires MEDIUM)
  *   U11 walk: CRLF EOL robustness (no trailing \r; CI-003 stays alive on CRLF checkouts)
+ *   U12 rules/history: gitScope containment (history/ls-files must NEVER import an unrelated ancestor repo)
+ *   U13 rules/taint: TAINT-005 sink shapes (backtick send, string-concat send, res.write/res.end)
  * All imports come from dist/ — run after `npm run build` (the npm test chain does).
  */
 import { createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -63,6 +65,10 @@ check("U1.16 versionInRange: multi-pair segment 2", versionInRange("3.5.0", mult
 check("U1.17 versionInRange: no events → implicit introduced 0", versionInRange("0.0.1", []) === true);
 check("U1.18 affects: garbage version → false", affects({ ranges: [{ events: ev([{ t: "introduced", v: "1.0.0" }]) }] }, "whatver") === false);
 check("U1.19 affects: any-range match (multi-range advisories)", affects({ ranges: [{ events: ev([{ t: "introduced", v: "10.0.0" }, { t: "fixed", v: "15.5.28" }]) }, { events: ev([{ t: "introduced", v: "16.0.0" }, { t: "fixed", v: "16.4.1" }]) }] }, "16.2.0") === true);
+// U1.20–21: typosquat radius — short names need distance ≤ 1 (real-world FP fix, community-reported)
+const { nearestPopular } = await import(d("dist/advisory/popular.js"));
+check("U1.20 short legit names NOT typosquat FPs (nyc/hbs/ai/z85)", nearestPopular("nyc") === null && nearestPopular("hbs") === null && nearestPopular("ai") === null && nearestPopular("z85") === null);
+check("U1.21 names ≥ 5 chars keep radius 2 (expres→express d=1 seed 22 stays; config→conf d=2)", JSON.stringify(nearestPopular("expres") ?? {}) === JSON.stringify({ target: "express", distance: 1 }) && nearestPopular("config")?.target === "conf");
 
 // ---------- U2: util masking/suppression contracts ----------
 const m = maskSecret("sbp_a1B2c3D4e5F6g7H8i9J0kLmNoPqRsTuV");
@@ -213,6 +219,61 @@ const crlfContent = walkedU11[0].content;
 const crlfFile = { abs: join(crlfDir, "deploy.yml"), rel: ".github/workflows/deploy.yml", content: crlfContent, lines: crlfContent.split(/\r?\n/) };
 check("U11.2 scanCi fires CI-003 on the walked CRLF file (rule previously dead on CRLF-only checkouts)", scanCi({ rel: (x) => x, files: [crlfFile] }).findings.some((x) => x.id === "CI-003"));
 rmSync(crlfDir, { recursive: true, force: true });
+
+// ---------- U12: gitScope containment (history/ls-files must never import an unrelated ancestor repo) ----------
+// Community fix, ported from the v1.0.1 fork. Without gitScope, scanning a plain
+// folder sitting inside an unrelated git repo attributed that repo's entire
+// history to the report (foreign HIST-00x findings with foreign file paths).
+const { gitScope, gitAvailable, trackedFiles } = await import(d("dist/rules/history.js"));
+const { execFileSync: xfs } = await import("node:child_process");
+
+const GS = mkdtempSync(join(tmpdir(), "anubis-u12-"));
+const OUTER = join(GS, "outer");
+const INNER = join(OUTER, "target"); // plain folder inside an unrelated repo — untracked
+mkdirSync(INNER, { recursive: true });
+const g = (args, cwd) => xfs("git", args, { cwd, stdio: "pipe" });
+g(["init", "-q"], OUTER);
+// push-safe history-secret fixture: HIST-007 DB-URL-with-password (same pattern family as the v02 SEC-008 fixture)
+writeFileSync(join(OUTER, "leaked.txt"), 'export const DATABASE_URL = "postgres://admin:S3cureDb-Pass@db.prod.anubis-internal:5432/app";\n', "utf8");
+g(["-c", "user.email=t@t.local", "-c", "user.name=t", "add", "."], OUTER);
+g(["-c", "user.email=t@t.local", "-c", "user.name=t", "commit", "-qm", "outer history"], OUTER);
+writeFileSync(join(INNER, "app.ts"), "export const x = 1;\n", "utf8");
+
+const scopeNone = gitScope(INNER);
+check("U12.1 untracked folder inside unrelated repo → NO git scope", scopeNone === null && gitAvailable(INNER) === false);
+
+g(["add", "target/app.ts"], OUTER);
+g(["-c", "user.email=t@t.local", "-c", "user.name=t", "commit", "-qm", "track target"], OUTER);
+const scopeSome = gitScope(INNER);
+check("U12.2 tracked subtree → scope with correct rel", scopeSome !== null && scopeSome.rel === "target" && scopeSome.toplevel.replace(/\\/g, "/").endsWith("/outer"));
+check("U12.3 gitAvailable mirrors gitScope", gitAvailable(INNER) === true);
+check("U12.4 trackedFiles scoped + target-relative", JSON.stringify([...trackedFiles(INNER)].sort()) === JSON.stringify(["app.ts"]));
+
+// E2E: scanning the untracked folder must import ZERO history secrets from the ancestor
+const rep = join(GS, "f.json");
+xfs(process.execPath, [join(ROOT, "dist/cli.js"), "scan", INNER, "--format", "json", "--output", rep], { cwd: ROOT, stdio: "pipe" });
+const repJson = JSON.parse(readFileSync(rep, "utf8"));
+const histIds = ["HIST-001", "HIST-002", "HIST-003", "HIST-004", "HIST-005", "HIST-006", "HIST-007", "HIST-008", "HIST-ENV"];
+check("U12.5 unrelated-ancestor scan: zero history-secret imports (the commit-then-leak stays out)", !repJson.findings.some((f) => histIds.includes(f.id)));
+
+// same-folder scan of the repo ROOT still sees its own history (leak IS detected there)
+const rep2 = join(GS, "f2.json");
+xfs(process.execPath, [join(ROOT, "dist/cli.js"), "scan", OUTER, "--format", "json", "--output", rep2], { cwd: ROOT, stdio: "pipe" });
+const rep2Json = JSON.parse(readFileSync(rep2, "utf8"));
+check("U12.6 repo-root scan still detects its own leaked history secret (HIST-007)", rep2Json.findings.some((f) => f.id === "HIST-007"));
+rmSync(GS, { recursive: true, force: true });
+
+// ---------- U13: TAINT-005 reflected-XSS sink shapes (string concat + backticks, community fix) ----------
+const { scanTaint } = await import(d("dist/rules/taint.js"));
+const tctx = (content) => ({ files: [{ abs: "/p/server/app.js", rel: "server/app.js", content, lines: content.split("\n") }] });
+const taintIds = (c) => scanTaint(tctx(c)).findings.map((f) => f.id);
+check("U13.1 res.send with backtick template + ${req.query.x} → TAINT-005 (honeypot seed 45 shape)", taintIds("export function h(req, res) {\n  res.send(`<h1>Hi ${req.query.name}</h1>`);\n}\n").includes("TAINT-005"));
+check("U13.2 res.send with STRING CONCAT ('<h1>' + req.query.x) → TAINT-005 (was invisible)", taintIds('const express = require("express");\napp.get("/greet", (req, res) => {\n  res.send("<h1>Hi " + req.query.name + "</h1>");\n});\n').includes("TAINT-005"));
+check("U13.3 res.write with string concat → TAINT-005", taintIds('app.get("/x", (req, res) => {\n  res.write("<p>" + req.query.q + "</p>");\n});\n').includes("TAINT-005"));
+check("U13.4 tainted var via const + concat send → TAINT-005", taintIds('app.get("/x", (req, res) => {\n  const q = req.query.q;\n  res.send("<i>" + q + "</i>");\n});\n').includes("TAINT-005"));
+check("U13.5 sanitizer in window (escapeHtml) → clean", !taintIds('import { escapeHtml } from "./esc";\napp.get("/x", (req, res) => {\n  res.send("<i>" + escapeHtml(req.query.q) + "</i>");\n});\n').includes("TAINT-005"));
+check("U13.6 fixed-string send (no taint) → clean", !taintIds('app.get("/x", (req, res) => {\n  res.send("<h1>Welcome</h1>");\n});\n').includes("TAINT-005"));
+check("U13.7 concat send with GUARD var only (no source in args) → clean", !taintIds('app.post("/x", (req, res) => {\n  const token = req.headers.authorization;\n  if (!token) return res.send("<h1>Denied</h1>");\n  res.send("<h1>Ok</h1>");\n});\n').includes("TAINT-005"));
 
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);

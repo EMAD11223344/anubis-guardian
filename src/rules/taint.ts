@@ -66,7 +66,7 @@ const SINK_RULES: Array<{
   {
     id: "TAINT-005",
     title: "User-controlled value flows into server-rendered HTML — reflected XSS",
-    sink: /(?:dangerouslySetInnerHTML|\.send\s*\(\s*`|res\.write\s*\(\s*`|innerHTML\s*=)/.source,
+    sink: /(?:dangerouslySetInnerHTML|\.send\s*\(\s*["'`]|res\.(?:write|end)\s*\(\s*["'`]|innerHTML\s*=)/.source,
     sanitizer: /escape|sanitize|DOMPurify|encodeHTML|he\.encode|escapeHtml/,
     owasp: "A03",
     fix: "Escape the value before it enters HTML (or render as text, never raw HTML); if HTML is required, sanitize server-side with an allowlist-based sanitizer.",

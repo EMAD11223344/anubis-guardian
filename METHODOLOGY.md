@@ -121,8 +121,12 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
   registry in every report states what ran.
 - URL Mode is a black box: no server internals, no subdomain takeover, no DNS
   level attacks, no business-logic flaws beyond the restricted differential check.
-- Git-history scanning requires a git repository (`git ls-files`); without one,
-  history layers are skipped and reported as such.
+- Git-history scanning requires that the scan root sit inside a git repository
+  that actually **tracks files under the scan root** (`gitScope`). An untracked
+  folder inside an unrelated ancestor repo gets NO history layer — that repo's
+  `git log` / `git ls-files` are never imported into the report (no foreign
+  HIST findings, no foreign tracked-file paths). `ls-files` output is always
+  rebased target-relative.
 - The advisory snapshot is a point-in-time capture per release; run
   `update-advisories` (or `--online`) for current registry state.
 - Dockerfile **ARG/ENV values are not evaluated** — DOCKER-003 is name-only by

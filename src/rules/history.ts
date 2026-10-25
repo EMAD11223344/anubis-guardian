@@ -1,7 +1,47 @@
 import { execFileSync } from "node:child_process";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 import type { ScanContext, RuleResult } from "../types.js";
 import { maskSecret, rootCause } from "../util.js";
+
+/** Canonical forward-slash form (Windows-safe — same contract as context.normalizeAbs). */
+const norm = (p: string) => p.replace(/\\/g, "/");
+
+/**
+ * Resolve the git repo that CONTAINS rootDir, plus rootDir's path inside it.
+ * Returns null when:
+ *  - rootDir is not inside a repo at all, OR
+ *  - the enclosing repo does not track anything under rootDir (unrelated ancestor).
+ * Without this containment check, `git log -p` run from a plain folder sitting
+ * inside an UNRELATED git repo imported that repo's entire history into the
+ * target's report (foreign HIST-00x findings with foreign file paths) — found by
+ * real-world testing, not by the in-repo suites, because every fixture happens
+ * to carry its own .git. Same discipline applies to `git ls-files` (trackedFiles).
+ * (Community contribution, ported from the v1.0.1 fork — accepted as a real fix.)
+ */
+export function gitScope(rootDir: string): { toplevel: string; rel: string } | null {
+  try {
+    const toplevel = norm(execFileSync("git", ["rev-parse", "--show-toplevel"],
+      { cwd: rootDir, stdio: "pipe", maxBuffer: 1 << 16, encoding: "utf8" }).trim());
+    if (!toplevel) return null;
+    const rel = norm(relative(resolve(toplevel), resolve(rootDir)));
+    if (rel === "" || rel === ".") return { toplevel, rel: "" };
+    if (rel.startsWith("../")) return null; // paranoid: toplevel is not an ancestor of the target
+    // the enclosing repo must actually TRACK files under the target — otherwise its
+    // history is unrelated to the target and must never be imported
+    const inside = execFileSync("git", ["ls-files", "--", rel],
+      { cwd: toplevel, stdio: "pipe", maxBuffer: 4 << 20, encoding: "utf8" });
+    if (!inside.trim()) return null;
+    return { toplevel, rel };
+  } catch { return null; }
+}
+
+/** strip the toplevel→target prefix from a repo-root-relative path */
+function rebase(scope: { rel: string }, p: string): string | null {
+  const np = norm(p);
+  if (!scope.rel) return np;
+  const prefix = scope.rel + "/";
+  return np.startsWith(prefix) ? np.slice(prefix.length) : null;
+}
 
 /**
  * Layer 2 — Git history & config exposure (Plan Section 6).
@@ -24,18 +64,23 @@ const ENV_FILE_RE = /^\.env(\..+)?$/;
 
 export function scanHistory(ctx: ScanContext): RuleResult {
   const findings: RuleResult["findings"] = [];
-  if (!ctx.gitAvailable) return { findings };
+  const scope = gitScope(ctx.rootDir);
+  if (!ctx.gitAvailable || !scope) return { findings };
 
   const git = (args: string[], maxBuf = 32 * 1024 * 1024): string => {
     try {
-      return execFileSync("git", args, { cwd: ctx.rootDir, maxBuffer: maxBuf, encoding: "utf8" });
+      return execFileSync("git", args, { cwd: scope.toplevel, maxBuffer: maxBuf, encoding: "utf8" });
     } catch { return ""; }
   };
 
   // ---- 1) committed-then-deleted env files ----
-  const envAdds = git(["log", "--all", "--diff-filter=A", "--name-only", "--pretty=format:", "-z", "--", ".env", ".env.*"])
+  // (git runs at the toplevel; pathspec + rebase() keep results scoped to the target)
+  const envPathArgs = scope.rel ? ["--", join(scope.rel, ".env"), join(scope.rel, ".env.*")] : ["--", ".env", ".env.*"];
+  const envAdds = git(["log", "--all", "--diff-filter=A", "--name-only", "--pretty=format:", "-z", ...envPathArgs])
     .split("\0").map((s) => s.trim()).filter(Boolean);
-  const envEverCommitted = [...new Set(envAdds.filter((p) => ENV_FILE_RE.test(p)))];
+  const envEverCommitted = [...new Set(
+    envAdds.map((p) => rebase(scope, p)).filter((p): p is string => p !== null && ENV_FILE_RE.test(p))
+  )];
 
   for (const envPath of envEverCommitted) {
     const stillTracked = ctx.trackedFiles.has(envPath);
@@ -64,13 +109,16 @@ export function scanHistory(ctx: ScanContext): RuleResult {
   }
 
   // ---- 2) secret-shaped lines added anywhere in history (cap commits for performance) ----
-  const diff = git(["log", "-p", "-U0", "--no-color", "--all", "--max-count=400"]);
+  // pathspec filter: when the target is a subtree of a bigger repo, ONLY that
+  // subtree's history may be attributed to the report (never sibling dirs).
+  const diff = git(["log", "-p", "-U0", "--no-color", "--all", "--max-count=400",
+    ...(scope.rel ? ["--", scope.rel] : [])]);
   const seen = new Set<string>();
   const lines = diff.split("\n");
   let currentFile = "";
   for (const line of lines) {
     const fm = line.match(/^\+\+\+\s+b\/(.+)$/);
-    if (fm) { currentFile = fm[1]; continue; }
+    if (fm) { currentFile = rebase(scope, fm[1]) ?? ""; continue; }
     if (!line.startsWith("+") || line.startsWith("+++")) continue;
     const content = line.slice(1);
     if (content.length > 500) continue;
@@ -143,15 +191,19 @@ export function scanHistory(ctx: ScanContext): RuleResult {
 }
 
 export function gitAvailable(rootDir: string): boolean {
-  try {
-    execFileSync("git", ["rev-parse", "--git-dir"], { cwd: rootDir, stdio: "pipe" });
-    return true;
-  } catch { return false; }
+  return gitScope(rootDir) !== null;
 }
 
+/** Tracked files, TARGET-relative and scoped to the target subtree.
+ *  `git ls-files` run bare from a subdirectory prints the WHOLE repo's files —
+ *  scope + rebase keep the contract "paths are relative to the scan root". */
 export function trackedFiles(rootDir: string): Set<string> {
   try {
-    const out = execFileSync("git", ["ls-files"], { cwd: rootDir, maxBuffer: 16 * 1024 * 1024, encoding: "utf8" });
-    return new Set(out.split("\n").map((s) => s.trim()).filter(Boolean));
+    const scope = gitScope(rootDir);
+    if (!scope) return new Set();
+    const args = scope.rel ? ["ls-files", "--", scope.rel] : ["ls-files"];
+    const out = execFileSync("git", args, { cwd: scope.toplevel, maxBuffer: 16 * 1024 * 1024, encoding: "utf8" });
+    return new Set(out.split("\n").map((s) => s.trim()).filter(Boolean)
+      .map((p) => rebase(scope, p)).filter((p): p is string => p !== null));
   } catch { return new Set(); }
 }

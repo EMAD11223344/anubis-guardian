@@ -119,12 +119,17 @@ export function damerau(a: string, b: string, max = 3): number {
   return d[al][bl];
 }
 
-/** Nearest popular package within distance ≤ max (typosquat candidate). */
+/** Nearest popular package within distance ≤ max (typosquat candidate).
+ *  Short names get a tighter radius: at length < 5 a distance-2 radius flags
+ *  established packages (nyc/ky, hbs/ws, z85/zod, ai/hapi, exif/expo — real-world
+ *  FPs from the Juice Shop scan, community-reported), so short names require
+ *  distance ≤ 1. Names ≥ 5 chars keep the fuzzier radius 2 (expres→express). */
 export function nearestPopular(name: string, max = 2): { target: string; distance: number } | null {
+  const effMax = name.length < 5 ? Math.min(1, max) : max;
   let best: { target: string; distance: number } | null = null;
   for (const p of POPULAR) {
-    const dist = damerau(name, p, max);
-    if (dist <= max && (!best || dist < best.distance)) best = { target: p, distance: dist };
+    const dist = damerau(name, p, effMax);
+    if (dist <= effMax && (!best || dist < best.distance)) best = { target: p, distance: dist };
     if (best && best.distance === 1) break;
   }
   return best;
