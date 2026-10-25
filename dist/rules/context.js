@@ -22,7 +22,9 @@ export function classifyFile(f) {
 export function normalizeAbs(p) {
     return p.replace(/\\/g, "/");
 }
-/** Does a client-reachable file import (transitively, depth ≤ 3) this module? */
+/** Importers (any file) → normalized targets they import. */
+const importEdgeRe = /(?:import|export)\s[^;]*?from\s*["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)|require\(\s*["']([^"']+)["']\s*\)/g;
+/** Normalized abs paths of every module a client file reaches through imports (depth ≤ 3). */
 export function importedFromClient(ctx) {
     // All keys/values in this graph use normalizeAbs() — on Windows raw f.abs carries
     // backslashes, and a raw-vs-normalized key mismatch silently empties the import
@@ -30,35 +32,39 @@ export function importedFromClient(ctx) {
     const byAbs = new Map();
     for (const f of ctx.files)
         byAbs.set(normalizeAbs(f.abs), f);
-    const importsOf = new Map(); // target abs → importer abs set
-    const importRe = /(?:import|export)\s[^;]*?from\s*["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)|require\(\s*["']([^"']+)["']\s*\)/g;
+    // importer abs → set of normalized target abs it imports (forward import edges)
+    const importsOf = new Map();
     for (const f of ctx.files) {
         if (!/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(f.rel))
             continue;
         let m;
-        while ((m = importRe.exec(f.content)) !== null) {
+        const importer = normalizeAbs(f.abs);
+        while ((m = importEdgeRe.exec(f.content)) !== null) {
             const spec = m[1] || m[2] || m[3];
             if (!spec || !spec.startsWith("."))
                 continue;
             const target = resolveSpec(f, spec, byAbs);
-            if (target) {
-                if (!importsOf.has(target))
-                    importsOf.set(target, new Set());
-                importsOf.get(target).add(normalizeAbs(f.abs));
-            }
+            if (!importsOf.has(importer))
+                importsOf.set(importer, new Set());
+            if (target)
+                importsOf.get(importer).add(target);
         }
     }
-    // BFS from client files backwards through importers (depth 3)
+    // BFS forward from client files along import edges (depth ≤ 3):
+    // everything a client file reaches — directly or through intermediaries —
+    // is shipped to the browser bundle. Returns normalized target abs paths.
     const clientAbs = ctx.files.filter((f) => classifyFile(f) === "client").map((f) => normalizeAbs(f.abs));
     const reach = new Set();
+    const visited = new Set(clientAbs);
     let frontier = new Set(clientAbs);
     for (let depth = 0; depth < 3 && frontier.size; depth++) {
         const next = new Set();
         for (const abs of frontier) {
-            for (const importer of importsOf.get(abs) ?? []) {
-                if (!reach.has(importer)) {
-                    reach.add(importer);
-                    next.add(importer);
+            for (const target of importsOf.get(abs) ?? []) {
+                if (!visited.has(target)) {
+                    visited.add(target);
+                    reach.add(target);
+                    next.add(target);
                 }
             }
         }
@@ -79,6 +85,12 @@ function resolveSpec(from, spec, byAbs) {
     }
     const bare = parts.join("/");
     const candidates = [bare, `${bare}.ts`, `${bare}.tsx`, `${bare}.js`, `${bare}.jsx`, `${bare}/index.ts`, `${bare}/index.js`];
+    // NodeNext / TS-style relative imports carry a runtime extension: "../lib/secret.js"
+    // must resolve to secret.ts on disk. Map runtime extensions to scanned source extensions.
+    const swapped = bare.replace(/\.(m|c)?js$/i, (ext) => ext === ".mjs" ? ".mts" : ext === ".cjs" ? ".cts" : ".ts");
+    if (swapped !== bare) {
+        candidates.unshift(swapped, `${swapped}x`); // .js→.ts/.tsx, .mjs→.mts, .cjs→.cts
+    }
     for (const c of candidates)
         if (byAbs.has(c))
             return c;

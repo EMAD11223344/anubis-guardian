@@ -2314,7 +2314,7 @@
       "severity": "high",
       "confidence": "high",
       "title": "Secret in git history: Stripe live key",
-      "file": "nest-app/tests/mode2/servers.mjs",
+      "file": "nest-app/tests/mode2/.tmp-acc10/idor-capture.json",
       "line": 0,
       "evidence": {
         "type": "secret_in_history",
@@ -2334,7 +2334,7 @@
       "root": "nest-app:0a040371",
       "root_cause": "nest-app:HIST-003:0a040371",
       "verified": true,
-      "fingerprint": "6ed65b02bacd",
+      "fingerprint": "d6fef4c59e70",
       "suppression": null
     },
     {
