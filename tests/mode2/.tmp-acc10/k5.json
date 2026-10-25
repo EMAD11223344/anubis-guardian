@@ -1,0 +1,455 @@
+{
+  "tool": "anubis-guardian",
+  "version": "1.0.1",
+  "advisory_snapshot": "2026-10",
+  "target": {
+    "mode": "codebase",
+    "path": "C:\\Users\\Emad\\anubis-guardian\\tests\\mode2\\.tmp-acc10\\proj",
+    "stack": []
+  },
+  "score": 8,
+  "grade": "F",
+  "summary": {
+    "critical": 0,
+    "high": 9,
+    "medium": 0,
+    "low": 2,
+    "info": 0
+  },
+  "coverage": {
+    "checks_run": 23,
+    "checks_applicable": 29,
+    "classes_covered": [
+      "secrets (hardcoded keys, service_role by value, DB creds in headers, seeder credentials)",
+      "git-history secrets + committed env files",
+      "sensitive files (dumps/backups/.npmrc/service-account/tfstate/SSH keys)",
+      "supabase RLS (missing RLS, USING(true), views, SECURITY DEFINER, policy scoping, storage.objects, verify_jwt, dashboard drift via --schema)",
+      "next.js auth basics (tokens in web storage, cookie flags, NEXT_PUBLIC secrets, mutating endpoints without in-file auth)",
+      "nestjs playbook (APP_GUARD-aware unguarded controllers, CORS, helmet, throttler)",
+      "sast-light (SQLi concat, XSS dangerous HTML, eval/exec, weak hashing)",
+      "crypto (Math.random for tokens/OTPs — CRYPTO-001)",
+      "dependencies (CVEs vs bundled advisory snapshot, known-malicious, typosquat, unresolved-no-lockfile, slopsquat via --online)",
+      "ci/supply-chain (GitHub Actions SHA pinning, pull_request_target, script injection, permissions; Dockerfile root/:latest/ARG secrets)",
+      "recon inventory (routes, server actions, controllers w/ guards, supabase tables/RPC/edge functions, socket events, webhooks)",
+      "taint-lite (SSRF, open redirect, path traversal, command injection, reflected XSS — single-file scope, MEDIUM cap, generated canary tests)",
+      "rule packs II (LOGS-001, SUPA-002/003, AUTH-001 middleware-matcher gaps, NEXT-005 CSRF heuristic, MASS-001, WS-001, WEBHOOK-001, JWT-001/002, SWAGGER-001, PRISMA-001 hint)",
+      "agent environment (unpinned MCP servers, secrets in agent configs, permission wildcards/bypass, unpinned hook commands)",
+      "AI review layer with independent verifier (opt-in --ai-review; redaction-before-LLM; verifier-gated; AI findings cap at HIGH)",
+      "authz matrix + generated Supertest/Playwright quarantine tests (test-authz — the tool never executes them)",
+      "agent guard hook (init-hook — PreToolUse prevention of service_role-in-client, RLS-killing SQL, secrets into .env)"
+    ],
+    "classes_not_covered": [
+      "deep multi-file taint flows (taint-lite is single-file + one-level import by design)",
+      "IDOR differential testing / authz matrix execution (v1.0 — restricted; the generated tests are run by the owner, never the tool)",
+      "URL Mode L1–L3: security headers, exposed files, live probing (v0.4 — after Mode 1 completes)",
+      "cookie HttpOnly deep verification beyond the flag-level check + full CSRF semantics (heuristic only)",
+      "business & payment logic (human review by design)",
+      "DAST / wide fuzzing (non-goal by design)",
+      "compliance SOC2/PCI/HIPAA (non-goal by design)",
+      "non-JS/TS languages (non-goal — use the Semgrep adapter)"
+    ]
+  },
+  "score_breakdown": {
+    "base": 100,
+    "total_deducted": 92,
+    "score": 8,
+    "grade": "F",
+    "groups": [
+      {
+        "rule_id": "HIST-003",
+        "root": "9e615fde",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-003",
+        "root": "5a7bec94",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-001",
+        "root": "00a08bdb",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-001",
+        "root": "1df107c6",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-007",
+        "root": "733c75ff",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-003",
+        "root": "2105c29f",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-001",
+        "root": "46e729b3",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-007",
+        "root": "d9b8ac26",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-003",
+        "root": "0a040371",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "HIST-010",
+        "root": ".gitignore",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      },
+      {
+        "rule_id": "ORG-TESTORG-1",
+        "root": "src/app.js",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      }
+    ],
+    "note": "Low-confidence findings and INFO do not deduct. Repeats of the same root cause add +10% each, capped at 2× the severity weight (v1.3)."
+  },
+  "findings": [
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "tests/acceptance-v02.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:9e615fde)",
+        "sha256_prefix": "9e615fde",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "9e615fde",
+      "root_cause": "HIST-003:9e615fde",
+      "verified": true,
+      "fingerprint": "0df6167f23ca",
+      "suppression": null
+    },
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "tests/acceptance-v03.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:5a7bec94)",
+        "sha256_prefix": "5a7bec94",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "5a7bec94",
+      "root_cause": "HIST-003:5a7bec94",
+      "verified": true,
+      "fingerprint": "2d93fa1e5267",
+      "suppression": null
+    },
+    {
+      "id": "HIST-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: JWT-shaped token",
+      "file": "tests/honeypot/app/.env",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "eyJh•••… (first-4 + sha256:00a08bdb)",
+        "sha256_prefix": "00a08bdb",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "00a08bdb",
+      "root_cause": "HIST-001:00a08bdb",
+      "verified": true,
+      "fingerprint": "b1bf56e8f281",
+      "suppression": null
+    },
+    {
+      "id": "HIST-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: JWT-shaped token",
+      "file": "tests/honeypot/app/.env",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "eyJh•••… (first-4 + sha256:1df107c6)",
+        "sha256_prefix": "1df107c6",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "1df107c6",
+      "root_cause": "HIST-001:1df107c6",
+      "verified": true,
+      "fingerprint": "6ddea0b30647",
+      "suppression": null
+    },
+    {
+      "id": "HIST-007",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: DB URL with password",
+      "file": "tests/honeypot/app/.env.production",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "post•••… (first-4 + sha256:733c75ff)",
+        "sha256_prefix": "733c75ff",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "733c75ff",
+      "root_cause": "HIST-007:733c75ff",
+      "verified": true,
+      "fingerprint": "911236b8eae3",
+      "suppression": null
+    },
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "tests/honeypot/app/.env.production",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:2105c29f)",
+        "sha256_prefix": "2105c29f",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "2105c29f",
+      "root_cause": "HIST-003:2105c29f",
+      "verified": true,
+      "fingerprint": "7b6b95cb9ca6",
+      "suppression": null
+    },
+    {
+      "id": "HIST-001",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: JWT-shaped token",
+      "file": "tests/honeypot/app/lib/logline.ts",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "eyJh•••… (first-4 + sha256:46e729b3)",
+        "sha256_prefix": "46e729b3",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "46e729b3",
+      "root_cause": "HIST-001:46e729b3",
+      "verified": true,
+      "fingerprint": "9d782e19bc4f",
+      "suppression": null
+    },
+    {
+      "id": "HIST-007",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: DB URL with password",
+      "file": "tests/honeypot/setup.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "post•••… (first-4 + sha256:d9b8ac26)",
+        "sha256_prefix": "d9b8ac26",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "d9b8ac26",
+      "root_cause": "HIST-007:d9b8ac26",
+      "verified": true,
+      "fingerprint": "4ccd5f2eb675",
+      "suppression": null
+    },
+    {
+      "id": "HIST-003",
+      "severity": "high",
+      "confidence": "high",
+      "title": "Secret in git history: Stripe live key",
+      "file": "tests/mode2/servers.mjs",
+      "line": 0,
+      "evidence": {
+        "type": "secret_in_history",
+        "masked": "sk_l•••… (first-4 + sha256:0a040371)",
+        "sha256_prefix": "0a040371",
+        "note": "recovered from `git log -p` added lines — full value never written to reports"
+      },
+      "owasp": "A02",
+      "fix": "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+      "fix_mode": "suggested-diff",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "generic",
+        "steps": "1) Rotate the credential at its provider 2) Update server-side env 3) git filter-repo purge 4) Verify old credential dead",
+        "history_cleanup": "git filter-repo required"
+      },
+      "root": "0a040371",
+      "root_cause": "HIST-003:0a040371",
+      "verified": true,
+      "fingerprint": "6ed65b02bacd",
+      "suppression": null
+    },
+    {
+      "id": "HIST-010",
+      "severity": "low",
+      "confidence": "high",
+      "title": "No .gitignore file",
+      "file": ".gitignore",
+      "line": 0,
+      "evidence": {
+        "type": "gitignore_missing",
+        "masked": ".gitignore"
+      },
+      "owasp": "A05",
+      "fix": "Add .gitignore covering .env, .env.*, *.pem, *.tfstate, node_modules, dist.",
+      "fix_mode": "suggested-diff",
+      "root": ".gitignore",
+      "root_cause": "HIST-010:.gitignore",
+      "verified": true,
+      "fingerprint": "8a6aec925ecb",
+      "suppression": null
+    },
+    {
+      "id": "ORG-TESTORG-1",
+      "severity": "low",
+      "title": "Test org rule: console.log",
+      "file": "src/app.js",
+      "line": 1,
+      "evidence": {
+        "type": "org-rule",
+        "masked": "cons•••… (first-4 + sha256:699fb2ae)",
+        "sha256_prefix": "699fb2ae",
+        "note": "full value is never written to any report or artifact",
+        "clean_case": "files without console.log"
+      },
+      "owasp": "A05",
+      "confidence": "medium",
+      "fix": "Remove debug logging.",
+      "fix_mode": "suggested-diff",
+      "verified": false,
+      "source": "org-rule",
+      "needs_confirmation": false,
+      "root": "src/app.js",
+      "root_cause": "ORG-TESTORG-1:src/app.js",
+      "fingerprint": "83e362ba62be",
+      "suppression": null
+    }
+  ],
+  "inventory": {
+    "routes": [],
+    "controllers": [],
+    "supabase": {
+      "tables": [],
+      "rpcs": [],
+      "edge_functions": []
+    },
+    "socket_events": [],
+    "webhooks": []
+  },
+  "meta": {
+    "no_exec": true,
+    "files_scanned": 1,
+    "git_history_scanned": true,
+    "rules_lock": "off",
+    "community_rules": true
+  }
+}

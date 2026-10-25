@@ -70,7 +70,7 @@ export function scanDeps(ctx) {
     const declared = declaredDeps(pkg);
     const locked = lockfileDeps(ctx.rootDir);
     const snap = loadSnapshot(ctx);
-    const isWorkspaceMember = Boolean(pkg.workspaces || pkg.name === ctx.rootDir.split("/").pop());
+    const isWorkspaceMember = Boolean(pkg.workspaces || pkg.name === ctx.rootDir.split(/[\\/]/).pop());
     const scoped = (n) => n.startsWith("@");
     for (const name of declared) {
         const lockedVersion = locked.get(name);

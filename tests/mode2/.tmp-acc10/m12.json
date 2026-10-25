@@ -1,0 +1,850 @@
+{
+  "tool": "anubis-guardian",
+  "version": "1.0.1",
+  "advisory_snapshot": "2026-10",
+  "target": {
+    "mode": "url",
+    "path": "http://127.0.0.1:61879",
+    "stack": [
+      "express",
+      "nextjs"
+    ]
+  },
+  "score": 0,
+  "grade": "F",
+  "summary": {
+    "critical": 4,
+    "high": 5,
+    "medium": 6,
+    "low": 8,
+    "info": 4
+  },
+  "coverage": {
+    "checks_run": 32,
+    "checks_applicable": 32,
+    "classes_covered": [
+      "TLS & certificate posture (external view)",
+      "security headers & cookie flags",
+      "secrets shipped in public JS bundles (L1 since v1.3)",
+      "exposed env/git/backup files (L2, ownership-gated)",
+      "directory listing / risky HTTP methods / exposed API docs (L2)",
+      "source map exposure (L2)",
+      "Supabase live anon RLS probe (L3 v0.4 — read-only GET)",
+      "restricted differential access check (L3 v1.0 — --active-tests, GET-only, verified ownership, owner identities)"
+    ],
+    "classes_not_covered": [
+      "authenticated-area testing & business-logic flaws beyond the restricted differential check",
+      "injection testing (XSS/SQLi canaries — delegated: init-zap generates the ZAP baseline config, v1.0 decision)",
+      "full DAST / fuzzing (by design — delegated to the generated ZAP config)",
+      "server internals, databases, queues (black-box view only — pair with Codebase Mode)",
+      "subdomain takeover & DNS-level attacks",
+      "rate-limit/lockout behavior checks"
+    ]
+  },
+  "score_breakdown": {
+    "base": 100,
+    "total_deducted": 182,
+    "score": 0,
+    "grade": "F",
+    "groups": [
+      {
+        "rule_id": "URL-040",
+        "root": "b805303b",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "URL-040",
+        "root": "0a040371",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "URL-050",
+        "root": "/.env",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "URL-052",
+        "root": "/db.sql",
+        "severity": "critical",
+        "count": 1,
+        "deducted": 25
+      },
+      {
+        "rule_id": "URL-001",
+        "root": "tls",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "URL-021",
+        "root": "sid",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "URL-055",
+        "root": "methods",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "URL-042",
+        "root": "http://127.0.0.1:61879/_next/static/app.js.map",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "URL-051",
+        "root": "/.git/config",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      },
+      {
+        "rule_id": "URL-020",
+        "root": "sid",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "URL-010",
+        "root": "headers",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "URL-012",
+        "root": "headers",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "URL-056",
+        "root": "methods",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "URL-054",
+        "root": "/backup/",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "URL-057",
+        "root": "/swagger/index.html",
+        "severity": "medium",
+        "count": 1,
+        "deducted": 4
+      },
+      {
+        "rule_id": "URL-022",
+        "root": "sid",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      },
+      {
+        "rule_id": "URL-013",
+        "root": "headers",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      },
+      {
+        "rule_id": "URL-014",
+        "root": "headers",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      },
+      {
+        "rule_id": "URL-015",
+        "root": "headers",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      },
+      {
+        "rule_id": "URL-030",
+        "root": "fingerprint",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      },
+      {
+        "rule_id": "URL-031",
+        "root": "fingerprint",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      },
+      {
+        "rule_id": "URL-905",
+        "root": "hygiene",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      },
+      {
+        "rule_id": "URL-041",
+        "root": "internal-endpoints",
+        "severity": "low",
+        "count": 1,
+        "deducted": 1
+      }
+    ],
+    "note": "Low-confidence findings and INFO do not deduct. Repeats of the same root cause add +10% each, capped at 2× the severity weight (v1.3)."
+  },
+  "findings": [
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-040",
+      "severity": "critical",
+      "title": "Secret shipped in a public JavaScript bundle (supabase)",
+      "file": "http://127.0.0.1:61879/_next/static/app.js",
+      "line": 0,
+      "evidence": {
+        "type": "public_bundle_supabase_service_role",
+        "masked": "eyJh•••… (first-4 + sha256:b805303b)",
+        "sha256_prefix": "b805303b",
+        "note": "JWT-shaped token — confirmed below by decoding the role claim"
+      },
+      "owasp": "A02",
+      "fix": "Remove the secret from any code reachable by the client build, move it to server-side env only, rotate the credential at the provider (rotate-first), then purge old bundles/CDN cache.",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "supabase",
+        "steps": "Rotate the credential at the provider dashboard FIRST, then remove it from client code, then purge CDN/edge cache of old bundles."
+      },
+      "root": "b805303b",
+      "root_cause": "URL-040:b805303b",
+      "needs_confirmation": false,
+      "fingerprint": "ada404b78a05",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-040",
+      "severity": "critical",
+      "title": "Secret shipped in a public JavaScript bundle (stripe)",
+      "file": "http://127.0.0.1:61879/_next/static/app.js",
+      "line": 0,
+      "evidence": {
+        "type": "public_bundle_stripe_live",
+        "masked": "sk_l•••… (first-4 + sha256:0a040371)",
+        "sha256_prefix": "0a040371"
+      },
+      "owasp": "A02",
+      "fix": "Remove the secret from any code reachable by the client build, move it to server-side env only, rotate the credential at the provider (rotate-first), then purge old bundles/CDN cache.",
+      "remediation": {
+        "type": "rotate-first",
+        "provider": "stripe",
+        "steps": "Rotate the credential at the provider dashboard FIRST, then remove it from client code, then purge CDN/edge cache of old bundles."
+      },
+      "root": "0a040371",
+      "root_cause": "URL-040:0a040371",
+      "needs_confirmation": false,
+      "fingerprint": "e551dfff52dd",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-050",
+      "severity": "critical",
+      "title": "Sensitive file publicly served: /.env",
+      "file": "http://127.0.0.1:61879/.env",
+      "line": 0,
+      "evidence": {
+        "type": "probed_file_exposed",
+        "masked": "/.env (HTTP 200, 88 bytes)",
+        "note": "env file with secret-shaped values is publicly served"
+      },
+      "owasp": "A05",
+      "fix": "Remove /.env from the web root / deny serving it at the edge, rotate anything it contains (rotate-first), and purge CDN cache. Code map: the deployment pipeline is shipping dotfiles — check Dockerfile COPY scope, .dockerignore, static host config (e.g. `vercel.json`, `netlify.toml`), and the web root contents.",
+      "remediation": {
+        "type": "rotate-first",
+        "steps": "Treat every value in the exposed env file as compromised: rotate at the provider FIRST, then remove the file from the web root, then purge CDN/edge cache."
+      },
+      "root": "/.env",
+      "root_cause": "URL-050:/.env",
+      "fingerprint": "1dc72f8394e6",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-052",
+      "severity": "critical",
+      "title": "Sensitive file publicly served: /db.sql",
+      "file": "http://127.0.0.1:61879/db.sql",
+      "line": 0,
+      "evidence": {
+        "type": "probed_file_exposed",
+        "masked": "/db.sql (HTTP 200, 67 bytes)",
+        "note": "SQL dump (CREATE/INSERT statements) is publicly downloadable"
+      },
+      "owasp": "A05",
+      "fix": "Remove /db.sql from the web root / deny serving it at the edge, rotate anything it contains (rotate-first), and purge CDN cache. Code map: run Codebase Mode (anubis-guardian scan .) on the repository to map this to exact file:line.",
+      "root": "/db.sql",
+      "root_cause": "URL-052:/db.sql",
+      "fingerprint": "d936c47ac1a8",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-001",
+      "severity": "high",
+      "title": "Site served over plain HTTP (no TLS)",
+      "file": "http://127.0.0.1:61879",
+      "line": 0,
+      "evidence": {
+        "type": "no_tls",
+        "masked": "http:// origin",
+        "note": "every request — including session cookies — travels in cleartext"
+      },
+      "owasp": "A02",
+      "fix": "Serve over HTTPS (terminate TLS at the edge/provider, redirect http→https, enable HSTS once stable).",
+      "root": "tls",
+      "root_cause": "URL-001:tls",
+      "fingerprint": "16774962bdbe",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-021",
+      "severity": "high",
+      "title": "Session cookie \"sid\" set without HttpOnly (readable by any XSS)",
+      "file": "http://127.0.0.1:61879",
+      "line": 0,
+      "evidence": {
+        "type": "cookie_missing_httponly",
+        "masked": "sid",
+        "note": "session-shaped name"
+      },
+      "owasp": "A07",
+      "fix": "Set HttpOnly on \"sid\" — session cookies must never be readable from JS.",
+      "root": "sid",
+      "root_cause": "URL-021:sid",
+      "fingerprint": "d2a870ccdf87",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-055",
+      "severity": "high",
+      "title": "TRACE method enabled (reflects requests — XST)",
+      "file": "http://127.0.0.1:61879",
+      "line": 0,
+      "evidence": {
+        "type": "http_method_trace",
+        "masked": "TRACE returned 200 and reflected the request"
+      },
+      "owasp": "A05",
+      "fix": "Disable TRACE at the server/edge (nginx: trace_method off; most platforms deny it by default).",
+      "root": "methods",
+      "root_cause": "URL-055:methods",
+      "fingerprint": "d2ac7ac29edf",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-042",
+      "severity": "high",
+      "title": "Exposed source map ships original sources with secret-shaped content",
+      "file": "http://127.0.0.1:61879/_next/static/app.js.map",
+      "line": 0,
+      "evidence": {
+        "type": "sourcemap_exposed",
+        "masked": "http://127.0.0.1:61879/_next/static/app.js.map (JSON map with sources[])",
+        "note": "secret-shaped strings inside sourcesContent"
+      },
+      "owasp": "A05",
+      "fix": "Disable source maps in production builds; remove .map files from the deployed bundle and purge the CDN cache. Code map: next.config.js `productionBrowserSourceMaps` or the bundler config that emits .map files into the public build.",
+      "root": "http://127.0.0.1:61879/_next/static/app.js.map",
+      "root_cause": "URL-042:http://127.0.0.1:61879/_next/static/app.js.map",
+      "fingerprint": "f47341988db7",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-051",
+      "severity": "high",
+      "title": "Exposed file: /.git/config",
+      "file": "http://127.0.0.1:61879/.git/config",
+      "line": 0,
+      "evidence": {
+        "type": "probed_file_exposed",
+        "masked": "/.git/config (HTTP 200, 91 bytes)",
+        "note": "the repository's .git directory is web-served"
+      },
+      "owasp": "A05",
+      "fix": "Remove /.git/config from the web root / deny serving it at the edge, rotate anything it contains (rotate-first), and purge CDN cache. Code map: the web server is serving the repository folder — check nginx root config / static host rules; the .git dir must never be inside the web root.",
+      "root": "/.git/config",
+      "root_cause": "URL-051:/.git/config",
+      "fingerprint": "b7dba587d923",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-020",
+      "severity": "medium",
+      "title": "Cookie \"sid\" set without the Secure flag",
+      "file": "http://127.0.0.1:61879",
+      "line": 0,
+      "evidence": {
+        "type": "cookie_missing_secure",
+        "masked": "sid",
+        "note": "cookie can travel over plain http"
+      },
+      "owasp": "A05",
+      "fix": "Set the Secure attribute on \"sid\" (and serve the site over https only).",
+      "root": "sid",
+      "root_cause": "URL-020:sid",
+      "fingerprint": "882319d0506e",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-010",
+      "severity": "medium",
+      "title": "Content-Security-Policy header missing",
+      "file": "http://127.0.0.1:61879/",
+      "line": 0,
+      "evidence": {
+        "type": "missing_header",
+        "masked": "content-security-policy",
+        "note": "response 200 carries no content-security-policy"
+      },
+      "owasp": "A05",
+      "fix": "Serve a Content-Security-Policy header (start with a report-then-enforce rollout; script-src 'self', no unsafe-inline for new code). Code map: middleware.ts (response headers) or next.config.js headers()/async headers — or the reverse proxy (nginx/vercel.json).",
+      "root": "headers",
+      "root_cause": "URL-010:headers",
+      "fingerprint": "52b57597b5f6",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-012",
+      "severity": "medium",
+      "title": "Clickjacking protection missing (no X-Frame-Options / frame-ancestors)",
+      "file": "http://127.0.0.1:61879/",
+      "line": 0,
+      "evidence": {
+        "type": "missing_header",
+        "masked": "x-frame-options",
+        "note": "response 200 carries no x-frame-options"
+      },
+      "owasp": "A05",
+      "fix": "Serve X-Frame-Options: DENY (or CSP frame-ancestors 'none') so the site cannot be framed by attacker pages. Code map: middleware.ts (response headers) or next.config.js headers()/async headers — or the reverse proxy (nginx/vercel.json).",
+      "root": "headers",
+      "root_cause": "URL-012:headers",
+      "fingerprint": "d93bc639ac9f",
+      "suppression": null
+    },
+    {
+      "confidence": "medium",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-056",
+      "severity": "medium",
+      "title": "Permissive Allow header advertises risky methods (PUT, DELETE)",
+      "file": "http://127.0.0.1:61879/",
+      "line": 0,
+      "evidence": {
+        "type": "http_method_allow",
+        "masked": "GET, POST, PUT, DELETE, OPTIONS,"
+      },
+      "owasp": "A05",
+      "fix": "Restrict allowed methods to what the app uses (GET/POST/HEAD); disable WebDAV-style verbs at the edge.",
+      "needs_confirmation": true,
+      "root": "methods",
+      "root_cause": "URL-056:methods",
+      "fingerprint": "8653e6bc7a89",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-054",
+      "severity": "medium",
+      "title": "Directory listing enabled: /backup/",
+      "file": "http://127.0.0.1:61879/backup/",
+      "line": 0,
+      "evidence": {
+        "type": "directory_listing",
+        "masked": "/backup/ (HTTP 200 — \"Index of\")"
+      },
+      "owasp": "A05",
+      "fix": "Disable autoindex for /backup/ at the server/edge (nginx autoindex off; S3/CDN bucket policy) — listing exposes files no page links to. Code map: the deployment pipeline is shipping dotfiles — check Dockerfile COPY scope, .dockerignore, static host config (e.g. `vercel.json`, `netlify.toml`), and the web root contents.",
+      "root": "/backup/",
+      "root_cause": "URL-054:/backup/",
+      "fingerprint": "8e969bca52ed",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-057",
+      "severity": "medium",
+      "title": "Swagger UI exposed on production",
+      "file": "http://127.0.0.1:61879/swagger/index.html",
+      "line": 0,
+      "evidence": {
+        "type": "api_doc_exposed",
+        "masked": "/swagger/index.html (HTTP 200)"
+      },
+      "owasp": "A05",
+      "fix": "Disable Swagger UI outside development (NestJS SwaggerModule setup gated by NODE_ENV; GraphQL introspection off in prod), or protect it behind auth. Code map: run Codebase Mode (anubis-guardian scan .) on the repository to map this to exact file:line.",
+      "root": "/swagger/index.html",
+      "root_cause": "URL-057:/swagger/index.html",
+      "fingerprint": "e626b70af85e",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-022",
+      "severity": "low",
+      "title": "Cookie \"sid\" set without SameSite",
+      "file": "http://127.0.0.1:61879",
+      "line": 0,
+      "evidence": {
+        "type": "cookie_missing_samesite",
+        "masked": "sid"
+      },
+      "owasp": "A07",
+      "fix": "Set SameSite=Lax (or Strict) on \"sid\" to blunt CSRF.",
+      "root": "sid",
+      "root_cause": "URL-022:sid",
+      "fingerprint": "73d67f91fa5b",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-013",
+      "severity": "low",
+      "title": "X-Content-Type-Options header missing",
+      "file": "http://127.0.0.1:61879/",
+      "line": 0,
+      "evidence": {
+        "type": "missing_header",
+        "masked": "x-content-type-options",
+        "note": "response 200 carries no x-content-type-options"
+      },
+      "owasp": "A05",
+      "fix": "Serve X-Content-Type-Options: nosniff on all responses. Code map: middleware.ts (response headers) or next.config.js headers()/async headers — or the reverse proxy (nginx/vercel.json).",
+      "root": "headers",
+      "root_cause": "URL-013:headers",
+      "fingerprint": "fa2735e77bdc",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-014",
+      "severity": "low",
+      "title": "Referrer-Policy header missing",
+      "file": "http://127.0.0.1:61879/",
+      "line": 0,
+      "evidence": {
+        "type": "missing_header",
+        "masked": "referrer-policy",
+        "note": "response 200 carries no referrer-policy"
+      },
+      "owasp": "A05",
+      "fix": "Serve Referrer-Policy: strict-origin-when-cross-origin (or stricter). Code map: middleware.ts (response headers) or next.config.js headers()/async headers — or the reverse proxy (nginx/vercel.json).",
+      "root": "headers",
+      "root_cause": "URL-014:headers",
+      "fingerprint": "ea90caa50c3c",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-015",
+      "severity": "low",
+      "title": "Permissions-Policy header missing",
+      "file": "http://127.0.0.1:61879/",
+      "line": 0,
+      "evidence": {
+        "type": "missing_header",
+        "masked": "permissions-policy",
+        "note": "response 200 carries no permissions-policy"
+      },
+      "owasp": "A05",
+      "fix": "Serve a Permissions-Policy restricting camera/microphone/geolocation to none (or first-party only). Code map: middleware.ts (response headers) or next.config.js headers()/async headers — or the reverse proxy (nginx/vercel.json).",
+      "root": "headers",
+      "root_cause": "URL-015:headers",
+      "fingerprint": "3af111eaced3",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-030",
+      "severity": "low",
+      "title": "Server header discloses a specific version",
+      "file": "http://127.0.0.1:61879/",
+      "line": 0,
+      "evidence": {
+        "type": "version_disclosure",
+        "masked": "nginx/1.24.0"
+      },
+      "owasp": "A05",
+      "fix": "Strip or genericize the Server header version at the edge (banner disclosure feeds attacker recon).",
+      "root": "fingerprint",
+      "root_cause": "URL-030:fingerprint",
+      "fingerprint": "075f63d033f9",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-031",
+      "severity": "low",
+      "title": "X-Powered-By header discloses the stack",
+      "file": "http://127.0.0.1:61879/",
+      "line": 0,
+      "evidence": {
+        "type": "version_disclosure",
+        "masked": "Express"
+      },
+      "owasp": "A05",
+      "fix": "Remove X-Powered-By at the server/proxy (e.g. helmet.hidePoweredBy / proxy hideHeaders).",
+      "root": "fingerprint",
+      "root_cause": "URL-031:fingerprint",
+      "fingerprint": "97dc779c3102",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-905",
+      "severity": "low",
+      "title": "security.txt absent (RFC 9116)",
+      "file": "http://127.0.0.1:61879/.well-known/security.txt",
+      "line": 0,
+      "evidence": {
+        "type": "hygiene",
+        "masked": "no /.well-known/security.txt"
+      },
+      "owasp": "A05",
+      "fix": "Publish /.well-known/security.txt so researchers can report issues safely.",
+      "root": "hygiene",
+      "root_cause": "URL-905:hygiene",
+      "fingerprint": "5fe9e7615d74",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-041",
+      "severity": "low",
+      "title": "Public bundle references internal/localhost endpoints",
+      "file": "http://127.0.0.1:61879/#inline-script",
+      "line": 0,
+      "evidence": {
+        "type": "internal_endpoints",
+        "masked": "https://internal.corp.local/api"
+      },
+      "owasp": "A05",
+      "fix": "Remove internal hostnames from client code; route internal calls through a server-side proxy.",
+      "root": "internal-endpoints",
+      "root_cause": "URL-041:internal-endpoints",
+      "fingerprint": "6773509a918a",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-909",
+      "severity": "info",
+      "title": "Active-tests summary (differential access)",
+      "file": "http://127.0.0.1:61879",
+      "line": 0,
+      "evidence": {
+        "type": "idor-summary",
+        "masked": "active-tests: differential IDOR ran GET-only on 24 endpoint(s) with 2 owner-provided identities — 0 suspect pair(s), 24 boundary(ies) confirmed. Identity VALUES were never stored."
+      },
+      "owasp": "A01",
+      "fix": "Informational — full DAST is out of scope by design; run the generated ZAP baseline (init-zap) or the quarantine canaries for deeper checks.",
+      "root": "http://127.0.0.1:61879",
+      "root_cause": "URL-909:http://127.0.0.1:61879",
+      "fingerprint": "7522a52fcf7a",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-900",
+      "severity": "info",
+      "title": "Technology fingerprint: express, nextjs",
+      "file": "http://127.0.0.1:61879/",
+      "line": 0,
+      "evidence": {
+        "type": "fingerprint",
+        "masked": "express,nextjs"
+      },
+      "owasp": "A05",
+      "fix": "Informational — findings below pair with code-map hints per detected framework.",
+      "fingerprint": "24946c98afa7",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-043",
+      "severity": "info",
+      "title": "Bundle references a sourceMappingURL (check exposure at Level 2)",
+      "file": "http://127.0.0.1:61879/_next/static/app.js",
+      "line": 0,
+      "evidence": {
+        "type": "sourcemap_reference",
+        "masked": "/_next/static/app.js.map"
+      },
+      "owasp": "A05",
+      "fix": "A .map file is referenced next to http://127.0.0.1:61879/_next/static/app.js. Level 2 checks whether it is actually exposed and ships original sources.",
+      "fingerprint": "f5e9a132f6b0",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-906",
+      "severity": "info",
+      "title": "Supabase REST endpoint detected but the anon OpenAPI listing is not readable",
+      "file": "https://abcdefghij1234567890.supabase.co",
+      "line": 0,
+      "evidence": {
+        "type": "supabase_probe",
+        "masked": "GET /rest/v1/ → 0"
+      },
+      "owasp": "A01",
+      "fix": "Informational — the data API may be gated (verify_jwt on / or paths disabled). Run Codebase Mode on the repo for the migrations view.",
+      "fingerprint": "e72a976b7486",
+      "suppression": null
+    }
+  ],
+  "url_meta": {
+    "authorization": {
+      "url": "http://127.0.0.1:61879",
+      "timestamp": "2026-10-25T13:42:54.326Z",
+      "level": 3,
+      "ownership_method": "well-known",
+      "ownership_verified": true,
+      "note": "ownership verified via well-known (nonce challenge)"
+    },
+    "requests": {
+      "total": 95,
+      "by_method": {
+        "GET": 93,
+        "OPTIONS": 1,
+        "TRACE": 1
+      }
+    },
+    "robots": {
+      "checked": true,
+      "disallow_all": false,
+      "skipped_paths": [
+        "/admin"
+      ]
+    },
+    "levels_run": [
+      "L1-passive",
+      "L2-discovery",
+      "L3-supabase-probe",
+      "L3-active-tests"
+    ],
+    "notes": [
+      "supabase probe: 0 table(s) listed, 0 probed (GET-only, limit=1)",
+      "active-tests: differential IDOR — 24 endpoint(s) × 2 identities (GET-only, cap 24); header names used: x-test-role"
+    ]
+  },
+  "meta": {
+    "no_exec": true,
+    "files_scanned": 95,
+    "git_history_scanned": false,
+    "active_tests": true
+  }
+}

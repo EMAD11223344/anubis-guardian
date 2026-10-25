@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..", "..");
+const PKG_VERSION = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 const CLI = join(ROOT, "dist", "cli.js");
 const TMP = join(HERE, ".tmp-acc10");
 rmSync(TMP, { recursive: true, force: true });
@@ -46,7 +47,21 @@ const NONCE = ready.nonce;
 const cleanup = () => { try { child.kill("SIGTERM"); } catch { /* gone */ } };
 process.on("exit", cleanup);
 process.on("SIGINT", cleanup);
-const requestLog = async () => (await (await fetch(`${BAD}/__requestlog`)).json()).requests;
+const requestLog = async () => {
+  // Undici pools keep-alive sockets; after >5s idle (Node server keepAliveTimeout)
+  // the fixture may have closed the pooled socket, and the stale write can crash
+  // fetch with ECONNRESET. Retry on a fresh connection — test-process resilience only.
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return (await (await fetch(`${BAD}/__requestlog`)).json()).requests;
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  throw lastErr;
+};
 
 // org-rule fixture (shared by K gates)
 const RULES = join(TMP, "org-rules");
@@ -219,8 +234,8 @@ try {
     check("N4: install → first report works from the packed tarball (exit 0, < 2 min)",
       n2i.status === 0 && n2r.status === 0 && existsSync(report) && elapsed < 120_000,
       `install=${n2i.status} scan=${n2r.status} ${elapsed}ms err=${(n2r.stderr ?? "").slice(0, 300)}`);
-    check("N4b: the installed copy reports version 1.0.0",
-      n2r.status === 0 && JSON.parse(readFileSync(report, "utf8")).version === "1.0.0");
+    check("N4b: the installed copy reports the package.json version",
+      n2r.status === 0 && JSON.parse(readFileSync(report, "utf8")).version === PKG_VERSION);
     rmSync(instDir, { recursive: true, force: true });
   }
 
@@ -231,10 +246,10 @@ try {
     const sbom = JSON.parse(readFileSync(sbomPath, "utf8"));
     sbomCount = sbom.components.length;
     sbomOk = sbom.bomFormat === "CycloneDX" && sbom.specVersion === "1.5" && sbomCount >= 1
-      && sbom.metadata.components[0].version === "1.0.0"
+      && sbom.metadata.components[0].version === PKG_VERSION
       && sbom.components.some((c) => c.name === "commander");
   } catch { /* parse fail */ }
-  check("N5: SBOM generated — CycloneDX 1.5, root 1.0.0, commander present", n3.status === 0 && sbomOk, `components=${sbomCount}`);
+  check("N5: SBOM generated — CycloneDX 1.5, root = package.json version, commander present", n3.status === 0 && sbomOk, `components=${sbomCount}`);
 
   const relYml = existsSync(join(ROOT, ".github", "workflows", "release.yml")) ? readFileSync(join(ROOT, ".github", "workflows", "release.yml"), "utf8") : "";
   check("N6: release workflow: provenance + id-token + REAL pinned SHAs",

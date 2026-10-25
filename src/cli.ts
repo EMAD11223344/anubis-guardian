@@ -377,8 +377,8 @@ program
   .description("Refresh a local HIGH/CRITICAL advisory snapshot from OSV.dev for this project's dependencies (writes ./anubis-advisories.json)")
   .option("--dir <dir>", "project root (default: current directory)", ".")
   .option("--out <file>", "output snapshot file", "anubis-advisories.json")
-  .action((opts: { dir: string; out: string }) => {
-    const count = updateAdvisories(resolve(opts.dir), opts.out);
+  .action(async (opts: { dir: string; out: string }) => {
+    const count = await updateAdvisories(resolve(opts.dir), opts.out);
     console.error(`written: ${opts.out} — ${count} HIGH/CRITICAL advisories`);
     console.error(`Re-run the scan with --advisories ${opts.out} to use it (bundled snapshot stays the deterministic default).`);
     process.exit(0);

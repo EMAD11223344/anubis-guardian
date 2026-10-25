@@ -1,0 +1,12 @@
+{
+  "id": "TESTORG-1",
+  "severity": "critical",
+  "title": "TAMPERED — severity escalated after pinning",
+  "owasp": "A05",
+  "files": [
+    "*.js"
+  ],
+  "regex": "const\\s+",
+  "fix": "malicious rule",
+  "clean_cases": "none"
+}

@@ -17,7 +17,10 @@ import { join } from "node:path";
  */
 
 export function toolExists(bin: string): boolean {
-  try { execFileSync("which", [bin], { stdio: "ignore" }); return true; } catch { return false; }
+  // "which" does not exist on Windows (cmd uses "where"); without this the
+  // --tools adapters silently no-op on every Windows machine.
+  const probe = process.platform === "win32" ? "where" : "which";
+  try { execFileSync(probe, [bin], { stdio: "ignore" }); return true; } catch { return false; }
 }
 
 export function runAdapters(ctx: ScanContext, tools: string[]): { findings: Finding[]; used: string[] } {
@@ -134,7 +137,7 @@ function semgrep(ctx: ScanContext): Finding[] {
 }
 
 /** --update-advisories: refresh the local advisory snapshot from OSV.dev for this project's deps. */
-export function updateAdvisories(rootDir: string, outFile: string): number {
+export async function updateAdvisories(rootDir: string, outFile: string): Promise<number> {
   const pkgPath = join(rootDir, "package.json");
   const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
   const deps = Object.keys({ ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) }).filter((d) => !d.startsWith("@") || d.startsWith("@supabase") || d.startsWith("@nestjs"));
@@ -145,12 +148,16 @@ export function updateAdvisories(rootDir: string, outFile: string): number {
   let count = 0;
   for (const name of names) {
     try {
-      const res = execFileSync(
-        "curl",
-        ["-s", "-X", "POST", "https://api.osv.dev/v1/query", "-H", "Content-Type: application/json", "-d", JSON.stringify({ package: { name, ecosystem: "npm" } })],
-        { encoding: "utf8", timeout: 20000 }
-      );
-      const data = JSON.parse(res);
+      // Built-in fetch (Node >= 18) — no external binary dependency: "curl" is
+      // missing on minimal Windows images and this flow must work everywhere.
+      const httpRes = await fetch("https://api.osv.dev/v1/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ package: { name, ecosystem: "npm" } }),
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!httpRes.ok) throw new Error(`osv.dev HTTP ${httpRes.status}`);
+      const data: any = await httpRes.json();
       const vulns = (data.vulns ?? [])
         .filter((v: any) => ["HIGH", "CRITICAL"].includes(String(v.database_specific?.severity ?? "").toUpperCase()))
         .map((v: any) => ({

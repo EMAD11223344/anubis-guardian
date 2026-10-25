@@ -1,0 +1,130 @@
+{
+  "tool": "anubis-guardian",
+  "version": "1.0.1",
+  "advisory_snapshot": "2026-10",
+  "target": {
+    "mode": "url",
+    "path": "http://127.0.0.1:61788",
+    "stack": []
+  },
+  "score": 90,
+  "grade": "A",
+  "summary": {
+    "critical": 0,
+    "high": 1,
+    "medium": 0,
+    "low": 0,
+    "info": 1
+  },
+  "coverage": {
+    "checks_run": 18,
+    "checks_applicable": 32,
+    "classes_covered": [
+      "TLS & certificate posture (external view)",
+      "security headers & cookie flags",
+      "secrets shipped in public JS bundles (L1 since v1.3)",
+      "exposed env/git/backup files (L2, ownership-gated)",
+      "directory listing / risky HTTP methods / exposed API docs (L2)",
+      "source map exposure (L2)",
+      "Supabase live anon RLS probe (L3 v0.4 — read-only GET)",
+      "restricted differential access check (L3 v1.0 — --active-tests, GET-only, verified ownership, owner identities)"
+    ],
+    "classes_not_covered": [
+      "authenticated-area testing & business-logic flaws beyond the restricted differential check",
+      "injection testing (XSS/SQLi canaries — delegated: init-zap generates the ZAP baseline config, v1.0 decision)",
+      "full DAST / fuzzing (by design — delegated to the generated ZAP config)",
+      "server internals, databases, queues (black-box view only — pair with Codebase Mode)",
+      "subdomain takeover & DNS-level attacks",
+      "rate-limit/lockout behavior checks"
+    ]
+  },
+  "score_breakdown": {
+    "base": 100,
+    "total_deducted": 10,
+    "score": 90,
+    "grade": "A",
+    "groups": [
+      {
+        "rule_id": "URL-001",
+        "root": "tls",
+        "severity": "high",
+        "count": 1,
+        "deducted": 10
+      }
+    ],
+    "note": "Low-confidence findings and INFO do not deduct. Repeats of the same root cause add +10% each, capped at 2× the severity weight (v1.3)."
+  },
+  "findings": [
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-001",
+      "severity": "high",
+      "title": "Site served over plain HTTP (no TLS)",
+      "file": "http://127.0.0.1:61788",
+      "line": 0,
+      "evidence": {
+        "type": "no_tls",
+        "masked": "http:// origin",
+        "note": "every request — including session cookies — travels in cleartext"
+      },
+      "owasp": "A02",
+      "fix": "Serve over HTTPS (terminate TLS at the edge/provider, redirect http→https, enable HSTS once stable).",
+      "root": "tls",
+      "root_cause": "URL-001:tls",
+      "fingerprint": "ad34c6b9e7b9",
+      "suppression": null
+    },
+    {
+      "confidence": "high",
+      "verified": true,
+      "source": "builtin",
+      "fix_mode": "suggested-diff",
+      "id": "URL-904",
+      "severity": "info",
+      "title": "security.txt present (RFC 9116) — good practice",
+      "file": "http://127.0.0.1:61788/.well-known/security.txt",
+      "line": 0,
+      "evidence": {
+        "type": "documented_pattern",
+        "masked": "security.txt found"
+      },
+      "owasp": "A05",
+      "fix": "Keep Contact/Expires fields current.",
+      "fingerprint": "c388efda0273",
+      "suppression": null
+    }
+  ],
+  "url_meta": {
+    "authorization": {
+      "url": "http://127.0.0.1:61788",
+      "timestamp": "2026-10-25T13:42:39.620Z",
+      "level": 1,
+      "ownership_method": "none",
+      "ownership_verified": false,
+      "note": "Level 1 passive — no ownership required"
+    },
+    "requests": {
+      "total": 5,
+      "by_method": {
+        "GET": 5
+      }
+    },
+    "robots": {
+      "checked": true,
+      "disallow_all": false,
+      "skipped_paths": []
+    },
+    "levels_run": [
+      "L1-passive"
+    ],
+    "notes": []
+  },
+  "meta": {
+    "no_exec": true,
+    "files_scanned": 5,
+    "git_history_scanned": false
+  }
+}

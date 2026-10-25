@@ -21,12 +21,12 @@ export function renderSarif(result: ScanResult): string {
           driver: {
             name: "anubis-guardian",
             version: VERSION,
-            informationUri: "https://github.com/anubis-guardian/anubis-guardian",
+            informationUri: "https://github.com/EMAD11223344/anubis-guardian",
             rules: [...rules.values()].map((r) => ({
               id: r.id,
               shortDescription: { text: r.title },
               help: { text: r.help },
-              helpUri: "https://github.com/anubis-guardian/anubis-guardian#rules",
+              helpUri: "https://github.com/EMAD11223344/anubis-guardian#rules",
             })),
           },
         },

@@ -75,7 +75,7 @@ export function scanDeps(ctx: ScanContext): RuleResult {
   const declared = declaredDeps(pkg);
   const locked = lockfileDeps(ctx.rootDir);
   const snap = loadSnapshot(ctx);
-  const isWorkspaceMember = Boolean(pkg.workspaces || pkg.name === ctx.rootDir.split("/").pop());
+  const isWorkspaceMember = Boolean(pkg.workspaces || pkg.name === ctx.rootDir.split(/[\\/]/).pop());
   const scoped = (n: string) => n.startsWith("@");
 
   for (const name of declared) {

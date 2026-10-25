@@ -1,0 +1,12 @@
+{
+  "id": "TESTORG-1",
+  "severity": "low",
+  "title": "Test org rule: console.log",
+  "owasp": "A05",
+  "files": [
+    "*.js"
+  ],
+  "regex": "console\\.log\\(",
+  "fix": "Remove debug logging.",
+  "clean_cases": "files without console.log"
+}

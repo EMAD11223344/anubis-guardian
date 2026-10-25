@@ -47,7 +47,22 @@ const NONCE = ready.nonce;
 const cleanup = () => { try { child.kill("SIGTERM"); } catch { /* gone */ } };
 process.on("exit", cleanup);
 process.on("SIGINT", cleanup);
-const requestLog = async () => (await (await fetch(`${BAD}/__requestlog`)).json()).requests;
+const requestLog = async () => {
+  // Undici pools keep-alive sockets; after >5s idle (Node server keepAliveTimeout)
+  // the fixture may have closed the pooled socket, and the stale write can crash
+  // fetch with ECONNRESET. Retry on a fresh connection — this is test-process
+  // resilience only, scan behavior is unaffected.
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return (await (await fetch(`${BAD}/__requestlog`)).json()).requests;
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  throw lastErr;
+};
 
 try {
   // ================= A — L1 is truly passive =================

@@ -1,5 +1,5 @@
 import { maskSecret, rootCause } from "../util.js";
-import { classifyFile, importedFromClient, isClientEnvKey } from "./context.js";
+import { classifyFile, importedFromClient, isClientEnvKey, normalizeAbs } from "./context.js";
 const PLACEHOLDER = /(changeme|change_me|xxxxx|<[^>]*>|\$\{[^}]*\}|your[-_][a-z_]+|example|placeholder|dummy|todo|fixme|\*{3,})/i;
 const PATTERNS = [
     {
@@ -91,7 +91,7 @@ export function scanSecrets(ctx) {
             const envKey = envKeyOf(line);
             const clientHit = inEnvFile
                 ? isClientEnvKey(envKey)
-                : fileClass === "client" || isClientEnvKey(envKey) || clientImporters.has(f.abs);
+                : fileClass === "client" || isClientEnvKey(envKey) || clientImporters.has(normalizeAbs(f.abs));
             const serverHit = inEnvFile
                 ? Boolean(envKey) && !isClientEnvKey(envKey)
                 : fileClass === "server";

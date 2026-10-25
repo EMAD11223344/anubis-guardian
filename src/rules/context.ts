@@ -24,10 +24,18 @@ export function classifyFile(f: ScannedFile): FileClass {
   return "unknown";
 }
 
+/** Canonical absolute-path form: forward slashes everywhere (Windows-safe). */
+export function normalizeAbs(p: string): string {
+  return p.replace(/\\/g, "/");
+}
+
 /** Does a client-reachable file import (transitively, depth ≤ 3) this module? */
 export function importedFromClient(ctx: ScanContext): Set<string> {
+  // All keys/values in this graph use normalizeAbs() — on Windows raw f.abs carries
+  // backslashes, and a raw-vs-normalized key mismatch silently empties the import
+  // graph (SUPA-001 transitive reachability would never fire on Windows).
   const byAbs = new Map<string, ScannedFile>();
-  for (const f of ctx.files) byAbs.set(f.abs, f);
+  for (const f of ctx.files) byAbs.set(normalizeAbs(f.abs), f);
 
   const importsOf = new Map<string, Set<string>>(); // target abs → importer abs set
   const importRe = /(?:import|export)\s[^;]*?from\s*["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)|require\(\s*["']([^"']+)["']\s*\)/g;
@@ -41,13 +49,13 @@ export function importedFromClient(ctx: ScanContext): Set<string> {
       const target = resolveSpec(f, spec, byAbs);
       if (target) {
         if (!importsOf.has(target)) importsOf.set(target, new Set());
-        importsOf.get(target)!.add(f.abs);
+        importsOf.get(target)!.add(normalizeAbs(f.abs));
       }
     }
   }
 
   // BFS from client files backwards through importers (depth 3)
-  const clientAbs = ctx.files.filter((f) => classifyFile(f) === "client").map((f) => f.abs);
+  const clientAbs = ctx.files.filter((f) => classifyFile(f) === "client").map((f) => normalizeAbs(f.abs));
   const reach = new Set<string>();
   let frontier = new Set(clientAbs);
   for (let depth = 0; depth < 3 && frontier.size; depth++) {
@@ -63,7 +71,7 @@ export function importedFromClient(ctx: ScanContext): Set<string> {
 }
 
 function resolveSpec(from: ScannedFile, spec: string, byAbs: Map<string, ScannedFile>): string | null {
-  const baseDir = from.abs.replace(/[/\\][^/\\]+$/, "");
+  const baseDir = normalizeAbs(from.abs).replace(/[/\\][^/\\]+$/, "");
   const parts = baseDir.split(/[/\\]/);
   for (const seg of spec.split("/")) {
     if (seg === "." || seg === "") continue;

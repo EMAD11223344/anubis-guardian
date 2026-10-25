@@ -1,5 +1,5 @@
 import type { OrgRule, ScannedFile } from "./types.js";
-import { rootCause, fingerprint } from "./util.js";
+import { rootCause, fingerprint, maskSecret } from "./util.js";
 import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { Finding } from "./types.js";
@@ -86,16 +86,20 @@ export function runOrgRules(rules: OrgRule[], files: ScannedFile[]): Finding[] {
       const local = new RegExp(re.source, re.flags);
       while ((m = local.exec(f.content)) !== null && findings.length < 2000) {
         const lineNo = f.content.slice(0, m.index).split("\n").length;
-        const severity = r.severity === "critical" ? "critical" : r.severity;
+        const severity = r.severity;
+        // Masking contract (same as core rules): the raw match NEVER reaches a
+        // report — for a custom secret rule the match IS the secret, so evidence
+        // carries first-4 + sha256 prefix only.
+        const masked = maskSecret((m[0] ?? "") || r.id);
         findings.push({
           id: r.id,
           severity,
           title: r.title,
           file: f.rel,
           line: lineNo,
-          evidence: { type: "org-rule", masked: (m[0] ?? "").slice(0, 60) || r.id, note: r.clean_cases ? `clean case: ${r.clean_cases}` : undefined },
+          evidence: { type: "org-rule", masked: masked.masked, sha256_prefix: masked.sha256_prefix, note: "full value is never written to any report or artifact", clean_case: r.clean_cases ? r.clean_cases : undefined },
           owasp: r.owasp,
-          confidence: severity === "critical" ? "medium" : "medium",
+          confidence: "medium",
           fix: r.fix,
           fix_mode: "suggested-diff",
           verified: false,

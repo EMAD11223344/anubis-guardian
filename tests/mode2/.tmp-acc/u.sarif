@@ -1,0 +1,570 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "anubis-guardian",
+          "version": "1.0.1",
+          "informationUri": "https://github.com/EMAD11223344/anubis-guardian",
+          "rules": [
+            {
+              "id": "URL-040",
+              "shortDescription": {
+                "text": "Secret shipped in a public JavaScript bundle (supabase)"
+              },
+              "help": {
+                "text": "Remove the secret from any code reachable by the client build, move it to server-side env only, rotate the credential at the provider (rotate-first), then purge old bundles/CDN cache."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-001",
+              "shortDescription": {
+                "text": "Site served over plain HTTP (no TLS)"
+              },
+              "help": {
+                "text": "Serve over HTTPS (terminate TLS at the edge/provider, redirect http→https, enable HSTS once stable)."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-021",
+              "shortDescription": {
+                "text": "Session cookie \"sid\" set without HttpOnly (readable by any XSS)"
+              },
+              "help": {
+                "text": "Set HttpOnly on \"sid\" — session cookies must never be readable from JS."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-020",
+              "shortDescription": {
+                "text": "Cookie \"sid\" set without the Secure flag"
+              },
+              "help": {
+                "text": "Set the Secure attribute on \"sid\" (and serve the site over https only)."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-010",
+              "shortDescription": {
+                "text": "Content-Security-Policy header missing"
+              },
+              "help": {
+                "text": "Serve a Content-Security-Policy header (start with a report-then-enforce rollout; script-src 'self', no unsafe-inline for new code). Code map: middleware.ts (response headers) or next.config.js headers()/async headers — or the reverse proxy (nginx/vercel.json)."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-012",
+              "shortDescription": {
+                "text": "Clickjacking protection missing (no X-Frame-Options / frame-ancestors)"
+              },
+              "help": {
+                "text": "Serve X-Frame-Options: DENY (or CSP frame-ancestors 'none') so the site cannot be framed by attacker pages. Code map: middleware.ts (response headers) or next.config.js headers()/async headers — or the reverse proxy (nginx/vercel.json)."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-022",
+              "shortDescription": {
+                "text": "Cookie \"sid\" set without SameSite"
+              },
+              "help": {
+                "text": "Set SameSite=Lax (or Strict) on \"sid\" to blunt CSRF."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-013",
+              "shortDescription": {
+                "text": "X-Content-Type-Options header missing"
+              },
+              "help": {
+                "text": "Serve X-Content-Type-Options: nosniff on all responses. Code map: middleware.ts (response headers) or next.config.js headers()/async headers — or the reverse proxy (nginx/vercel.json)."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-014",
+              "shortDescription": {
+                "text": "Referrer-Policy header missing"
+              },
+              "help": {
+                "text": "Serve Referrer-Policy: strict-origin-when-cross-origin (or stricter). Code map: middleware.ts (response headers) or next.config.js headers()/async headers — or the reverse proxy (nginx/vercel.json)."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-015",
+              "shortDescription": {
+                "text": "Permissions-Policy header missing"
+              },
+              "help": {
+                "text": "Serve a Permissions-Policy restricting camera/microphone/geolocation to none (or first-party only). Code map: middleware.ts (response headers) or next.config.js headers()/async headers — or the reverse proxy (nginx/vercel.json)."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-030",
+              "shortDescription": {
+                "text": "Server header discloses a specific version"
+              },
+              "help": {
+                "text": "Strip or genericize the Server header version at the edge (banner disclosure feeds attacker recon)."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-031",
+              "shortDescription": {
+                "text": "X-Powered-By header discloses the stack"
+              },
+              "help": {
+                "text": "Remove X-Powered-By at the server/proxy (e.g. helmet.hidePoweredBy / proxy hideHeaders)."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-905",
+              "shortDescription": {
+                "text": "security.txt absent (RFC 9116)"
+              },
+              "help": {
+                "text": "Publish /.well-known/security.txt so researchers can report issues safely."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-041",
+              "shortDescription": {
+                "text": "Public bundle references internal/localhost endpoints"
+              },
+              "help": {
+                "text": "Remove internal hostnames from client code; route internal calls through a server-side proxy."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-900",
+              "shortDescription": {
+                "text": "Technology fingerprint: express, nextjs"
+              },
+              "help": {
+                "text": "Informational — findings below pair with code-map hints per detected framework."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            },
+            {
+              "id": "URL-043",
+              "shortDescription": {
+                "text": "Bundle references a sourceMappingURL (check exposure at Level 2)"
+              },
+              "help": {
+                "text": "A .map file is referenced next to http://127.0.0.1:61787/_next/static/app.js. Level 2 checks whether it is actually exposed and ships original sources."
+              },
+              "helpUri": "https://github.com/EMAD11223344/anubis-guardian#rules"
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "URL-040",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "Secret shipped in a public JavaScript bundle (supabase) — eyJh•••… (first-4 + sha256:b805303b) (JWT-shaped token — confirmed below by decoding the role claim)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/_next/static/app.js"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "17cd71a369ac"
+          }
+        },
+        {
+          "ruleId": "URL-040",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "Secret shipped in a public JavaScript bundle (stripe) — sk_l•••… (first-4 + sha256:0a040371)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/_next/static/app.js"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "db17671458c0"
+          }
+        },
+        {
+          "ruleId": "URL-001",
+          "ruleIndex": 1,
+          "level": "error",
+          "message": {
+            "text": "Site served over plain HTTP (no TLS) — http:// origin (every request — including session cookies — travels in cleartext)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "8cd6448d9fd2"
+          }
+        },
+        {
+          "ruleId": "URL-021",
+          "ruleIndex": 2,
+          "level": "error",
+          "message": {
+            "text": "Session cookie \"sid\" set without HttpOnly (readable by any XSS) — sid (session-shaped name)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "c163efda0690"
+          }
+        },
+        {
+          "ruleId": "URL-020",
+          "ruleIndex": 3,
+          "level": "warning",
+          "message": {
+            "text": "Cookie \"sid\" set without the Secure flag — sid (cookie can travel over plain http)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "8e868ae03d37"
+          }
+        },
+        {
+          "ruleId": "URL-010",
+          "ruleIndex": 4,
+          "level": "warning",
+          "message": {
+            "text": "Content-Security-Policy header missing — content-security-policy (response 200 carries no content-security-policy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "7f2226189752"
+          }
+        },
+        {
+          "ruleId": "URL-012",
+          "ruleIndex": 5,
+          "level": "warning",
+          "message": {
+            "text": "Clickjacking protection missing (no X-Frame-Options / frame-ancestors) — x-frame-options (response 200 carries no x-frame-options)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "38c058cb36bb"
+          }
+        },
+        {
+          "ruleId": "URL-022",
+          "ruleIndex": 6,
+          "level": "note",
+          "message": {
+            "text": "Cookie \"sid\" set without SameSite — sid"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "23cb02a1b0e1"
+          }
+        },
+        {
+          "ruleId": "URL-013",
+          "ruleIndex": 7,
+          "level": "note",
+          "message": {
+            "text": "X-Content-Type-Options header missing — x-content-type-options (response 200 carries no x-content-type-options)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "07630cfa91c5"
+          }
+        },
+        {
+          "ruleId": "URL-014",
+          "ruleIndex": 8,
+          "level": "note",
+          "message": {
+            "text": "Referrer-Policy header missing — referrer-policy (response 200 carries no referrer-policy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "07cb7f2d0175"
+          }
+        },
+        {
+          "ruleId": "URL-015",
+          "ruleIndex": 9,
+          "level": "note",
+          "message": {
+            "text": "Permissions-Policy header missing — permissions-policy (response 200 carries no permissions-policy)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "b7a65e747702"
+          }
+        },
+        {
+          "ruleId": "URL-030",
+          "ruleIndex": 10,
+          "level": "note",
+          "message": {
+            "text": "Server header discloses a specific version — nginx/1.24.0"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "0e7ae89e8b5a"
+          }
+        },
+        {
+          "ruleId": "URL-031",
+          "ruleIndex": 11,
+          "level": "note",
+          "message": {
+            "text": "X-Powered-By header discloses the stack — Express"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "dddd0fe91663"
+          }
+        },
+        {
+          "ruleId": "URL-905",
+          "ruleIndex": 12,
+          "level": "note",
+          "message": {
+            "text": "security.txt absent (RFC 9116) — no /.well-known/security.txt"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/.well-known/security.txt"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "ab1ddc5098ff"
+          }
+        },
+        {
+          "ruleId": "URL-041",
+          "ruleIndex": 13,
+          "level": "note",
+          "message": {
+            "text": "Public bundle references internal/localhost endpoints — https://internal.corp.local/api"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/#inline-script"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "9f5c089af677"
+          }
+        },
+        {
+          "ruleId": "URL-900",
+          "ruleIndex": 14,
+          "level": "note",
+          "message": {
+            "text": "Technology fingerprint: express, nextjs — express,nextjs"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "e07fa9ec693b"
+          }
+        },
+        {
+          "ruleId": "URL-043",
+          "ruleIndex": 15,
+          "level": "note",
+          "message": {
+            "text": "Bundle references a sourceMappingURL (check exposure at Level 2) — /_next/static/app.js.map"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "http://127.0.0.1:61787/_next/static/app.js"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "anubisFingerprint": "4b4842ff917a"
+          }
+        }
+      ]
+    }
+  ]
+}

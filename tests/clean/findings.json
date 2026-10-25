@@ -1,6 +1,6 @@
 {
   "tool": "anubis-guardian",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "advisory_snapshot": "2026-10",
   "target": {
     "mode": "codebase",

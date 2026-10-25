@@ -1,6 +1,6 @@
 import type { ScanContext, RuleResult, Finding, Severity, Confidence } from "../types.js";
 import { maskSecret, rootCause } from "../util.js";
-import { classifyFile, importedFromClient, isClientEnvKey } from "./context.js";
+import { classifyFile, importedFromClient, isClientEnvKey, normalizeAbs } from "./context.js";
 
 /**
  * Layer 1 — Secrets & Credentials (Plan Section 6).
@@ -120,7 +120,7 @@ export function scanSecrets(ctx: ScanContext): RuleResult {
       const envKey = envKeyOf(line);
       const clientHit = inEnvFile
         ? isClientEnvKey(envKey)
-        : fileClass === "client" || isClientEnvKey(envKey) || clientImporters.has(f.abs);
+        : fileClass === "client" || isClientEnvKey(envKey) || clientImporters.has(normalizeAbs(f.abs));
       const serverHit = inEnvFile
         ? Boolean(envKey) && !isClientEnvKey(envKey)
         : fileClass === "server";

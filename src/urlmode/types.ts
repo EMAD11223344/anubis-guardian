@@ -79,7 +79,7 @@ export interface UrlScanOptions {
 // UrlMeta (authorization record) lives in the canonical contract: ../types.js (single source of truth)
 
 export const USER_AGENT =
-  "anubis-guardian (security audit tool; deterministic; +https://github.com/anubis-guardian/anubis-guardian)";
+  "anubis-guardian (security audit tool; deterministic; +https://github.com/EMAD11223344/anubis-guardian)";
 
 export const MAX_BODY_BYTES = 512 * 1024;
 
