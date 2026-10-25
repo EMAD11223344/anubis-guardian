@@ -13,7 +13,11 @@ import { join } from "node:path";
  *    Adapters run only behind --tools and are flagged in meta.adapters_used.
  *  - Adapter output is marked source=<tool> and confidence=medium, and NEVER
  *    upgrades a finding to CRITICAL (the no-CRITICAL-without-confirmation law).
- *  - Failures are skipped silently (adapter absence must not break a scan).
+ *  - v1.2 (T0) — FAIL CLOSED: "adapter absence must not break a scan" is kept
+ *    for the DEFAULT (no --tools) runs only. When the operator EXPLICITLY
+ *    requested a tool, silence is a lie: a missing binary, a crash, or an
+ *    unusable report is reported (missing/failed/unsupported lists) and the
+ *    engine refuses to emit a report that pretends the evidence exists.
  */
 
 export function toolExists(bin: string): boolean {
@@ -23,29 +27,111 @@ export function toolExists(bin: string): boolean {
   try { execFileSync(probe, [bin], { stdio: "ignore" }); return true; } catch { return false; }
 }
 
-export function runAdapters(ctx: ScanContext, tools: string[]): { findings: Finding[]; used: string[] } {
-  const findings: Finding[] = [];
-  const used: string[] = [];
+export interface AdapterFailure { tool: string; status: number | null; reason: string }
 
-  for (const tool of tools) {
-    if (!toolExists(tool)) continue;
-    try {
-      if (tool === "gitleaks") findings.push(...gitleaks(ctx));
-      else if (tool === "osv-scanner") findings.push(...osvScanner(ctx));
-      else if (tool === "semgrep") findings.push(...semgrep(ctx));
-      used.push(tool);
-    } catch { /* adapter failure never breaks the scan */ }
-  }
-  return { findings, used };
+export interface AdapterOutcome {
+  findings: Finding[];
+  used: string[];
+  /** explicitly requested binaries that are not installed */
+  missing: string[];
+  /** binaries present but the run produced no usable report */
+  failed: AdapterFailure[];
+  /** tool names this engine does not know how to drive */
+  unsupported: string[];
 }
 
-function gitleaks(ctx: ScanContext): Finding[] {
+/**
+ * Controlled-executor seam (T0 test doubles): production uses realAdapterProbe;
+ * tests inject a fake `exists`/`exec` pair to exercise the exit-code truth
+ * table (findings exit codes, clean runs, crashes, malformed reports) without
+ * depending on host-installed scanner binaries. The fake exec writes the
+ * report file at the --report-path argument it receives.
+ */
+export interface ExecResult { status: number | null; stdout: string; stderr: string }
+export interface AdapterProbe {
+  exists: (bin: string) => boolean;
+  exec: (bin: string, args: string[], opts: { timeout?: number; cwd?: string }) => ExecResult;
+}
+
+export const realAdapterProbe: AdapterProbe = {
+  exists: toolExists,
+  exec: (bin, args, opts) => {
+    try {
+      execFileSync(bin, args, { timeout: opts.timeout, cwd: opts.cwd });
+      return { status: 0, stdout: "", stderr: "" };
+    } catch (e) {
+      return { status: execStatus(e), stdout: "", stderr: shortReason(e) };
+    }
+  },
+};
+
+export function runAdapters(ctx: ScanContext, tools: string[], probe: AdapterProbe = realAdapterProbe): AdapterOutcome {
+  const outcome: AdapterOutcome = { findings: [], used: [], missing: [], failed: [], unsupported: [] };
+
+  for (const tool of tools) {
+    if (tool !== "gitleaks" && tool !== "osv-scanner" && tool !== "semgrep") {
+      outcome.unsupported.push(tool);
+      continue;
+    }
+    if (!probe.exists(tool)) {
+      outcome.missing.push(tool);
+      continue;
+    }
+    try {
+      let findings: Finding[] = [];
+      let failed = false; // runner records failures instead of throwing
+      const fail = (status: number | null, reason: string) => { failed = true; outcome.failed.push({ tool, status, reason }); };
+      if (tool === "gitleaks") findings = gitleaks(ctx, fail, probe);
+      else if (tool === "osv-scanner") findings = osvScanner(ctx, fail, probe);
+      else findings = semgrep(ctx, fail, probe);
+      outcome.findings.push(...findings);
+      if (!failed) outcome.used.push(tool);
+    } catch (e) {
+      outcome.failed.push({ tool, status: execStatus(e), reason: (e instanceof Error ? e.message : String(e)).slice(0, 200) });
+    }
+  }
+  return outcome;
+}
+
+const shortReason = (e: unknown): string => (e instanceof Error ? e.message : String(e)).slice(0, 200);
+
+/**
+ * v1.2 (T0) — exit-code truth table (the old code treated these as crashes and
+ * threw the FINDINGS away):
+ *   gitleaks     0 = clean · 1 = leaks FOUND (report must still be parsed)
+ *   osv-scanner  0 = clean · 1 = vulnerabilities FOUND
+ *   semgrep      0 = done (maybe findings in report) · nonzero = scan failed
+ * Shared contract: if a parseable report with results exists, the run counts as
+ * used regardless of exit code; otherwise the failure is surfaced.
+ */
+function execStatus(e: unknown): number | null {
+  const s = (e as { status?: number })?.status;
+  return typeof s === "number" ? s : null;
+}
+
+type RunFail = (status: number | null, reason: string) => void;
+
+function gitleaks(ctx: ScanContext, fail: RunFail, probe: AdapterProbe): Finding[] {
   const dir = mkdtempSync(join(tmpdir(), "anubis-gl-"));
   const report = join(dir, "gl.json");
   try {
-    execFileSync("gitleaks", ["detect", "--source", ctx.rootDir, "--report-format", "json", "--report-path", report, "--no-banner", "--redact"], { timeout: 120000 });
-    let raw: any[] = [];
-    try { raw = JSON.parse(readFileSync(report, "utf8")); } catch { return []; }
+    const r = probe.exec("gitleaks", ["detect", "--source", ctx.rootDir, "--report-format", "json", "--report-path", report, "--no-banner", "--redact"], { timeout: 120000 });
+    // v1.2 (T0) truth table: 0 = clean · 1 = leaks FOUND (report is the payload) ·
+    // anything else (incl. null = crash/ENOENT...) = execution failure
+    if (r.status !== 0 && r.status !== 1) {
+      fail(r.status, `unexpected gitleaks exit ${r.status ?? "(crash)"}: ${r.stderr.slice(0, 140)}`);
+      return [];
+    }
+    let raw: any[];
+    try { raw = JSON.parse(readFileSync(report, "utf8")); } catch {
+      // invalid/missing report = incomplete coverage, never "clean"
+      fail(r.status, `gitleaks exited ${r.status} but the JSON report is missing or unparseable (expected at ${report})`);
+      return [];
+    }
+    if (!Array.isArray(raw)) {
+      fail(r.status, "gitleaks report is not a JSON array — invalid report");
+      return [];
+    }
     return raw.slice(0, 200).map((g) => ({
       id: "GLK-001",
       severity: "high" as const,
@@ -70,11 +156,20 @@ function gitleaks(ctx: ScanContext): Finding[] {
   }
 }
 
-function osvScanner(ctx: ScanContext): Finding[] {
+function osvScanner(ctx: ScanContext, fail: RunFail, probe: AdapterProbe): Finding[] {
   const report = join(mkdtempSync(join(tmpdir(), "anubis-osv-")), "osv.json");
   try {
-    execFileSync("osv-scanner", ["--format", "json", "--output", report, "--scan", "."], { cwd: ctx.rootDir, timeout: 180000 });
-    const data = JSON.parse(readFileSync(report, "utf8"));
+    const r = probe.exec("osv-scanner", ["--format", "json", "--output", report, "--scan", "."], { cwd: ctx.rootDir, timeout: 180000 });
+    // truth table: 0 = clean · 1 = vulnerabilities FOUND — anything else = failure
+    if (r.status !== 0 && r.status !== 1) {
+      fail(r.status, `unexpected osv-scanner exit ${r.status ?? "(crash)"}: ${r.stderr.slice(0, 140)}`);
+      return [];
+    }
+    let data: any;
+    try { data = JSON.parse(readFileSync(report, "utf8")); } catch {
+      fail(r.status, `osv-scanner exited ${r.status} but the JSON report is missing or unparseable (expected at ${report})`);
+      return [];
+    }
     const out: Finding[] = [];
     for (const res of data.results ?? []) {
       for (const pkg of res.packages ?? []) {
@@ -107,11 +202,21 @@ function osvScanner(ctx: ScanContext): Finding[] {
   }
 }
 
-function semgrep(ctx: ScanContext): Finding[] {
+function semgrep(ctx: ScanContext, fail: RunFail, probe: AdapterProbe): Finding[] {
   const report = join(mkdtempSync(join(tmpdir(), "anubis-sg-")), "sg.json");
   try {
-    execFileSync("semgrep", ["scan", "--json", "--quiet", "--output", report, "--config", "p/owasp-top-ten", ctx.rootDir], { timeout: 240000 });
-    const data = JSON.parse(readFileSync(report, "utf8"));
+    // semgrep truth table: 0 = scan completed (findings inside the report);
+    // ANY nonzero exit = scan failure (not a findings code) — surfaced.
+    const r = probe.exec("semgrep", ["scan", "--json", "--quiet", "--output", report, "--config", "p/owasp-top-ten", ctx.rootDir], { timeout: 240000 });
+    if (r.status !== 0) {
+      fail(r.status, `unexpected semgrep exit ${r.status ?? "(crash)"}: ${r.stderr.slice(0, 140)}`);
+      return [];
+    }
+    let data: any;
+    try { data = JSON.parse(readFileSync(report, "utf8")); } catch {
+      fail(0, `semgrep completed but the JSON report is missing or unparseable (expected at ${report})`);
+      return [];
+    }
     return (data.results ?? []).slice(0, 200).map((r: any) => ({
       id: "SGP-001",
       severity: r.extra?.severity === "ERROR" ? "high" : "medium",

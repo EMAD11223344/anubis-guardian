@@ -1,6 +1,7 @@
 import type { ScanContext, RuleResult, Finding, Severity, Confidence } from "../types.js";
 import { maskSecret, rootCause } from "../util.js";
 import { classifyFile, importedFromClient, isClientEnvKey, normalizeAbs } from "./context.js";
+import { isLiveEnvEntry, isNotePath, isPlaceholderDbUrl, looksLikeRealPrivateKey } from "./valueclass.js";
 
 /**
  * Layer 1 — Secrets & Credentials (Plan Section 6).
@@ -65,7 +66,7 @@ const PATTERNS: SecretPattern[] = [
     rule: "SEC-008", title: "Database URL with embedded password committed",
     re: /\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp):\/\/[^\s'"@:/]+:([^\s'"@]{4,})@[^\s'"]+/g, provider: "generic", severity: "high", confidence: "high", owasp: "A02",
     fix: "Move connection strings to server-side env; rotate the DB password; scrub git history (rotate-first).",
-    skip: (m) => PLACEHOLDER.test(m),
+    skip: (m) => PLACEHOLDER.test(m) || isPlaceholderDbUrl(m),
   },
 ];
 
@@ -105,6 +106,17 @@ function rotateFirstSupabase(): Finding["remediation"] {
 export function scanSecrets(ctx: ScanContext): RuleResult {
   const findings: RuleResult["findings"] = [];
   const clientImporters = importedFromClient(ctx);
+
+  // v1.2 (T3): one shared triage shared object — test/fixture/doc paths turn
+  // secret findings into low-confidence review notes (no score impact).
+  const notePush = (frel: string, fnd: RuleResult["findings"][number]) => {
+    if (isNotePath(frel)) {
+      fnd.severity = "low";
+      fnd.confidence = "low";
+      fnd.needs_confirmation = false;
+    }
+    findings.push(fnd);
+  };
 
   for (const f of ctx.files) {
     const fileClass = classifyFile(f);
@@ -151,15 +163,15 @@ export function scanSecrets(ctx: ScanContext): RuleResult {
           verified: true,
         };
         if (clientHit) {
-          findings.push({ ...base, severity: "critical", confidence: "high" });
+          notePush(f.rel, { ...base, severity: "critical", confidence: "high" });
         } else if (serverHit) {
-          findings.push({
+          notePush(f.rel, {
             ...base, severity: "info", confidence: "high",
             title: "service_role key used in server-only code (documented-correct pattern — verify env hygiene)",
             fix: "Correct placement. Ensure the key never leaks into client bundles and is not committed in plaintext env files.",
           });
         } else {
-          findings.push({
+          notePush(f.rel, {
             ...base, severity: "medium", confidence: "medium", needs_confirmation: true,
             title: "service_role key in unclassified context — confirm reachability",
             fix: SUPA_FIX + " First confirm whether this module is imported from any client bundle.",
@@ -183,11 +195,11 @@ export function scanSecrets(ctx: ScanContext): RuleResult {
           root, root_cause: rootCause("SUPA-001", root), verified: true,
         };
         if (clientHit) {
-          findings.push({ ...base, severity: "critical", confidence: "high" });
+          notePush(f.rel, { ...base, severity: "critical", confidence: "high" });
         } else if (serverHit) {
-          findings.push({ ...base, severity: "info", confidence: "high", title: "secret key (sb_secret_) used in server-only code (verify env hygiene)" });
+          notePush(f.rel, { ...base, severity: "info", confidence: "high", title: "secret key (sb_secret_) used in server-only code (verify env hygiene)" });
         } else {
-          findings.push({ ...base, severity: "medium", confidence: "medium", needs_confirmation: true, title: "secret key (sb_secret_) in unclassified context — confirm reachability" });
+          notePush(f.rel, { ...base, severity: "medium", confidence: "medium", needs_confirmation: true, title: "secret key (sb_secret_) in unclassified context — confirm reachability" });
         }
       }
 
@@ -197,14 +209,19 @@ export function scanSecrets(ctx: ScanContext): RuleResult {
         while ((m = p.re.exec(line)) !== null) {
           const v = m[0];
           if (p.skip?.(v)) continue;
-          if (isMd && p.rule !== "SEC-007") continue; // docs excluded except key material
-          if (isEnvExample) continue; // .env.example handled by SEED-001 expansion
+          // v1.2 (T3): a private-key HEADER without a following ≥64-base64 body
+          // is a tutorial snippet, not committed key material.
+          if (p.rule === "SEC-007" && !looksLikeRealPrivateKey(f.lines, i)) continue;
+          // v1.2 (T3): test/fixture/doc paths — the value still gets REPORTED but
+          // as a low-confidence review note (no score impact), replacing the old
+          // blanket "docs excluded" silent skip so coverage stays honest.
+          const notePath = isNotePath(f.rel);
           const masked = maskSecret(v);
           const root = masked.sha256_prefix;
           findings.push({
-            id: p.rule, severity: p.severity, confidence: p.confidence,
+            id: p.rule, severity: notePath ? "low" : p.severity, confidence: notePath ? "low" : p.confidence,
             title: p.title, file: f.rel, line: i + 1,
-            evidence: { type: `${p.provider}_secret`, masked: masked.masked, sha256_prefix: masked.sha256_prefix, note: "full value is never written to any report or artifact" },
+            evidence: { type: `${p.provider}_secret`, masked: masked.masked, sha256_prefix: masked.sha256_prefix, note: notePath ? "test/fixture/doc path — review note, no score impact; full value never written to any report or artifact" : "full value is never written to any report or artifact" },
             owasp: p.owasp, fix: p.fix, fix_mode: "suggested-diff",
             remediation: { type: "rotate-first", provider: p.provider, steps: `1) Rotate/revoke the ${p.provider} credential 2) Update server-side env 3) Scrub git history (git filter-repo) 4) Verify the old credential is dead`, history_cleanup: "git filter-repo required — deletion from HEAD is not enough" },
             root, root_cause: rootCause(p.rule, root), verified: true,
@@ -241,36 +258,57 @@ export function scanSecrets(ctx: ScanContext): RuleResult {
   const envRe = /(^|\/)\.env(\.local|\.production|\.staging|\.development)?$/i;
   for (const f of ctx.files) {
     if (!envRe.test(f.rel)) continue;
-    const hasRealSecret = f.lines.some((l) => {
-      const kv = l.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*["']?([^"'\n#]+)["']?/);
-      if (!kv) return false;
-      const [, key, value] = kv;
-      if (isClientEnvKey(key)) return true; // public env with secret-shaped value is judged by its own rule; committed env is still an exposure signal
-      return value.trim().length >= 24 && /^[A-Za-z0-9+/=_-]+$/.test(value.trim()) && !PLACEHOLDER.test(value);
-    });
-    if (!hasRealSecret) continue;
+    const pairs = f.lines
+      .map((l) => l.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*["']?([^"'\n#]+)["']?/))
+      .filter((kv): kv is RegExpMatchArray => kv !== null)
+      .map((kv) => ({ key: kv[1], value: kv[2] }));
+    const hasRealSecret = pairs.some((kv) =>
+      // v1.2 (T2): the KEY alone is no longer the trigger (a NEXT_PUBLIC_* URL is
+      // not a live secret — public-only env files are exactly the Lovable FP). The
+      // VALUE is classified: JWTs by decoded role, provider prefixes by shape,
+      // everything else by length+charset+entropy signal; a screaming credential
+      // NAME with a 20+ char non-placeholder value still counts (T2 name rule).
+      isLiveEnvEntry(kv.key, kv.value)
+    );
     const tracked = ctx.trackedFiles.has(f.rel);
-    if (tracked) {
+    if (hasRealSecret) {
+      if (tracked) {
+        findings.push({
+          id: "ENV-001", severity: "critical", confidence: "high",
+          title: "Environment file with live values is committed to git",
+          file: f.rel, line: 0,
+          evidence: { type: "committed_env", masked: `${f.rel} (git-tracked)`, note: "values masked — see per-line secret findings" },
+          owasp: "A02",
+          fix: "1) Remove the file from tracking (git rm --cached) and gitignore it 2) Rotate every credential inside it (rotate-first) 3) Scrub history with git filter-repo 4) Load values from the deployment platform's secret store.",
+          fix_mode: "suggested-diff",
+          remediation: { type: "rotate-first", provider: "generic", steps: "Rotate ALL credentials inside this file, then scrub history — the file is already public if the repo is public.", history_cleanup: "git filter-repo required" },
+          root: f.rel, root_cause: rootCause("ENV-001", f.rel), verified: true,
+        });
+      } else if (!ctx.gitAvailable) {
+        findings.push({
+          id: "ENV-001", severity: "medium", confidence: "medium",
+          title: "Env file with live values present; no git repo — commit status unverifiable",
+          file: f.rel, line: 0,
+          evidence: { type: "env_no_repo", masked: f.rel },
+          owasp: "A02",
+          fix: "Ensure this file is gitignored before the project ever reaches a remote; prefer platform secret stores.",
+          fix_mode: "suggested-diff", root: f.rel, root_cause: rootCause("ENV-001", f.rel), verified: true,
+        });
+      }
+      continue;
+    }
+    // v1.2 (T2): a committed env file with NO secret-shaped values gets ONE LOW
+    // review note (no score impact) — it fixes the old behavior of either
+    // screaming CRITICAL on public keys or staying silently blind to a tracked .env.
+    if (tracked && pairs.length > 0) {
       findings.push({
-        id: "ENV-001", severity: "critical", confidence: "high",
-        title: "Environment file with live values is committed to git",
+        id: "ENV-001", severity: "low", confidence: "low",
+        title: "Environment file committed to git — public values only",
         file: f.rel, line: 0,
-        evidence: { type: "committed_env", masked: `${f.rel} (git-tracked)`, note: "values masked — see per-line secret findings" },
-        owasp: "A02",
-        fix: "1) Remove the file from tracking (git rm --cached) and gitignore it 2) Rotate every credential inside it (rotate-first) 3) Scrub history with git filter-repo 4) Load values from the deployment platform's secret store.",
-        fix_mode: "suggested-diff",
-        remediation: { type: "rotate-first", provider: "generic", steps: "Rotate ALL credentials inside this file, then scrub history — the file is already public if the repo is public.", history_cleanup: "git filter-repo required" },
-        root: f.rel, root_cause: rootCause("ENV-001", f.rel), verified: true,
-      });
-    } else if (!ctx.gitAvailable) {
-      findings.push({
-        id: "ENV-001", severity: "medium", confidence: "medium",
-        title: "Env file with live values present; no git repo — commit status unverifiable",
-        file: f.rel, line: 0,
-        evidence: { type: "env_no_repo", masked: f.rel },
-        owasp: "A02",
-        fix: "Ensure this file is gitignored before the project ever reaches a remote; prefer platform secret stores.",
-        fix_mode: "suggested-diff", root: f.rel, root_cause: rootCause("ENV-001", f.rel), verified: true,
+        evidence: { type: "committed_env_public", masked: `${f.rel} (${pairs.length} entries, none secret-shaped)`, note: "public-by-design values only (URLs / anon keys / publishable keys / project ids) — review note, no score impact; still keep .env gitignored so future secret-shaped entries never land in history" },
+        owasp: "A05",
+        fix: "Remove from tracking (git rm --cached .env) and add it to .gitignore — today's public values are fine, tomorrow's service_role paste would be committed too.",
+        fix_mode: "suggested-diff", root: f.rel, root_cause: rootCause("ENV-001", `${f.rel}:public`), verified: true,
       });
     }
   }

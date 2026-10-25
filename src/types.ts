@@ -117,8 +117,8 @@ export interface ScanResult {
   version: string;
   advisory_snapshot: string;  // bundled per release — deterministic per tool version
   target: { mode: "codebase" | "url"; path: string; paths?: string[]; stack: string[] }; // paths = multi-root (v0.2) · mode "url" = v0.4
-  score: number;
-  grade: "A" | "B" | "C" | "D" | "F";
+  score: number | null;       // v1.2: null = not computable (URL-999 unreachable target → grade "N/A")
+  grade: "A" | "B" | "C" | "D" | "F" | "N/A";
   summary: { critical: number; high: number; medium: number; low: number; info: number };
   coverage: Coverage;
   score_breakdown: ScoreBreakdown;
@@ -126,13 +126,16 @@ export interface ScanResult {
   inventory?: Inventory;      // v0.2 recon inventory
   url_meta?: UrlMeta;         // v0.4 URL Mode (authorization record — Plan Section 7.4)
   ai_review?: AiReviewMeta;   // v0.3 AI review (only when --ai-review ran)
-  portfolio?: Array<{ path: string; score: number; grade: string; findings: number }>; // --workspaces (v0.2)
+  portfolio?: Array<{ path: string; score: number | null; grade: string; findings: number }>; // --workspaces (v0.2); v1.2 score may be null
   meta: {
     no_exec: true;            // Section 9.7 — the tool never executes project code
     files_scanned: number;
     git_history_scanned: boolean;
     online_used?: boolean;    // --online registry checks ran (non-deterministic — excluded from default runs)
     adapters_used?: string[]; // external tools merged (run only when explicitly requested)
+    adapters_requested?: string[]; // v1.2: full --tools list as requested (fail-closed accounting)
+    files_skipped?: { oversize: number; binary: number; unreadable: number }; // v1.2: honest skip counts (walk caps)
+    excluded?: { globs: string[]; files: number }; // v1.1.0: --exclude audit trail
     ai_used?: boolean;        // v0.3: AI review layer ran (--ai-review) — non-deterministic, flagged
     rules_lock?: "verified" | "off" | "bypassed"; // v1.0: rules supply-chain guard state (--rules-dir)
     community_rules?: boolean;   // v1.0: unpinned/bypassed org rules ran (quarantine label)

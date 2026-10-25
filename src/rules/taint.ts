@@ -125,7 +125,38 @@ export function scanTaint(ctx: ScanContext): RuleResult {
         // sanitizer window: same line ±6 (call-site recognition — the sanitizer
         // may be an imported helper; that is the one-level-import allowance)
         const window = f.lines.slice(Math.max(0, i - 6), i + 7).join("\n");
-        if (rule.sanitizer.test(window)) continue; // clean case: recognized sanitizer cuts the path
+        if (rule.sanitizer.test(window)) {
+          // v1.2 (T6): a recognized SSRF allowlist no longer makes the finding
+          // VANISH silently — the reviewer never saw why/what was skipped, and a
+          // mis-recognized "sanitizer" hid a real flow without a trace. For
+          // TAINT-001 the flow stays VISIBLE at LOW severity + LOW confidence:
+          // a review note that never deducts (score.ts/deducts), keeping
+          // allowlisted fetch helpers effectively clean while staying honest.
+          if (rule.id === "TAINT-001") {
+            findings.push({
+              id: "TAINT-001",
+              severity: "low",
+              confidence: "low",
+              title: "User-controlled value reaches an outbound request behind a recognized host allowlist — verify the allowlist is strict",
+              file: f.rel,
+              line: i + 1,
+              evidence: {
+                type: "taint_flow_allowlisted",
+                masked: line.trim().slice(0, 80),
+                note: "allowlist-shaped guard found near the sink (ALLOWED_*/allowlist/isAllowed…) — confirm it validates hostname exactly and rejects URL-encoded/bypass forms; LOW review note, no score impact",
+              },
+              owasp: rule.owasp,
+              fix: rule.fix,
+              fix_mode: "suggested-diff",
+              needs_confirmation: true,
+              root: f.rel,
+              root_cause: rootCause(rule.id, `${f.rel}:allowlisted`),
+              verified: true,
+            });
+            break; // one verdict per line — the strongest rule wins
+          }
+          continue;
+        }
         findings.push({
           id: rule.id,
           severity: "medium", // hard cap (Plan v1.6 — taint-lite never claims HIGH/CRITICAL)

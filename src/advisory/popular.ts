@@ -38,7 +38,7 @@ clean-deep deepmerge merge-deep lodash.merge object-assign deep-copy clone exten
 is-odd is-even is-number kind-of classnames clsx tailwind-merge
 dotenv-vault googletrends duplicate-package-checker-webpack-plugin
 webpack-dev-server vite-plugin-react @vitejs/plugin-react @vitejs/plugin-vue
-preact solid-js qwiklit qwik astro svelte-kit @sveltejs/kit nuxt @nuxtjs/kit nitropack
+preact solid-js qwiklit qwik astro svelte-kit @sveltejs/kit nuxt @nuxtjs/kit nitropack nitro
 expo react-native @react-navigation/native @expo/cli
 electron tauri @tauri-apps/cli neutrino
 nodemailer sendgrid @sendgrid/mail mailgun-js resend postmark nodemailer-sendgrid
@@ -46,7 +46,7 @@ twilio Vonage messagebird pusher ably firebase-functions
 rate-limiter-flexible express-rate-limit slowdown express-brute
 jsonwebtoken cache-manager lru-cache node-cache memory-cache apollo-server-caching
 mjml juice html-to-text string-strip-html
-p-limit p-queue p-map async bluebird q when
+p-limit p-queue p-map async bluebird q qs when
 ramda immer immerhx htm nanoid-parser
 yaml js-yaml toml ini xml2js fast-xml-parser plist
 ua-parser-js platform mobile-detect booted

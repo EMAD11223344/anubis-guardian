@@ -1,5 +1,5 @@
 import type { ScanContext, ScanResult, Finding } from "./types.js";
-import { walk } from "./walk.js";
+import { walkWithStats } from "./walk.js";
 import { recon } from "./recon.js";
 import { buildInventory } from "./inventory.js";
 import { gitAvailable, trackedFiles } from "./rules/history.js";
@@ -21,7 +21,7 @@ import { scanAgentEnv } from "./rules/agentenv.js";
 import { computeScore } from "./score.js";
 import { applySuppression, parseInlineIgnores, fingerprint, mkFinding, excludeToRegExp, type RawFinding } from "./util.js";
 import { CHECKS, CLASSES_COVERED, CLASSES_NOT_COVERED } from "./coverage.js";
-import { runAdapters } from "./adapters.js";
+import { runAdapters, type AdapterProbe } from "./adapters.js";
 import { loadOrgRules, runOrgRules } from "./rulesdir.js";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
@@ -38,7 +38,7 @@ export const ADVISORY_SNAPSHOT = "2026-10";
  * (npm/registry metadata calls happen ONLY behind --online — flagged in meta.)
  */
 export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
-  const walked = walk(rootDir);
+  const { files: walked, skipped } = walkWithStats(rootDir);
   // --exclude (v1.1.0): ONE filter point right after walk() — rules, the
   // reachability graph, inventory, suppression and meta counts all see the
   // same filtered set, so the graph can never form stale edges through an
@@ -58,6 +58,13 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
   if (opts.maxFiles !== undefined && files.length > opts.maxFiles) {
     throw new Error(
       `size cap: ${files.length} scannable files exceed --max-files ${opts.maxFiles} — refusing to emit a partial report (determinism contract). Trim with --exclude, raise --max-files, or split the scan across roots.`
+    );
+  }
+  // v1.2 (T1, fail-closed): 0 scannable files is almost always a wrong path or a
+  // mis-keyed --exclude — a silent "score 100/A" report would be a lie.
+  if (!files.length && !opts.allowEmpty) {
+    throw new Error(
+      `empty scan: 0 scannable files under ${rootDir} — refusing to emit a report with no evidence base. Check the path/excludes, or pass --allow-empty to accept an empty scan.`
     );
   }
   const stack = recon(rootDir, files);
@@ -102,11 +109,31 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
   }
 
   // adapters (--tools, off by default — determinism contract)
-  const metaExtras: { online_used?: boolean; adapters_used?: string[]; excluded?: { globs: string[]; files: number } } = {};
+  const metaExtras: { online_used?: boolean; adapters_used?: string[]; adapters_requested?: string[]; excluded?: { globs: string[]; files: number }; files_skipped?: { oversize: number; binary: number; unreadable: number } } = {};
   if (opts.tools?.length) {
-    const { findings, used } = runAdapters(ctx, opts.tools);
-    raw.push(...findings);
-    if (used.length) metaExtras.adapters_used = used;
+    const ad = runAdapters(ctx, opts.tools, opts.adapterProbe);
+    // v1.2 (T0, fail-closed): the operator EXPLICITLY requested this evidence.
+    // Silently returning a "clean" adapter result would be a lie — refuse the
+    // report instead (same philosophy as --max-files).
+    const blocks = [
+      ...ad.unsupported.map((t) => `unsupported tool "${t}" (available: gitleaks, osv-scanner, semgrep)`),
+      ...ad.missing.map((t) => `"${t}" is not installed (or not on PATH)`),
+      ...ad.failed.map((f) => `"${f.tool}" failed (exit ${f.status ?? "?"}): ${f.reason}`),
+    ];
+    if (blocks.length) {
+      throw new Error(
+        `adapter fail-closed: ${blocks.join("; ")} — a requested adapter produced NO evidence, so the report would be misleading. Install the tool / fix the failure, or remove it from --tools.`
+      );
+    }
+    raw.push(...ad.findings);
+    metaExtras.adapters_requested = [...opts.tools];
+    if (ad.used.length) metaExtras.adapters_used = ad.used;
+  }
+
+  // v1.2 (T7): honest skip accounting — oversized/binary files are part of the
+  // tree the report claims to cover; their absence is now visible in meta.
+  if (skipped.oversize || skipped.binary || skipped.unreadable) {
+    metaExtras.files_skipped = skipped;
   }
 
   // inline suppression (v1.2) — file-scoped, reason + expiry mandatory
@@ -172,8 +199,13 @@ export interface ScanOptions {
   advisoryFile?: string;
   exclude?: string[];   // v1.1.0 — repo-relative POSIX globs skipped before any rule/graph sees them
   maxFiles?: number;    // v1.1.0 — fail-closed size cap: refusal (throw) instead of a partial report
+  allowEmpty?: boolean; // v1.2.0 — accept a scan with 0 scannable files (default: refusal, fail-closed)
   aiReview?: boolean;   // v0.3 — AI review runs at CLI level AFTER the deterministic scan
   quarantine?: string;  // v0.3 — quarantine dir for generated tests (never executed by the tool)
+  /** v1.2 (T0, TEST-ONLY seam): injects controlled adapter probes so the
+   *  exit-code truth table is testable without host-installed scanners.
+   *  Never set by the CLI — production always uses the real executor. */
+  adapterProbe?: AdapterProbe;
 }
 
 /**
@@ -300,6 +332,23 @@ export function scanRoots(paths: string[], opts: ScanOptions = {}): ScanResult {
   const combined = computeScore(merged);
   const stackAll = [...new Set(results.flatMap((r) => r.target.stack))];
   const filesAll = results.reduce((a, r) => a + r.meta.files_scanned, 0);
+  // v1.2 (T0/T7): multi-root merge keeps adapter provenance + honest skip counts.
+  const adapterUsed = [...new Set(results.flatMap((r) => r.meta.adapters_used ?? []))].sort();
+  const adapterRequested = results[0].meta.adapters_requested ?? (opts.tools?.length ? [...opts.tools] : undefined);
+  const skippedSum = results.reduce(
+    (acc, r) => ({
+      oversize: acc.oversize + (r.meta.files_skipped?.oversize ?? 0),
+      binary: acc.binary + (r.meta.files_skipped?.binary ?? 0),
+      unreadable: acc.unreadable + (r.meta.files_skipped?.unreadable ?? 0),
+    }),
+    { oversize: 0, binary: 0, unreadable: 0 }
+  );
+  const mergedMetaExtras: Record<string, unknown> = {};
+  if (adapterUsed.length) mergedMetaExtras.adapters_used = adapterUsed;
+  if (adapterRequested?.length) mergedMetaExtras.adapters_requested = adapterRequested;
+  if (opts.online) mergedMetaExtras.online_used = true;
+  if (opts.exclude?.length) mergedMetaExtras.excluded = { globs: opts.exclude, files: results.reduce((a, r) => a + (r.meta.excluded?.files ?? 0), 0) };
+  if (skippedSum.oversize || skippedSum.binary || skippedSum.unreadable) mergedMetaExtras.files_skipped = skippedSum;
 
   return {
     tool: "anubis-guardian",
@@ -326,6 +375,7 @@ export function scanRoots(paths: string[], opts: ScanOptions = {}): ScanResult {
       no_exec: true,
       files_scanned: filesAll,
       git_history_scanned: results.every((r) => r.meta.git_history_scanned),
-    },
+      ...mergedMetaExtras,
+    } as ScanResult["meta"],
   };
 }

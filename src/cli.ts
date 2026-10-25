@@ -54,7 +54,30 @@ type Opts = {
   allowCommunityRules?: boolean;
   exclude?: string[];
   maxFiles?: string;
+  allowEmpty?: boolean;
 };
+
+/** v1.2 (T1): the allowed --format universe, enforced in ONE place for scan + scan-url. */
+const FORMATS = new Set(["terminal", "json", "md", "sarif", "html", "compact", "all"]);
+
+/** v1.2 (T1): validate an option value it will be used — no more silent no-ops. */
+function validateFormat(opts: { format: string }): void {
+  if (!FORMATS.has(opts.format)) {
+    console.error(`invalid --format "${opts.format}" — accepts: ${[...FORMATS].join(" | ")}`);
+    process.exit(2);
+  }
+}
+
+/** v1.2 (T1): fail-closed input validation (shared cursor over a given list of pairs) */
+function validateFileInputs(pairs: Array<{ label: string; value?: string }>): void {
+  for (const { label, value } of pairs) {
+    if (value === undefined || value === "") continue;
+    if (!existsSync(resolve(value))) {
+      console.error(`${label}: file not found: ${value}`);
+      process.exit(2);
+    }
+  }
+}
 
 program
   .command("scan")
@@ -80,6 +103,7 @@ program
   .option("--allow-community-rules", "v1.0: bypass the rules-lock supply-chain guard (unpinned/modified rules run, quarantined in meta)")
   .option("--exclude <glob>", "v1.1.0: skip files matching a repo-relative POSIX glob (repeatable; \"**\" = any depth, \"*\" = one segment; no \"!\" negation — pure whitelist skipper)", collect)
   .option("--max-files <n>", "v1.1.0: fail-closed size cap — exit 2 WITHOUT a report when the tree has more scannable files (determinism forbids partial reports)")
+  .option("--allow-empty", "v1.2: accept a scan with 0 scannable files (default: fail-closed refusal — exit 2, no report)", false)
   .addHelpText("after", [
     "Examples:",
     "  anubis-guardian scan ./my-project",
@@ -90,12 +114,32 @@ program
     "  anubis-guardian scan ./my-project --schema dump.sql  # confirm Supabase RLS drift",
     "  anubis-guardian scan ./my-project --exclude \"**/generated/**\" --exclude \"**/*.min.js\"   # skip generated/minified code",
     "  anubis-guardian scan ./big-repo --max-files 50000    # fail-closed size cap — exit 2, never a partial report",
+    "  anubis-guardian scan ./wrong-path                    # fail-closed: exit 2 (pass --allow-empty to accept a 0-file scan)",
   ].join("\n"))
   .action(async (paths: string[], opts: Opts) => {
     const failOn = (opts.failOn ?? "").toLowerCase();
     if (failOn && failOn !== "high" && failOn !== "critical") {
       console.error("--fail-on accepts: high | critical");
       process.exit(2);
+    }
+    validateFormat(opts);
+    validateFileInputs([
+      { label: "--schema", value: opts.schema },
+      { label: "--advisories", value: opts.advisories },
+    ]);
+
+    // ---- v1.2 (T1) fail-closed path validation: a missing root must exit 2,
+    // ---- not collapse into an empty walk and a fake "score 100/A" report
+    const roots = paths.map((p) => resolve(p));
+    for (let i = 0; i < roots.length; i++) {
+      if (!existsSync(roots[i])) {
+        console.error(`scan: path not found: ${paths[i]}`);
+        process.exit(2);
+      }
+      if (!statSync(roots[i]).isDirectory()) {
+        console.error(`scan: not a project directory: ${paths[i]}`);
+        process.exit(2);
+      }
     }
 
     // ---- v1.1.0 --exclude / --max-files validation ----
@@ -111,13 +155,13 @@ program
     }
 
     // ---- workspace expansion ----
-    let roots = paths.map((p) => resolve(p));
+    let workRoots = roots;
     if (opts.workspaces) {
       if (paths.length !== 1) {
         console.error("--workspaces takes a single root directory");
         process.exit(2);
       }
-      roots = expandWorkspaces(roots[0]);
+      workRoots = expandWorkspaces(roots[0]);
     }
 
     // ---- v1.0 rules supply-chain guard (Plan Section 9.4): lock verify BEFORE any scan ----
@@ -139,8 +183,8 @@ program
 
     let result;
     try {
-      result = roots.length === 1 ? scan(roots[0], { schemaDump: opts.schema, rulesDir: opts.rulesDir, tools: parseTools(opts.tools), online: opts.online, advisoryFile: opts.advisories, exclude, maxFiles })
-                                  : scanRoots(roots, { schemaDump: opts.schema, rulesDir: opts.rulesDir, tools: parseTools(opts.tools), online: opts.online, advisoryFile: opts.advisories, exclude, maxFiles });
+      result = workRoots.length === 1 ? scan(workRoots[0], { schemaDump: opts.schema, rulesDir: opts.rulesDir, tools: parseTools(opts.tools), online: opts.online, advisoryFile: opts.advisories, exclude, maxFiles, allowEmpty: opts.allowEmpty === true })
+                                    : scanRoots(workRoots, { schemaDump: opts.schema, rulesDir: opts.rulesDir, tools: parseTools(opts.tools), online: opts.online, advisoryFile: opts.advisories, exclude, maxFiles, allowEmpty: opts.allowEmpty === true });
     } catch (e) {
       console.error(`scan failed: ${e instanceof Error ? e.message : String(e)}`);
       process.exit(2);
@@ -263,6 +307,14 @@ program
     if (![1, 2, 3].includes(level)) {
       console.error("--level accepts 1 | 2 | 3");
       process.exit(2);
+    }
+    validateFormat(opts); // v1.2 (T1): unknown --format must not silently produce nothing
+    {
+      const failOn = (opts.failOn ?? "").toLowerCase();
+      if (failOn && failOn !== "high" && failOn !== "critical") {
+        console.error("--fail-on accepts: high | critical");
+        process.exit(2);
+      }
     }
     // v1.0 gates: the restricted active probe is L3 scope + needs both identities
     if (opts.activeTests && level < 3) {
@@ -533,12 +585,17 @@ function parseTools(list?: string): string[] | undefined {
   return tools.length ? tools : undefined;
 }
 
-/** v0.4 — shared output tail for scan-url (artifacts + formats + CI gate + exit codes). */
+/** v0.4 — shared output tail for scan-url (artifacts + formats + CI gate + exit codes).
+ *  v1.2 (T1): an unreachable target (URL-999) is an honest "N/A", not a fake
+ *  100/A — score null + grade "N/A" in every renderer, and exit 2 (the scan
+ *  produced a verdict but could not complete its contract, fail-closed). */
 function emitUrlResult(
   result: ScanResult,
   opts: { format: string; output?: string; failOn?: string; sarif?: string; fixPrompt?: string; compact?: string; html?: string },
   _level: number
 ): void {
+  const unreachable = result.findings.some((f) => f.id === "URL-999");
+  if (unreachable) result = { ...result, score: null, grade: "N/A" as const };
   if (opts.sarif) writeArtifact(opts.sarif, renderSarif(result));
   if (opts.fixPrompt) writeArtifact(opts.fixPrompt, renderFixPrompt(result));
   if (opts.compact) writeArtifact(opts.compact, renderCompact(result));
@@ -559,6 +616,10 @@ function emitUrlResult(
   const failOn = (opts.failOn ?? "").toLowerCase();
   if (failOn && failOn !== "high" && failOn !== "critical") {
     console.error("--fail-on accepts: high | critical");
+    process.exit(2);
+  }
+  if (unreachable) {
+    console.error(`\nscan-url: target unreachable — no homepage response, so there is no evidence to grade. Grade: N/A (score not computable). ${DISCLAIMER}`);
     process.exit(2);
   }
   if (failOn) {

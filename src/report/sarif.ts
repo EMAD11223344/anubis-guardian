@@ -47,6 +47,11 @@ export function renderSarif(result: ScanResult): string {
           ],
           partialFingerprints: { anubisFingerprint: f.fingerprint },
         })),
+        // v1.2 (T7) coverage honesty: skipped files are recorded in run properties
+        // so a SARIF publish never looks complete when evidence was dropped.
+        ...(result.meta.files_skipped
+          ? { properties: { files_skipped: result.meta.files_skipped, coverage_note: "part of the scanned tree was skipped (oversize/binary/unreadable) — the report is NOT a complete scan" } }
+          : {}),
       },
     ],
   };

@@ -74,13 +74,27 @@ export function scanDeps(ctx: ScanContext): RuleResult {
 
   const declared = declaredDeps(pkg);
   const locked = lockfileDeps(ctx.rootDir);
+  // v1.2 (T5): "has a lockfile" must be answered by ALL recognized lockfiles —
+  // pnpm/yarn/bun projects previously produced a DEP-004 storm (one finding per
+  // dependency) because only npm's two formats counted. Walk may also drop a
+  // large lockfile (size cap) — probe the filesystem directly for existence.
+  // Per-dependency findings additionally require an npm-PARSEABLE lockfile
+  // (package-lock.json / npm-shrinkwrap.json — the only formats whose exact
+  // package membership can be verified offline).
+  const npmLockParsed =
+    locked.size > 0 ||
+    existsSync(join(ctx.rootDir, "package-lock.json")) ||
+    existsSync(join(ctx.rootDir, "npm-shrinkwrap.json"));
+  const hasAnyLock = npmLockParsed ||
+    ["pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"]
+      .some((n) => existsSync(join(ctx.rootDir, n)));
+  const unresolvedScoped: string[] = [];
   const snap = loadSnapshot(ctx);
   const isWorkspaceMember = Boolean(pkg.workspaces || pkg.name === ctx.rootDir.split(/[\\/]/).pop());
   const scoped = (n: string) => n.startsWith("@");
 
   for (const name of declared) {
     const lockedVersion = locked.get(name);
-    const hasLock = locked.size > 0;
 
     // ---------- DEP-002 known malicious ----------
     const mal = snap.known_malicious?.[name];
@@ -126,82 +140,118 @@ export function scanDeps(ctx: ScanContext): RuleResult {
       }
     }
 
-    // ---------- DEP-003 typosquat ----------
-    if (!POPULAR.has(name) && !scoped(name)) {
-      const near = nearestPopular(name, 2);
-      if (near) {
-        findings.push(mk(ctx, {
-          id: "DEP-003",
-          severity: "high",
-          title: `Possible typosquat: "${name}" is ${near.distance} edit(s) from popular "${near.target}"`,
-          file: "package.json", line: depLine(pkg, name),
-          evidence: {
-            type: "typosquat_candidate",
-            masked: name,
-            note: `offline heuristic (distance ${near.distance}) — verify the intended package is "${near.target}" or that this is the real, established name`,
-          },
-          owasp: "A06",
-          confidence: "medium",
-          fix: `Confirm "${name}" is the package you intend (it is ${near.distance} edits from "${near.target}"). Typosquats steal install-time secrets. If it is a typo, install "${near.target}" instead and remove the attacker-controlled name.`,
-          root: name, root_cause: rootCause("DEP-003", name),
-        }));
-        continue;
-      }
-
-      // ---------- DEP-004 unknown + no lockfile (v1.3 hallucination design) ----------
-      const workspaceException = scoped(name) || isWorkspaceMember; // org/private packages
-      if (!hasLock && !workspaceException) {
-        findings.push(mk(ctx, {
-          id: "DEP-004",
-          severity: "medium",
-          title: `"${name}" cannot be resolved offline and the project has no lockfile`,
-          file: "package.json", line: depLine(pkg, name),
-          evidence: {
-            type: "unresolved_offline",
-            masked: name,
-            note: "no lockfile proves this package ever resolved — hallucinated/slopsquat candidates land here; re-run with --online to check the registry",
-          },
-          owasp: "A06",
-          confidence: "medium",
-          fix: `Verify "${name}" exists on the npm registry and is the package you intend. Generate a lockfile (npm install --package-lock-only) so dependency resolution becomes reproducible and auditable.`,
-          root: name, root_cause: rootCause("DEP-004", name),
-        }));
-      }
-
-      // ---------- DEP-005 slopsquat (online only) ----------
-      if (ctx.online) {
-        // eslint-disable-next-line no-await-in-loop -- sequential, bounded by declared deps
-        const meta = registryMeta(name);
-        if (meta === null) {
+      // v1.2 (T4): OFFLINE edit-distance-only evidence must never produce HIGH —
+      // the FP rate proved far too high (21/22 loud findings in the review were
+      // FPs from five root causes; typosquat guesses were among them). Offline
+      // candidates become LOW + low-confidence review notes (no score impact).
+      // HIGH requires a MAL advisory match (DEP-002) or --online registry
+      // metadata (DEP-005). Names < 5 chars are never candidates (nearestPopular
+      // already refuses them) — kept as defense in depth here.
+      if (!POPULAR.has(name) && name.length >= 5 && !scoped(name)) {
+        const near = nearestPopular(name, 2);
+        if (near) {
           findings.push(mk(ctx, {
-            id: "DEP-005",
-            severity: "high",
-            title: `"${name}" does not exist on the npm registry (hallucinated dependency)`,
-            file: "package.json", line: depLine(pkg, name),
-            evidence: { type: "registry_404", masked: name, note: "registry returned 404 — install would fail or resolve to nothing" },
-            owasp: "A06",
-            fix: `Remove "${name}" — it does not exist on the registry. If you need this capability, find a real, established package.`,
-            root: name, root_cause: rootCause("DEP-005", name),
-          }));
-        } else if (!POPULAR.has(name) && !scoped(name) && meta.fresh) {
-          findings.push(mk(ctx, {
-            id: "DEP-005",
-            severity: "medium",
-            title: `"${name}" is a freshly-published unknown package (slopsquat candidate)`,
+            id: "DEP-003",
+            severity: "low",
+            confidence: "low",
+            needs_confirmation: true,
+            title: `Possible typosquat: "${name}" is ${near.distance} edit(s) from popular "${near.target}" (offline heuristic — review note)`,
             file: "package.json", line: depLine(pkg, name),
             evidence: {
-              type: "fresh_unknown_package",
-              masked: `${name} (created ${meta.created})`,
-              note: "AI-suggested hallucinated names get registered by attackers days later — a very young package with no track record deserves manual verification",
+              type: "typosquat_candidate",
+              masked: name,
+              note: `offline edit-distance heuristic (distance ${near.distance} from "${near.target}") — LOW review note, no score impact; upgrade requires registry evidence (--online) or a MAL advisory match`,
             },
             owasp: "A06",
-            confidence: "medium",
-            fix: `Manually verify "${name}" (maintainers, repository, downloads). Prefer an established package over a days-old one.`,
-            root: name, root_cause: rootCause("DEP-005", name),
+            fix: `Confirm "${name}" is the package you intend (it is ${near.distance} edits from the popular "${near.target}"). Typosquats steal install-time secrets. If it is a typo, install "${near.target}" instead and remove the attacker-controlled name.`,
+            root: name, root_cause: rootCause("DEP-003", name),
           }));
+          continue;
+        }
+
+        // v1.2 (T5): DEP-004 is a PROJECT-STATE finding when NO lockfile exists
+        // anywhere (one root cause — collected here, emitted once after the
+        // loop). When an npm-parseable lockfile EXISTS but lacks the package,
+        // the unknown gets its own per-dependency finding instead.
+        if (!isWorkspaceMember) {
+          if (npmLockParsed && !lockedVersion) {
+            findings.push(mk(ctx, {
+              id: "DEP-004",
+              severity: "medium",
+              title: `"${name}" is not in the lockfile (resolution drift / hallucinated dependency)`,
+              file: "package.json", line: depLine(pkg, name),
+              evidence: {
+                type: "missing_from_lockfile",
+                masked: name,
+                note: "a lockfile exists but does not contain this dependency — install without a lockfile update, or an AI-invented name that never resolved", 
+              },
+              owasp: "A06",
+              confidence: "medium",
+              fix: `Regenerate the lockfile (npm install --package-lock-only) or remove "${name}" if it is not actually used. Re-run with --online to check the registry.`,
+              root: name, root_cause: rootCause("DEP-004", name),
+            }));
+          } else if (!hasAnyLock) {
+            unresolvedScoped.push(name);
+          }
+        }
+
+        // ---------- DEP-005 slopsquat (online only) ----------
+        if (ctx.online) {
+          // eslint-disable-next-line no-await-in-loop -- sequential, bounded by declared deps
+          const meta = registryMeta(name);
+          if (meta === null) {
+            findings.push(mk(ctx, {
+              id: "DEP-005",
+              severity: "high",
+              title: `"${name}" does not exist on the npm registry (hallucinated dependency)`,
+              file: "package.json", line: depLine(pkg, name),
+              evidence: { type: "registry_404", masked: name, note: "registry returned 404 — install would fail or resolve to nothing" },
+              owasp: "A06",
+              fix: `Remove "${name}" — it does not exist on the registry. If you need this capability, find a real, established package.`,
+              root: name, root_cause: rootCause("DEP-005", name),
+            }));
+          } else if (!POPULAR.has(name) && !scoped(name) && meta.fresh) {
+            findings.push(mk(ctx, {
+              id: "DEP-005",
+              severity: "medium",
+              title: `"${name}" is a freshly-published unknown package (slopsquat candidate)`,
+              file: "package.json", line: depLine(pkg, name),
+              evidence: {
+                type: "fresh_unknown_package",
+                masked: `${name} (created ${meta.created})`,
+                note: "AI-suggested hallucinated names get registered by attackers days later — a very young package with no track record deserves manual verification",
+              },
+              owasp: "A06",
+              confidence: "medium",
+              fix: `Manually verify "${name}" (maintainers, repository, downloads). Prefer an established package over a days-old one.`,
+              root: name, root_cause: rootCause("DEP-005", name),
+            }));
+          }
         }
       }
-    }
+  }
+
+  // ---------- DEP-004 aggregated emission (v1.2 T5): ONE finding per project ----------
+  if (unresolvedScoped.length) {
+    const shown = unresolvedScoped.slice(0, 12);
+    const more = unresolvedScoped.length - shown.length;
+    findings.push(mk(ctx, {
+      id: "DEP-004",
+      severity: "medium",
+      title: unresolvedScoped.length === 1
+        ? `"${unresolvedScoped[0]}" cannot be resolved offline and the project has no lockfile`
+        : `${unresolvedScoped.length} dependencies cannot be resolved offline and the project has no lockfile`,
+      file: "package.json", line: depLine(pkg, unresolvedScoped[0]),
+      evidence: {
+        type: "unresolved_offline",
+        masked: unresolvedScoped.join(", "),
+        note: "no lockfile proves these packages ever resolved — hallucinated/slopsquat candidates land here; one finding per project (the missing lockfile is the root cause); re-run with --online to check the registry",
+      },
+      owasp: "A06",
+      confidence: "medium",
+      fix: `Verify each listed package exists on the npm registry and is the package you intend (${shown.join(", ")}${more ? ` · +${more} more` : ""}). Generate a lockfile (npm install --package-lock-only) so dependency resolution becomes reproducible and retry the scan.`,
+      root: "(no-lockfile)", root_cause: rootCause("DEP-004", "(no-lockfile)"),
+    }));
   }
 
   return { findings };

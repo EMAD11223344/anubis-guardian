@@ -38,7 +38,7 @@ const SEEDS = [
   ["DOCKER-003", "high", "Dockerfile", "secret via ARG (seed 19)"],
   ["CRYPTO-001", "high", "lib/auth.ts", "Math.random security material (seed 20 — promoted by Step 0)"],
   ["DEP-002", "high", "package.json", "known-malicious dependency (seed 21)"],
-  ["DEP-003", "high", "package.json", "typosquat candidate (seed 22)"],
+  ["DEP-003", "low", "package.json", "typosquat candidate (seed 22)"],
   ["DEP-004", "medium", "package.json", "unresolved + no lockfile (seed 23)"],
   ["SUPA-R06", "medium", "0003_depth2.sql", "unscoped policy on sensitive table (seed 24)"],
   ["SUPA-R07", "medium", "0003_depth2.sql", "storage bucket without object RLS (seed 25)"],

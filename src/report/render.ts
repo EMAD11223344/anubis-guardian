@@ -22,6 +22,8 @@ const GRADE_COLOR: Record<string, (s: string) => string> = {
 export const DISCLAIMER =
   "The grade reflects only the checks Anubis Guardian implements — absence of findings is not proof of security.";
 
+const scoreLabel = (r: ScanResult): string => `${r.score ?? "N/A"}/100 (${r.grade})`;
+
 export function renderTerminal(r: ScanResult): string {
   const L: string[] = [];
   const gradeC = GRADE_COLOR[r.grade] ?? C.cyan;
@@ -33,13 +35,19 @@ export function renderTerminal(r: ScanResult): string {
     L.push(C.gray(`  target: ${r.target.path} · level ${a.level} (${r.url_meta.levels_run.join(" + ")})`));
     L.push(C.gray(`  ownership: ${a.ownership_verified ? C.green(`verified via ${a.ownership_method}`) : a.ownership_method === "none" ? "none (Level 1 — passive)" : C.yellow(a.ownership_method)} · scan authorized: ${a.timestamp}`));
     L.push("");
-    L.push(`  Score: ${gradeC(C.bold(`${r.score}/100 (${r.grade})`))}   ` +
+    L.push(`  Score: ${gradeC(C.bold(scoreLabel(r)))}   ` +
       C.gray(`checks ${r.coverage.checks_run}/${r.coverage.checks_applicable} · requests ${r.url_meta.requests.total}${r.url_meta.robots.skipped_paths.length ? ` · robots-skipped ${r.url_meta.robots.skipped_paths.length}` : ""}`));
   } else {
     L.push(C.gray(`  target: ${r.target.path} · stack: ${r.target.stack.join(", ") || "unknown"}`));
     L.push("");
-    L.push(`  Score: ${gradeC(C.bold(`${r.score}/100 (${r.grade})`))}   ` +
+    L.push(`  Score: ${gradeC(C.bold(scoreLabel(r)))}   ` +
       C.gray(`checks ${r.coverage.checks_run}/${r.coverage.checks_applicable} · files ${r.meta.files_scanned} · git history ${r.meta.git_history_scanned ? "scanned" : "not a repo"}`));
+    // v1.2 (T7) coverage honesty: skipped files make the report PARTIAL — never
+    // let it look complete. Warned here and recorded in meta + SARIF properties.
+    const sk = r.meta.files_skipped;
+    if (sk) {
+      L.push(C.yellow(`  ⚠ coverage partial: ${[sk.oversize ? `${sk.oversize} oversize (>512KB) files skipped` : null, sk.binary ? `${sk.binary} binary files skipped` : null, sk.unreadable ? `${sk.unreadable} unreadable files skipped` : null].filter(Boolean).join(" · ")}`));
+    }
   }
   L.push("");
   L.push(`  ${C.red(`CRITICAL ${r.summary.critical}`)}  ${C.red(`HIGH ${r.summary.high}`)}  ${C.yellow(`MEDIUM ${r.summary.medium}`)}  ${C.gray(`LOW ${r.summary.low}`)}  ${C.cyan(`INFO ${r.summary.info}`)}`);
@@ -95,7 +103,7 @@ export function renderMarkdown(r: ScanResult): string {
   const isUrl = r.target.mode === "url";
   L.push(`# Anubis Guardian Report — \`${r.target.path}\``);
   L.push("");
-  L.push(`**Score: ${r.score}/100 (${r.grade})** · tool v${r.version} · advisory snapshot \`${r.advisory_snapshot}\``);
+  L.push(`**Score: ${r.score ?? "N/A"}/100 (${r.grade})** · tool v${r.version} · advisory snapshot \`${r.advisory_snapshot}\``);
   L.push("");
   L.push(`| CRITICAL | HIGH | MEDIUM | LOW | INFO |`);
   L.push(`|---|---|---|---|---|`);

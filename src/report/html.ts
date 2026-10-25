@@ -33,7 +33,7 @@ export function renderHtml(result: ScanResult): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Anubis Guardian — ${esc(result.target.path)} — ${result.score}/100</title>
+<title>Anubis Guardian — ${esc(result.target.path)} — ${result.score ?? "N/A"}/100</title>
 <style>
   :root { color-scheme: light; }
   body { font-family: ui-sans-serif, system-ui, "Segoe UI", Tahoma, sans-serif; margin: 0; background: #f8fafc; color: #0f172a; }
@@ -59,7 +59,7 @@ export function renderHtml(result: ScanResult): string {
 <header>
   <h1>Anubis Guardian — Security Report</h1>
   <div class="muted">${esc(result.target.path)} · v${result.version} · advisory snapshot ${esc(result.advisory_snapshot)} · deterministic · no-exec</div>
-  <div class="score">${result.score}<span style="font-size:18px;color:#94a3b8">/100 (${result.grade})</span></div>
+  <div class="score">${result.score ?? "N/A"}<span style="font-size:18px;color:#94a3b8">/100 (${result.grade})</span></div>
   <div class="chips">
     <span style="background:#b91c1c">C:${s.critical}</span><span style="background:#c2410c">H:${s.high}</span><span style="background:#a16207">M:${s.medium}</span><span style="background:#4d7c0f">L:${s.low}</span><span style="background:#475569">I:${s.info}</span>
   </div>

@@ -19,11 +19,20 @@ function isBinary(buf: Buffer): boolean {
   return false;
 }
 
-export function walk(root: string): ScannedFile[] {
+/**
+ * v1.2 — walk WITH honest skip accounting (T7 of the independent-review fixes):
+ * oversize (>512KB) and binary files were previously dropped SILENTLY, so the
+ * report overstated its evidence base. Counts are deterministic and land in
+ * meta.files_skipped (engine.ts).
+ */
+export interface WalkSkipped { oversize: number; binary: number; unreadable: number }
+
+export function walkWithStats(root: string): { files: ScannedFile[]; skipped: WalkSkipped } {
   const out: ScannedFile[] = [];
+  const skipped: WalkSkipped = { oversize: 0, binary: 0, unreadable: 0 };
   const visit = (dir: string) => {
     let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { skipped.unreadable++; return; }
     for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const abs = join(dir, e.name);
       if (e.isDirectory()) {
@@ -32,11 +41,11 @@ export function walk(root: string): ScannedFile[] {
       }
       if (!e.isFile()) continue;
       let st;
-      try { st = statSync(abs); } catch { continue; }
-      if (st.size > MAX_FILE_BYTES) continue;
+      try { st = statSync(abs); } catch { skipped.unreadable++; continue; }
+      if (st.size > MAX_FILE_BYTES) { skipped.oversize++; continue; }
       let buf: Buffer;
-      try { buf = readFileSync(abs); } catch { continue; }
-      if (isBinary(buf)) continue;
+      try { buf = readFileSync(abs); } catch { skipped.unreadable++; continue; }
+      if (isBinary(buf)) { skipped.binary++; continue; }
       const content = buf.toString("utf8");
       out.push({
         abs,
@@ -52,7 +61,12 @@ export function walk(root: string): ScannedFile[] {
     }
   };
   visit(root);
-  return out;
+  return { files: out, skipped };
+}
+
+/** Back-compat: engine/CLI callers that only need the file list. */
+export function walk(root: string): ScannedFile[] {
+  return walkWithStats(root).files;
 }
 
 export function findFiles(files: ScannedFile[], re: RegExp): ScannedFile[] {

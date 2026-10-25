@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { join, relative, resolve } from "node:path";
 import type { ScanContext, RuleResult } from "../types.js";
 import { maskSecret, rootCause } from "../util.js";
+import { skipHistoryFinding, isNotePath } from "./valueclass.js";
+import { readFileSync } from "node:fs";
 
 /** Canonical forward-slash form (Windows-safe — same contract as context.normalizeAbs). */
 const norm = (p: string) => p.replace(/\\/g, "/");
@@ -127,6 +129,13 @@ export function scanHistory(ctx: ScanContext): RuleResult {
       if (!m) continue;
       if (/PLACEHOLDER|changeme|xxxxx|example/i.test(content)) continue;
       const value = m[0];
+      // v1.2 (T3): VALUE-level triage shared with ENV-001 (placeholders, example
+      // credentials, designed-public JWTs, jwt.io sample, placeholder DB URLs)
+      // eliminates the finding entirely — while test/doc/example PATHS become
+      // low-confidence review NOTES (still visible, never deduct) instead of
+      // silent skips, so the report keeps its evidence base honest.
+      if (skipHistoryFinding(currentFile || "(history)", value)) continue;
+      const notePath = isNotePath(currentFile || "(history)");
       const masked = maskSecret(value);
       const root = masked.sha256_prefix;
       const key = `${p.id}:${root}`;
@@ -134,14 +143,14 @@ export function scanHistory(ctx: ScanContext): RuleResult {
       seen.add(key);
       findings.push({
         id: p.id,
-        severity: "high",
-        confidence: "high",
-        title: `Secret in git history: ${p.label}`,
+        severity: notePath ? "low" : "high",
+        confidence: notePath ? "low" : "high",
+        title: notePath ? `Secret-shaped value in a test/fixture/doc path (history): ${p.label}` : `Secret in git history: ${p.label}`,
         file: currentFile || "(history)",
         line: 0,
-        evidence: { type: "secret_in_history", masked: masked.masked, sha256_prefix: masked.sha256_prefix, note: "recovered from `git log -p` added lines — full value never written to reports" },
+        evidence: { type: "secret_in_history", masked: masked.masked, sha256_prefix: masked.sha256_prefix, note: notePath ? "test/fixture/doc path — review note, no score impact; full value never written to reports" : "recovered from `git log -p` added lines — full value never written to reports" },
         owasp: "A02",
-        fix: "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
+        fix: notePath ? "Test/doc fixtures should use clearly-fake values (e.g. trailing EXAMPLE) so nobody mistakes them for real keys." : "Treat as compromised regardless of deletion: rotate the credential NOW (rotate-first), then scrub history with git filter-repo.",
         fix_mode: "suggested-diff",
         remediation: {
           type: "rotate-first",
@@ -157,8 +166,22 @@ export function scanHistory(ctx: ScanContext): RuleResult {
   }
 
   // ---- 3) .gitignore completeness audit ----
+  // v1.2 (T6): the scan root may be a SUBTREE of the repo the scan was pointed
+  // at. .gitignore lives at the REPO ROOT — flagging "No .gitignore" because it
+  // is not inside the scanned subtree is a false alarm (git already honors the
+  // toplevel file). Check the target first, then the enclosing repo root.
+  let gitignoreContent: string | null = null;
+  let gitignoreSource = ".gitignore";
   const gitignoreFile = ctx.files.find((f) => f.rel === ".gitignore");
-  if (!gitignoreFile) {
+  if (gitignoreFile) {
+    gitignoreContent = gitignoreFile.content;
+  } else {
+    try {
+      gitignoreContent = readFileSync(join(scope.toplevel, ".gitignore"), "utf8");
+      gitignoreSource = ".gitignore (repo root)";
+    } catch { gitignoreContent = null; }
+  }
+  if (gitignoreContent === null) {
     findings.push({
       id: "HIST-010", severity: "low", confidence: "high",
       title: "No .gitignore file",
@@ -169,7 +192,7 @@ export function scanHistory(ctx: ScanContext): RuleResult {
       fix_mode: "suggested-diff", root: ".gitignore", root_cause: rootCause("HIST-010", ".gitignore"), verified: true,
     });
   } else {
-    const gi = gitignoreFile.content;
+    const gi = gitignoreContent;
     const missing: string[] = [];
     if (!/^\.env$/m.test(gi) && !/^\.env\.\*/m.test(gi)) missing.push(".env");
     if (!/\.pem|id_rsa/i.test(gi)) missing.push("*.pem / SSH keys");
@@ -178,7 +201,7 @@ export function scanHistory(ctx: ScanContext): RuleResult {
       findings.push({
         id: "HIST-011", severity: "low", confidence: "high",
         title: `.gitignore missing entries: ${missing.join(", ")}`,
-        file: ".gitignore", line: 0,
+        file: gitignoreSource, line: 0,
         evidence: { type: "gitignore_incomplete", masked: missing.join(", ") },
         owasp: "A05",
         fix: `Add ${missing.join(", ")} to .gitignore to prevent accidental commits.`,

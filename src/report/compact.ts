@@ -7,7 +7,7 @@ import type { ScanResult } from "../types.js";
 export function renderCompact(result: ScanResult): string {
   const lines: string[] = [];
   const s = result.summary;
-  lines.push(`anubis-guardian ${result.version} | score ${result.score}/100 (${result.grade}) | C:${s.critical} H:${s.high} M:${s.medium} L:${s.low} I:${s.info} | files:${result.meta.files_scanned}${result.meta.git_history_scanned ? " +git-history" : ""}`);
+  lines.push(`anubis-guardian ${result.version} | score ${result.score ?? "N/A"}/100 (${result.grade}) | C:${s.critical} H:${s.high} M:${s.medium} L:${s.low} I:${s.info} | files:${result.meta.files_scanned}${result.meta.git_history_scanned ? " +git-history" : ""}`);
   const order = ["critical", "high", "medium", "low", "info"];
   const ranked = [...result.findings.filter((f) => f.suppression === null)].sort(
     (a, b) => order.indexOf(a.severity) - order.indexOf(b.severity)

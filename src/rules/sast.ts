@@ -56,7 +56,18 @@ export function scanSast(ctx: ScanContext): RuleResult {
         const localLiteral = ident
           ? new RegExp(`(?:const|let|var)\\s+${ident[1].replace(/\./g, "\\.")}\\s*=\\s*["'\`][^"''\`]*["'\`]`).test(f.content)
           : false;
-        if (!isLiteral && !localLiteral) {
+        // v1.2 (T6): sanitizer-recognized flows are not flagged as raw XSS.
+        // `dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(x) }}` (or an
+        // identifier bound to a sanitize call in the same file) is the
+        // documented-correct pattern — flagging it was a top review-note FP.
+        const sanitized =
+          /DOMPurify|purify|sanitize|xss\s*\(/i.test(line) ||
+          (ident !== null &&
+            new RegExp(
+              `(?:const|let|var)\\s+${ident[1].replace(/\./g, "\\.")}\\s*=\\s*[^;\\n]*(?:DOMPurify|purify|sanitize|sanitize-html|xss)`,
+              "i"
+            ).test(f.content));
+        if (!isLiteral && !localLiteral && !sanitized) {
           findings.push({
             id: "SAST-002", severity: "medium", confidence: "medium",
             title: "dangerouslySetInnerHTML receives a non-literal value — XSS risk",

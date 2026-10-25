@@ -465,6 +465,273 @@ check("U14.28: service limits — 5 MB default response cap, env-overridable, po
   } finally { delete process.env.ANUBIS_MAX_RESPONSE_BYTES; }
 }
 
+// ---------- U15: rules/valueclass — shared secret-VALUE classifier (v1.2 T2/T3) ----------
+const vc = await import(d("dist/rules/valueclass.js"));
+{
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const SERVICE_ROLE = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ iss: "https://abcdefghij1234567890.supabase.co/auth/v1", ref: "abcdefghij1234567890", role: "service_role" })}.SiGn4tureP4rtW1thM0reTh4nTenCh4r4cters`;
+  const ANON = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ iss: "https://abcdefghij1234567890.supabase.co/auth/v1", ref: "abcdefghij1234567890", role: "anon" })}.An0nS1gn4tureP4rtW1thM0reTh4nTenCh4rs`;
+
+  check("U15.1 jwtRole re-export agrees with jsassets (single source of truth)",
+    vc.jwtRole(SERVICE_ROLE) === "service_role" && vc.jwtRole(ANON) === "anon");
+
+  check("U15.2 classifyEnvValue: service_role JWT → service_role_jwt",
+    vc.classifyEnvValue(SERVICE_ROLE) === "service_role_jwt");
+  check("U15.3 classifyEnvValue: anon JWT → public_by_design (designed-public)",
+    vc.classifyEnvValue(ANON) === "public_by_design");
+  check("U15.4 classifyEnvValue: URL value is never 'live' (the Lovable FP root cause)",
+    vc.classifyEnvValue("https://xyzcompany.supabase.co") === "public_by_design");
+  check("U15.5 classifyEnvValue: sk_live_ prefix → live_secret",
+    vc.classifyEnvValue("sk_live_abcdefghij1234567890") === "live_secret");
+  check("U15.6 classifyEnvValue: placeholder/example → unknown (never conclusive)",
+    vc.classifyEnvValue("changeme") === "unknown" && vc.classifyEnvValue("AKIAIOSFODNN7EXAMPLE") === "unknown");
+  check("U15.7 classifyEnvValue: opaque 32-char token with entropy → live_secret",
+    vc.classifyEnvValue("8fJ3kZ9pQ2wL5nVbCx7RtY4sM1aE6hG") === "live_secret");
+  check("U15.8 classifyEnvValue: private-key block with a REAL body → live_secret",
+    vc.classifyEnvValue("-----BEGIN RSA PRIVATE KEY-----\\n" + "A".repeat(80)) === "live_secret");
+  check("U15.8b classifyEnvValue: privacy-key HEADER without a body → unknown (tutorial snippet)",
+    vc.classifyEnvValue("-----BEGIN RSA PRIVATE KEY-----") === "unknown");
+  check("U15.8c jwt.io sample token is public_by_design everywhere",
+    vc.classifyEnvValue("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c")
+    === "public_by_design"
+    && vc.skipHistoryFinding("src/api.ts", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c") === true);
+  check("U15.8d placeholder DB URLs never trip the history/secret rules",
+    vc.isPlaceholderDbUrl("postgres://user:password@localhost:5432/app") === true
+    && vc.isPlaceholderDbUrl("postgres://admin:S3cureDb-Pass@db.prod.anubis-internal:5432/app") === false
+    && vc.skipHistoryFinding("src/db.ts", "postgres://root:root@127.0.0.1:5432/dev") === true);
+  check("U15.8e .example/.sample/.template file paths are value-agnostic skips",
+    vc.skipHistoryFinding(".env.example", "postgres://admin:S3cureDb-Pass@db.prod.internal:5432/app") === true
+    && vc.isNotePath("config.sample.json") === true);
+  check("U15.9 classifyEnvValue: short hex id → unknown (not conclusive alone)",
+    vc.classifyEnvValue("abc123de") === "unknown");
+
+  check("U15.10 isLiveEnvEntry: NEXT_PUBLIC_* + URL → FALSE (key alone is not enough — THE fixed FP)",
+    vc.isLiveEnvEntry("NEXT_PUBLIC_SUPABASE_URL", "https://xyzcompany.supabase.co") === false);
+  check("U15.11 isLiveEnvEntry: NEXT_PUBLIC_* + service_role JWT → TRUE (still caught by value)",
+    vc.isLiveEnvEntry("NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY", SERVICE_ROLE) === true);
+  check("U15.12 isLiveEnvEntry: anon JWT in NEXT_PUBLIC → false",
+    vc.isLiveEnvEntry("NEXT_PUBLIC_SUPABASE_ANON_KEY", ANON) === false);
+
+  check("U15.13 skipHistoryFinding (VALUE-level) ignores path class: docs path does NOT value-skip (caller notes it)",
+    vc.isNotePath("docs/quickstart.md") === true && vc.skipHistoryFinding("docs/quickstart.md", "AKIA1234567890ABCDEF") === false);
+  check("U15.14 isNotePath: tests/ path is a review note", vc.isNotePath("tests/unit/aws-client.ts") === true);
+  check("U15.15 isNotePath: fixtures path is a review note", vc.isNotePath("fixtures/seed-data.ts") === true);
+  check("U15.16 isNotePath: *.spec.* file is a review note", vc.isNotePath("app/api/auth.spec.ts") === true);
+  check("U15.17 skipHistoryFinding: AWS docs example key pair → skip",
+    vc.skipHistoryFinding("src/aws.ts", "AKIAIOSFODNN7EXAMPLE") === true
+    && vc.skipHistoryFinding("src/aws.ts", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY") === true);
+  check("U15.18 skipHistoryFinding: anon JWT in real src path → skip (public-by-design)",
+    vc.skipHistoryFinding("lib/api.ts", ANON) === true);
+  check("U15.19 skipHistoryFinding: REAL secret in a real src path → NOT skipped (positive)",
+    vc.skipHistoryFinding("src/config.ts", "sk_live_ZeAlCred4932abcdefgh") === false);
+}
+
+// ---------- U16: Phase 1 regression units (T0/T4/T5/T6/T7 wiring) ----------
+{
+  const mkCtx = (rootDir, files = []) => ({
+    rootDir, rel: () => "", files, stack: { detected: [], frameworks: {}, notes: [] },
+    gitAvailable: false, trackedFiles: new Set(), label: rootDir,
+  });
+
+  // --- T4: DEP-003 severity calibration (no fixture scan needed — pure rule unit) ---
+  const depDir = mkdtempSync(join(tmpdir(), "anubis-u16-dep-"));
+  const writePkg = (deps) => {
+    writeFileSync(join(depDir, "package.json"), JSON.stringify({ name: "u16", private: true, dependencies: deps }, null, 2));
+    rmSync(join(depDir, "package-lock.json"), { force: true });
+    rmSync(join(depDir, "pnpm-lock.yaml"), { force: true });
+  };
+  const { scanDeps } = await import(d("dist/rules/deps.js"));
+  writePkg({ expres: "4.18.0" }); // distance 1 from "express" — a classic typo
+  let out = scanDeps(mkCtx(depDir));
+  const t4a = out.findings.find((f) => f.id === "DEP-003");
+  check("U16.1 DEP-003: offline distance-1 typosquat is a LOW note (never HIGH — review verdict)",
+    t4a?.severity === "low" && t4a?.confidence === "low" && t4a?.needs_confirmation === true,
+    JSON.stringify(out.findings.map((f) => `${f.id}/${f.severity}/${f.confidence}`)));
+
+  writePkg({ nitro: "2.0.0", qs: "6.13.0" });
+  out = scanDeps(mkCtx(depDir));
+  check("U16.1b DEP-003: recently-extended popular names (nitro, qs) are never flagged",
+    out.findings.every((f) => f.id !== "DEP-003"), JSON.stringify(out.findings.map((f) => `${f.id}`)));
+
+  writePkg({ "some-madeup-util": "^1.0.0", reakt: "1.0.0" });
+  out = scanDeps(mkCtx(depDir));
+  const dep3 = out.findings.filter((f) => f.id === "DEP-003");
+  const dep4 = out.findings.filter((f) => f.id === "DEP-004");
+  check("U16.2 DEP-003: real typosquat (reakt) still flagged — as LOW with a clear note",
+    dep3.some((f) => f.evidence.masked === "reakt" && f.severity === "low" && /typosquat|edit/i.test(f.evidence.note ?? f.evidence.type)),
+    JSON.stringify(dep3.map((f) => `${f.evidence.masked}/${f.severity}`)));
+  check("U16.2b DEP-003: distance-2 match (axiosss) also LOW + needs_confirmation (no score path)",
+    (() => {
+      writePkg({ "some-madeup-util": "^1.0.0", axiosss: "1.0.0" });
+      const o = scanDeps(mkCtx(depDir));
+      const d3 = o.findings.filter((f) => f.id === "DEP-003");
+      return d3.length === 1 && d3[0].evidence.masked === "axiosss" && d3[0].severity === "low" && d3[0].needs_confirmation === true;
+    })());
+  check("U16.3 DEP-004: ONE aggregated finding per project (per-dep storm gone)",
+    dep4.length === 1 && dep4[0].root === "(no-lockfile)" && dep4[0].file === "package.json" && /some-madeup-util/.test(dep4[0].evidence.masked),
+    JSON.stringify(dep4.map((f) => f.evidence.masked)));
+
+  // --- T5: a non-npm lockfile (pnpm) suppresses the false DEP-004 storm ---
+  writeFileSync(join(depDir, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+  out = scanDeps(mkCtx(depDir));
+  check("U16.4 DEP-004: pnpm-lock.yaml counts as a lockfile (no unresolved finding)",
+    out.findings.every((f) => f.id !== "DEP-004"));
+
+  // --- T5: npm-PARSEABLE lockfile present but an unknown dep missing from it →
+  // per-dependency DEP-004 (not the aggregated project-state form) ---
+  rmSync(join(depDir, "pnpm-lock.yaml"), { force: true });
+  writePkg({ express: "4.18.0", "some-madeup-util": "^1.0.0" });
+  writeFileSync(join(depDir, "package-lock.json"), JSON.stringify({
+    name: "u16", lockfileVersion: 3,
+    packages: { "node_modules/express": { version: "4.18.0" } },
+  }));
+  out = scanDeps(mkCtx(depDir));
+  {
+    const perDep = out.findings.filter((f) => f.id === "DEP-004");
+    check("U16.4b DEP-004: dep missing from an npm lockfile → per-dependency finding (root = name)",
+      perDep.length === 1 && perDep[0].root === "some-madeup-util" && perDep[0].severity === "medium",
+      JSON.stringify(perDep.map((f) => `${f.root}/${f.severity}`)));
+  }
+
+  // --- T6: SAST-002 sanitizer recognition (DOMPurify) — clean case ---
+  const sf = (rel, content) => ({ abs: join(depDir, rel), rel, content, lines: content.split(/\r?\n/) });
+  const { scanSast } = await import(d("dist/rules/sast.js"));
+  const sanitized = [sf("app/components/Post.tsx", `import DOMPurify from "dompurify";\nexport default (p: any) => <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(p.body) }} />;\n`)];
+  out = scanSast(mkCtx(depDir, sanitized));
+  check("U16.5 SAST-002: DOMPurify.sanitize flow is NOT flagged",
+    out.findings.every((f) => f.id !== "SAST-002"), JSON.stringify(out.findings.map((f) => f.id)));
+  // --- T6 positive: raw non-literal flow still flagged ---
+  const dirty = [sf("app/components/Post.tsx", `export default (p: any) => <div dangerouslySetInnerHTML={{ __html: p.body }} />;\n`)];
+  out = scanSast(mkCtx(depDir, dirty));
+  check("U16.6 SAST-002: raw non-literal __html still flagged (positive)",
+    out.findings.some((f) => f.id === "SAST-002"));
+
+  // --- T6: TAINT-001 allowlist → LOW (visible, no-score) instead of silent skip ---
+  const { scanTaint } = await import(d("dist/rules/taint.js"));
+  const allowlisted = [sf("app/api/fetch-url/route.ts",
+    `const ALLOWED_HOSTS = ["api.github.com"];\nexport async function GET(req: Request) {\n  const target = new URL(req.url).searchParams.get("target") ?? "";\n  const host = new URL(target).host;\n  if (!ALLOWED_HOSTS.includes(host)) return new Response("no", { status: 400 });\n  const r = await fetch(target);\n  return new Response(await r.text());\n}\n`)];
+  out = scanTaint(mkCtx(depDir, allowlisted));
+  check("U16.7 TAINT-001: allowlisted flow visible at LOW confidence/low severity (no silent skip, no deduction)",
+    out.findings.every((f) => f.id === "TAINT-001" && f.severity === "low" && f.confidence === "low"),
+    JSON.stringify(out.findings.map((f) => `${f.id}/${f.severity}`)));
+  const sans = [sf("app/api/fetch-url/route.ts",
+    `export async function GET(req: Request) {\n  const target = new URL(req.url).searchParams.get("target") ?? "";\n  const r = await fetch(target);\n  return new Response(await r.text());\n}\n`)];
+  out = scanTaint(mkCtx(depDir, sans));
+  check("U16.8 TAINT-001: no-allowlist flow stays MEDIUM (positive)",
+    out.findings.some((f) => f.id === "TAINT-001" && f.severity === "medium" && f.confidence === "medium"));
+
+  // --- T7: walk skip accounting ---
+  const wDir = mkdtempSync(join(tmpdir(), "anubis-u16-walk-"));
+  writeFileSync(join(wDir, "ok.ts"), "export const a = 1;\n");
+  writeFileSync(join(wDir, "big.ts"), "x".repeat(512 * 1024 + 1));
+  writeFileSync(join(wDir, "blob.bin"), Buffer.concat([Buffer.from("PNG"), Buffer.alloc(16, 0)]));
+  const { walkWithStats } = await import(d("dist/walk.js"));
+  const stats = walkWithStats(wDir);
+  check("U16.9 walkWithStats: oversize + binary counted, text kept",
+    stats.skipped.oversize === 1 && stats.skipped.binary === 1 && stats.skipped.unreadable === 0
+    && stats.files.length === 1 && stats.files[0].rel === "ok.ts",
+    JSON.stringify(stats.skipped));
+  check("U16.10 walk(): CRLF robustness preserved (extract of U11)",
+    (() => { const n = walkWithStats(wDir).files; return n.every((f) => !f.lines.some((l) => l.endsWith("\r"))); })());
+  rmSync(wDir, { recursive: true, force: true });
+
+  // --- T0: adapters fail-closed accounting (unknown tool) ---
+  const { runAdapters } = await import(d("dist/adapters.js"));
+  const adOut = runAdapters(mkCtx(depDir), ["made-up-scanner"]);
+  check("U16.11 runAdapters: unsupported tool names are reported, never silently skipped",
+    adOut.unsupported.length === 1 && adOut.unsupported[0] === "made-up-scanner" && adOut.used.length === 0);
+  rmSync(depDir, { recursive: true, force: true });
+}
+
+// ---------- U17: adapters (T0) — controlled test doubles over the exit-code truth table ----------
+{
+  const mkCtx = (rootDir) => ({
+    rootDir, rel: () => "", files: [], stack: { detected: [], frameworks: {}, notes: [] },
+    gitAvailable: false, trackedFiles: new Set(), label: rootDir,
+  });
+  const dCtx = mkCtx(join(tmpdir(), "anubis-u17-nonexistent"));
+  const { runAdapters } = await import(d("dist/adapters.js"));
+
+  /** fake probe: writes the report file its args request, returns the wanted exit code */
+  const fakeProbe = (status, { reportKey = "--report-path", reportJson, existsResult = true, stderr = "" } = {}) => ({
+    exists: () => existsResult,
+    exec: (_bin, args) => {
+      const i = args.indexOf(reportKey);
+      if (i !== -1 && reportJson !== undefined) writeFileSync(args[i + 1], reportJson);
+      return { status, stdout: "", stderr };
+    },
+  });
+
+  const GL_REPORT = JSON.stringify([
+    { File: "src/a.ts", StartLine: 3, RuleID: "stripe-live-key", Fingerprint: "fp:x", Description: "Stripe key" },
+  ]);
+
+  // findings-exit code (gitleaks 1) must PRESERVE findings in the unified outcome
+  let ad = runAdapters(dCtx, ["gitleaks"], fakeProbe(1, { reportJson: GL_REPORT }));
+  check("U17.1 gitleaks exit 1 (findings) → findings preserved, counted used",
+    ad.used.includes("gitleaks") && ad.findings.length === 1 && ad.findings[0].id === "GLK-001"
+    && ad.findings[0].file === "src/a.ts" && ad.failed.length === 0,
+    JSON.stringify({ used: ad.used, failed: ad.failed, n: ad.findings.length }));
+
+  // clean exit (0) with a parseable EMPTY report = completed with no findings
+  ad = runAdapters(dCtx, ["gitleaks"], fakeProbe(0, { reportJson: "[]" }));
+  check("U17.2 gitleaks exit 0 (clean) → used with zero findings",
+    ad.used.includes("gitleaks") && ad.findings.length === 0 && ad.failed.length === 0);
+
+  ad = runAdapters(dCtx, ["gitleaks"], fakeProbe(2, { stderr: "panic: boom" }));
+  check("U17.3 gitleaks exit 2 (unexpected) → execution failure surfaced, NOT used",
+    !ad.used.includes("gitleaks") && ad.failed.length === 1 && ad.failed[0].status === 2 && /exit 2/.test(ad.failed[0].reason));
+
+  ad = runAdapters(dCtx, ["gitleaks"], fakeProbe(1, { reportJson: "{not json" }));
+  check("U17.4 gitleaks exit 1 + malformed report → invalid-report failure (never_clean)",
+    !ad.used.includes("gitleaks") && ad.failed.length === 1 && /unparseable/.test(ad.failed[0].reason));
+
+  ad = runAdapters(dCtx, ["gitleaks"], fakeProbe(1, { reportJson: "{\"oops\": true}" }));
+  check("U17.5 gitleaks exit 1 + wrong report SHAPE → invalid report",
+    !ad.used.includes("gitleaks") && ad.failed.length === 1 && /not a JSON array/.test(ad.failed[0].reason));
+
+  ad = runAdapters(dCtx, ["gitleaks"], fakeProbe(1, {})); // writes nothing → report file missing
+  check("U17.6 gitleaks exit 1 + report file missing → missing-report failure",
+    !ad.used.includes("gitleaks") && ad.failed.length === 1 && /missing/.test(ad.failed[0].reason));
+
+  const OSV_REPORT = JSON.stringify({
+    results: [{ packages: [{ package: { name: "lodash", version: "4.17.4" }, vulnerabilities: [{ id: "GHSA-test", database_specific: { severity: "CRITICAL" }, summary: "prototype pollution RCE" }] }] }],
+  });
+  ad = runAdapters(dCtx, ["osv-scanner"], fakeProbe(1, { reportKey: "--output", reportJson: OSV_REPORT }));
+  check("U17.7 osv-scanner exit 1 (vulns found) → findings preserved",
+    ad.used.includes("osv-scanner") && ad.findings.length === 1 && ad.findings[0].id === "OSV-001"
+    && ad.findings[0].severity === "critical" && /lodash/.test(ad.findings[0].evidence.masked));
+
+  const SG_REPORT = JSON.stringify({ results: [{ check_id: "js-xss", path: "src/a.ts", start: { line: 7 }, extra: { severity: "ERROR", lines: "eval(x)", message: "XSS" } }] });
+  ad = runAdapters(dCtx, ["semgrep"], fakeProbe(0, { reportKey: "--output", reportJson: SG_REPORT }));
+  check("U17.8 semgrep exit 0 → findings preserved",
+    ad.used.includes("semgrep") && ad.findings.length === 1 && ad.findings[0].id === "SGP-001" && ad.findings[0].severity === "high");
+
+  ad = runAdapters(dCtx, ["semgrep"], fakeProbe(1, { stderr: "config not fetched" }));
+  check("U17.9 semgrep nonzero exit → scan failure surfaced (never a findings code)",
+    !ad.used.includes("semgrep") && ad.failed.length === 1);
+
+  ad = runAdapters(dCtx, ["gitleaks"], { exists: () => false, exec: () => ({ status: 0, stdout: "", stderr: "" }) });
+  check("U17.10 missing executable → missing list (fail-closed input)",
+    ad.missing.includes("gitleaks") && ad.used.length === 0);
+
+  // engine-level seam: scan() with a controlled double keeps adapter findings
+  // visible in the final unified report (+ fail-closed throw on failure)
+  const { scan } = await import(d("dist/engine.js"));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "anubis-u17-eng-"));
+  writeFileSync(join(fixtureRoot, "index.ts"), "export const a = 1;\n");
+  let result = scan(fixtureRoot, { tools: ["gitleaks"], adapterProbe: fakeProbe(1, { reportJson: GL_REPORT }) });
+  check("U17.11 engine scan(): gitleaks finding remains visible in the unified report",
+    result.findings.some((f) => f.id === "GLK-001" && f.file === "src/a.ts")
+    && result.meta.adapters_used?.includes("gitleaks") && result.meta.adapters_requested?.join() === "gitleaks");
+  let threw = null;
+  try { scan(fixtureRoot, { tools: ["gitleaks"], adapterProbe: fakeProbe(2, { stderr: "booms" }) }); } catch (e) { threw = e; }
+  check("U17.12 engine scan(): failed adapter refuses the report (fail-closed throw)",
+    threw instanceof Error && /adapter fail-closed/.test(threw.message) && /exit 2/.test(threw.message),
+    String(threw && threw.message).slice(0, 120));
+  rmSync(fixtureRoot, { recursive: true, force: true });
+}
+
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);
 if (FAILS.length) {

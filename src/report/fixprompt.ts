@@ -27,7 +27,7 @@ export function renderFixPrompt(result: ScanResult): string {
   lines.push("# Anubis Guardian — Fix Prompt");
   lines.push("");
   lines.push(`> Generated deterministically from findings.json (anubis-guardian ${result.version}).`);
-  lines.push(`> Target: \`${result.target.path}\` · Score: **${result.score}/100 (${result.grade})** · Findings: ${ranked.length} (C:${result.summary.critical} H:${result.summary.high} M:${result.summary.medium} L:${result.summary.low} I:${result.summary.info})`);
+  lines.push(`> Target: \`${result.target.path}\` · Score: **${result.score ?? "N/A"}/100 (${result.grade})** · Findings: ${ranked.length} (C:${result.summary.critical} H:${result.summary.high} M:${result.summary.medium} L:${result.summary.low} I:${result.summary.info})`);
   if (isUrl && result.url_meta) {
     const a = result.url_meta.authorization;
     lines.push(`> URL Mode · level ${a.level} · ownership: **${a.ownership_method}**${a.ownership_verified ? " (verified)" : ""} · scan authorized: ${a.timestamp}`);
