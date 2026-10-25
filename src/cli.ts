@@ -52,6 +52,8 @@ type Opts = {
   aiReview?: boolean;
   quarantine?: string;
   allowCommunityRules?: boolean;
+  exclude?: string[];
+  maxFiles?: string;
 };
 
 program
@@ -76,6 +78,8 @@ program
   .option("--ai-review", "v0.3: enable the optional AI review layer (needs ANUBIS_AI_API_KEY; redaction-before-LLM + independent verifier; flagged in meta.ai_used)")
   .option("--quarantine <dir>", "v0.3: write generated canary tests for taint findings into this folder (the tool never executes them)")
   .option("--allow-community-rules", "v1.0: bypass the rules-lock supply-chain guard (unpinned/modified rules run, quarantined in meta)")
+  .option("--exclude <glob>", "v1.0.2: skip files matching a repo-relative POSIX glob (repeatable; \"**\" = any depth, \"*\" = one segment; no \"!\" negation — pure whitelist skipper)", collect)
+  .option("--max-files <n>", "v1.0.2: fail-closed size cap — exit 2 WITHOUT a report when the tree has more scannable files (determinism forbids partial reports)")
   .addHelpText("after", [
     "Examples:",
     "  anubis-guardian scan ./my-project",
@@ -84,12 +88,26 @@ program
     "  anubis-guardian scan . --workspaces                  # monorepo portfolio",
     "  anubis-guardian scan ./my-project --fail-on critical # CI gate (exit 1 on critical)",
     "  anubis-guardian scan ./my-project --schema dump.sql  # confirm Supabase RLS drift",
+    "  anubis-guardian scan ./my-project --exclude \"**/generated/**\" --exclude \"**/*.min.js\"   # skip generated/minified code",
+    "  anubis-guardian scan ./big-repo --max-files 50000    # fail-closed size cap — exit 2, never a partial report",
   ].join("\n"))
   .action(async (paths: string[], opts: Opts) => {
     const failOn = (opts.failOn ?? "").toLowerCase();
     if (failOn && failOn !== "high" && failOn !== "critical") {
       console.error("--fail-on accepts: high | critical");
       process.exit(2);
+    }
+
+    // ---- v1.0.2 --exclude / --max-files validation ----
+    const exclude = opts.exclude?.length ? opts.exclude : undefined;
+    let maxFiles: number | undefined;
+    if (opts.maxFiles !== undefined && opts.maxFiles !== "") {
+      const n = Number(opts.maxFiles);
+      if (!Number.isFinite(n) || n < 1) {
+        console.error("--max-files expects a positive integer");
+        process.exit(2);
+      }
+      maxFiles = Math.floor(n);
     }
 
     // ---- workspace expansion ----
@@ -121,8 +139,8 @@ program
 
     let result;
     try {
-      result = roots.length === 1 ? scan(roots[0], { schemaDump: opts.schema, rulesDir: opts.rulesDir, tools: parseTools(opts.tools), online: opts.online, advisoryFile: opts.advisories })
-                                  : scanRoots(roots, { schemaDump: opts.schema, rulesDir: opts.rulesDir, tools: parseTools(opts.tools), online: opts.online, advisoryFile: opts.advisories });
+      result = roots.length === 1 ? scan(roots[0], { schemaDump: opts.schema, rulesDir: opts.rulesDir, tools: parseTools(opts.tools), online: opts.online, advisoryFile: opts.advisories, exclude, maxFiles })
+                                  : scanRoots(roots, { schemaDump: opts.schema, rulesDir: opts.rulesDir, tools: parseTools(opts.tools), online: opts.online, advisoryFile: opts.advisories, exclude, maxFiles });
     } catch (e) {
       console.error(`scan failed: ${e instanceof Error ? e.message : String(e)}`);
       process.exit(2);

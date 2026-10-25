@@ -72,7 +72,7 @@ never HIGH/CRITICAL:
 
 | Finding | Fires on | Why it is accepted |
 |---|---|---|
-| `JWT-002` **jwt_alg_unpinned** | any `jwt.verify(token, secret)` call **without** an `algorithms:` option | Unpinned verify accepts every registered algorithm — the JWT HS/RS confusion class. The FIX is one option object. Only `algorithms: [...]`-pinned calls stay silent; `algorithms:"none"` / `ignoreExpiration:true` are HIGH (seeded in the honeypot). Suppress with an inline `anubis-ignore` where the unpinned choice is deliberate, e.g. `expires="…" reason="internal verify with explicit alg check upstream"`. |
+| `JWT-002` **jwt_alg_unpinned** | any `jwt.verify(token, secret)` call **without** a resolved `algorithms:` option — including `{ algorithms: undefined }` (an options object alone is not pinning; intended behavior, gate U10.1) | Unpinned verify accepts every registered algorithm — the JWT HS/RS confusion class. The FIX is one option object. Only `algorithms: [...]`-pinned calls stay silent; `algorithms:"none"` / `ignoreExpiration:true` are HIGH (seeded in the honeypot). Suppress with an inline `anubis-ignore` where the unpinned choice is deliberate, e.g. `expires="…" reason="internal verify with explicit alg check upstream"`. |
 | `TAINT-001..005` | single-file untrusted-input → dangerous-sink flows | Static flow is capped MEDIUM by design ("flow to verify with the generated canary", not a proven vulnerability). |
 | `DOCKER-001` | Dockerfile without a `USER` directive | Many images run fine without it; it is hardening advice, not proof of exposure. |
 
@@ -125,3 +125,9 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
   history layers are skipped and reported as such.
 - The advisory snapshot is a point-in-time capture per release; run
   `update-advisories` (or `--online`) for current registry state.
+- Dockerfile **ARG/ENV values are not evaluated** — DOCKER-003 is name-only by
+  design (the name declares build-time intent; values are build/runtime context).
+  A secret-shaped literal baked INTO a value (e.g.
+  `ARG DB_URL=postgres://user:pass@host`) is a **backlog item, not a bug**:
+  planned rule `DOCKER-004` (HIGH) would inspect ARG/ENV value literals while
+  excluding credential-less endpoint URLs.

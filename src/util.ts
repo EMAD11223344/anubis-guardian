@@ -104,6 +104,29 @@ export function uniqBy<T>(arr: T[], key: (x: T) => string): T[] {
   return out;
 }
 
+/**
+ * --exclude glob subset (v1.0.2 — scope reduction for huge AI-built trees).
+ * Matches repo-relative POSIX paths (the f.rel format of walk()).
+ *   "**"  = zero or more whole path segments (any depth)
+ *   "*"   = anything within ONE path segment (no "/")
+ * No "!" negation by design — this is a pure whitelist skipper; a "!..." pattern
+ * is treated as a literal name and never matches, so accidental negation cannot
+ * silently keep excluded-scope files. Leading/trailing slashes are tolerated.
+ * Case-sensitive, regex metachars (except "*") are escaped literally.
+ * Exported pure for unit tests (U9) — no fs/path imports (import-safe home).
+ */
+export function excludeToRegExp(glob: string): RegExp {
+  const segs = glob.replace(/^\/+|\/+$/g, "").split("/");
+  let re = "";
+  for (let i = 0; i < segs.length; i++) {
+    const s = segs[i];
+    if (s === "**") { re += i === segs.length - 1 ? ".*" : "(?:.*/)?"; continue; }
+    const seg = s.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^/]*");
+    re += i === segs.length - 1 ? seg : seg + "/";
+  }
+  return new RegExp("^" + re + "$");
+}
+
 export const severityRank: Record<Confidence | string, number> = { high: 0, medium: 1, low: 2 };
 
 /** tiny glob subset for workspaces: "apps/*", "packages/*", exact paths */

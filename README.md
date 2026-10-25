@@ -111,6 +111,8 @@ node dist/cli.js scan ./my-project --html report.html
 node dist/cli.js scan ./my-project --compact out.txt        # token-saving summary for agents
 node dist/cli.js scan ./my-project --schema dump.sql        # Supabase dashboard-drift check
 node dist/cli.js scan ./my-project --rules-dir .anubis/rules [--allow-community-rules]
+node dist/cli.js scan ./my-project --exclude "**/generated/**" --exclude "**/*.min.js"   # skip files (repo-relative POSIX glob, repeatable)
+node dist/cli.js scan ./my-project --max-files 50000         # fail-closed size cap (exit 2 — no partial reports, determinism-safe)
 node dist/cli.js scan ./my-project --tools gitleaks,osv-scanner,semgrep   # opt-in adapters
 node dist/cli.js scan ./my-project --online          # slopsquat registry check (flagged in meta)
 node dist/cli.js scan ./my-project --ai-review       # optional AI review (verifier-gated)

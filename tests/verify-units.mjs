@@ -8,6 +8,10 @@
  *   U5  urlmode/jsassets: decodeJwtPayload (no lib — this is the secrets parser's twin)
  *   U6  rulesdir: loadOrgRules (DSL loader, org CRITICAL contract)
  *   U7  util: globWorkspaces (workspace glob subset, moved out of cli.ts for import-safety)
+ *   U8  ci: argSecretRisk (DOCKER-003 name-only token policy)
+ *   U9  util: excludeToRegExp (--exclude glob subset, v1.0.2)
+ *   U10 packs2: JWT-002 { algorithms: undefined } is runtime-unpinned (fires MEDIUM)
+ *   U11 walk: CRLF EOL robustness (no trailing \r; CI-003 stays alive on CRLF checkouts)
  * All imports come from dist/ — run after `npm run build` (the npm test chain does).
  */
 import { createHash } from "node:crypto";
@@ -20,11 +24,12 @@ const ROOT = join(import.meta.dirname ?? ".", "..");
 const d = (p) => pathToFileURL(join(ROOT, p)).href;
 
 const { parseVer, cmpVer, versionInRange, affects } = await import(d("dist/advisory/index.js"));
-const { maskSecret, sha256Prefix, fingerprint, parseInlineIgnores, applySuppression, deducts, uniqBy, globWorkspaces } =
+const { maskSecret, sha256Prefix, fingerprint, parseInlineIgnores, applySuppression, deducts, uniqBy, globWorkspaces, excludeToRegExp } =
   await import(d("dist/util.js"));
 const { importedFromClient, resolveSpec, classifyFile } = await import(d("dist/rules/context.js"));
-const { argSecretRisk } = await import(d("dist/rules/ci.js"));
-const { parseMatcher, matcherCovers, matcherToRegExp } = await import(d("dist/rules/packs2.js"));
+const { argSecretRisk, scanCi } = await import(d("dist/rules/ci.js"));
+const { parseMatcher, matcherCovers, matcherToRegExp, scanPacks2 } = await import(d("dist/rules/packs2.js"));
+const { walk } = await import(d("dist/walk.js"));
 const { decodeJwtPayload } = await import(d("dist/urlmode/jsassets.js"));
 const { loadOrgRules, runOrgRules } = await import(d("dist/rulesdir.js"));
 
@@ -172,6 +177,42 @@ check("U8.7 ARG REFRESH_TOKEN / AWS_ACCESS_SECRET fire", argSecretRisk("REFRESH_
 // are legitimate (endpoint URLs), and value-shaped literals in the file itself would be
 // a separate future rule, not a name-based flag.
 check("U8.8 ARG DATABASE_URL stays silent (name-only policy; its URL value is NOT evaluated)", argSecretRisk("DATABASE_URL") === false);
+
+// ---------- U9: --exclude glob subset (repo-relative POSIX, v1.0.2) ----------
+const ex = (g) => excludeToRegExp(g);
+check("U9.1 *.min.js: top-level match", ex("*.min.js").test("bundle.min.js"));
+check("U9.2 *.min.js stays within ONE segment (use ** for depth)", !ex("*.min.js").test("a/b/bundle.min.js"));
+check("U9.3 **/*.min.js: any depth incl. zero", ex("**/*.min.js").test("a/b/bundle.min.js") && ex("**/*.min.js").test("x.min.js"));
+check("U9.4 **/generated/**: matches contents at any depth", ex("**/generated/**").test("apps/x/generated/gen.ts") && ex("**/generated/**").test("generated/deep/y.ts"));
+check("U9.5 **/generated/**: sibling-named dirs stay in scope", !ex("**/generated/**").test("apps/x/generated-up/gen.ts") && !ex("**/generated/**").test("apps/x/src/gen.ts"));
+check("U9.6 exact path only", ex("apps/legacy/broken.ts").test("apps/legacy/broken.ts") && !ex("apps/legacy/broken.ts").test("apps/legacy2/broken.ts"));
+check("U9.7 dir/** covers everything under it, not siblings", ex("apps/legacy/**").test("apps/legacy/a/b.ts") && !ex("apps/legacy/**").test("apps/legacy2/a.ts") && !ex("apps/legacy/**").test("apps/lx/a.ts"));
+check("U9.8 trailing slash tolerated (== no slash)", ex("x.min.js/").test("x.min.js"));
+check("U9.9 no ! negation: \"!keep\" is a literal name, never active", !ex("!app.ts").test("app.ts") && !ex("!app.ts").test("lib/x.ts"));
+check("U9.10 regex metachars escaped (dots are dots)", !ex("a.b.ts").test("axbts") && ex("a.b.ts").test("a.b.ts"));
+check("U9.11 ** prefix with dotfile basename", ex("**/.mcp.json").test(".mcp.json") && ex("**/.mcp.json").test("app/.mcp.json"));
+
+// ---------- U10: JWT-002 — an options object is NOT pinning ({ algorithms: undefined }) ----------
+// Intended behavior (METHODOLOGY §4.1): pinning means a RESOLVED algorithms array;
+// algorithm value undefined/null is runtime-unpinned → same HS/RS class → MEDIUM.
+const jwt2 = (src) => {
+  const f = { abs: "/x/lib/a.ts", rel: "lib/a.ts", content: src, lines: src.split("\n") };
+  const ctx = { stack: { frameworks: [], detected: [] }, rel: (x) => x, trackedFiles: new Set(), gitAvailable: false, files: [f] };
+  return scanPacks2(ctx).findings.filter((x) => x.id === "JWT-002");
+};
+check("U10.1 jwt.verify(..., { algorithms: undefined }) FIRES jwt_alg_unpinned (MEDIUM)", jwt2('const claims = jwt.verify(token, JWT_SECRET, { algorithms: undefined });\n').some((x) => x.severity === "medium"));
+check("U10.2 jwt.verify(..., { algorithms: null }) fires too (runtime-unpinned)", jwt2('const claims = jwt.verify(token, JWT_SECRET, { algorithms: null });\n').some((x) => x.severity === "medium"));
+check("U10.3 { algorithms: ['HS256'] } stays silent", jwt2('const claims = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] });\n').length === 0);
+
+// ---------- U11: walk() EOL robustness (CRLF checkouts — the 58→59 root cause) ----------
+const crlfDir = mkdtempSync(join(tmpdir(), "anubis-u11-"));
+writeFileSync(join(crlfDir, "deploy.yml"), "      - name: greet\r\n        run: |\r\n          echo \"Thanks ${{ github.event.pull_request.title }} for the PR!\"\r\n", "utf8");
+const walkedU11 = walk(crlfDir);
+check("U11.1 walk(): CRLF lines carry no trailing \\r", walkedU11.length === 1 && walkedU11[0].lines.every((l) => !l.endsWith("\r")) && walkedU11[0].lines.some((l) => l.includes("run:")));
+const crlfContent = walkedU11[0].content;
+const crlfFile = { abs: join(crlfDir, "deploy.yml"), rel: ".github/workflows/deploy.yml", content: crlfContent, lines: crlfContent.split(/\r?\n/) };
+check("U11.2 scanCi fires CI-003 on the walked CRLF file (rule previously dead on CRLF-only checkouts)", scanCi({ rel: (x) => x, files: [crlfFile] }).findings.some((x) => x.id === "CI-003"));
+rmSync(crlfDir, { recursive: true, force: true });
 
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);

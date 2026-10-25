@@ -27,7 +27,7 @@ const levels = new Set(run.results.map((r) => r.level));
 check([...levels].every((l) => ["error", "warning", "note"].includes(l)), `levels valid (${[...levels].join(",")})`);
 
 const errCount = run.results.filter((r) => r.level === "error").length;
-check(errCount > 0, `high/critical map to error (${errCount} error results)`);
+check(errCount > 0, `high/critical findings map to SARIF level="error" (${errCount} SARIF results — findings, not verification errors)`);
 
 check(run.results.every((r) => r.locations?.[0]?.physicalLocation?.artifactLocation?.uri), "every result has a location");
 check(run.results.every((r) => r.partialFingerprints?.anubisFingerprint), "every result carries the anubis fingerprint");

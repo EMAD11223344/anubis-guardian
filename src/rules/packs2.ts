@@ -343,7 +343,13 @@ export function scanPacks2(ctx: ScanContext): RuleResult {
             root_cause: rootCause("JWT-002", f.rel),
             verified: true,
           });
-        } else if (!/algorithms\s*:/.test(verifyWindow)) {
+        } else if (
+          // Unpinned = NO resolved algorithms list. "{ algorithms: undefined }" (or
+          // null) is runtime-unpinned exactly like a missing option — same HS/RS
+          // confusion class, MEDIUM (intended behavior, METHODOLOGY §4.1, gate U10.1).
+          !/algorithms\s*:/.test(verifyWindow) ||
+          /algorithms\s*:\s*(undefined|null)\b/.test(verifyWindow)
+        ) {
           findings.push({
             id: "JWT-002",
             severity: "medium",

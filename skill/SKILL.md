@@ -156,6 +156,8 @@ If you cannot verify yourself, hand the recipe to the human — do NOT present t
 npx anubis-guardian rules-lock ./org-rules      # pin the rules dir (sha256 per file) — commit rules-lock.json
 npx anubis-guardian scan . --rules-dir ./org-rules   # refuses modified/unpinned rules (exit 2)
 npx anubis-guardian scan . --rules-dir ./org-rules --allow-community-rules  # run quarantined (meta-labeled)
+npx anubis-guardian scan . --exclude "**/generated/**" --exclude "**/*.min.js"  # skip generated/min files (repeatable; ** = any depth, * = one segment; no ! negation)
+npx anubis-guardian scan . --max-files 50000   # fail-closed size cap — exit 2, never a partial report (determinism)
 ```
 
 `meta.rules_lock` is `verified | off | bypassed` — when it is not `verified`, say so when presenting results (the rules ran unverified / quarantined).

@@ -19,7 +19,7 @@ import { scanPacks2 } from "./rules/packs2.js";
 import { scanTaint } from "./rules/taint.js";
 import { scanAgentEnv } from "./rules/agentenv.js";
 import { computeScore } from "./score.js";
-import { applySuppression, parseInlineIgnores, fingerprint, mkFinding, type RawFinding } from "./util.js";
+import { applySuppression, parseInlineIgnores, fingerprint, mkFinding, excludeToRegExp, type RawFinding } from "./util.js";
 import { CHECKS, CLASSES_COVERED, CLASSES_NOT_COVERED } from "./coverage.js";
 import { runAdapters } from "./adapters.js";
 import { loadOrgRules, runOrgRules } from "./rulesdir.js";
@@ -38,7 +38,28 @@ export const ADVISORY_SNAPSHOT = "2026-10";
  * (npm/registry metadata calls happen ONLY behind --online — flagged in meta.)
  */
 export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
-  const files = walk(rootDir);
+  const walked = walk(rootDir);
+  // --exclude (v1.0.2): ONE filter point right after walk() — rules, the
+  // reachability graph, inventory, suppression and meta counts all see the
+  // same filtered set, so the graph can never form stale edges through an
+  // excluded file. Default: no excludes (reports byte-identical to v1.0.1).
+  let excludedFiles = 0;
+  let files: typeof walked = walked;
+  if (opts.exclude?.length) {
+    const matchers = opts.exclude.map(excludeToRegExp);
+    files = walked.filter((f) => {
+      if (matchers.some((m) => m.test(f.rel))) { excludedFiles++; return false; }
+      return true;
+    });
+  }
+  // --max-files (v1.0.2, fail-closed): REFUSAL instead of a partial report —
+  // truncating a scan would break the byte-identical determinism contract.
+  // Count is post-exclusion (excluded files are deliberately out of scope).
+  if (opts.maxFiles !== undefined && files.length > opts.maxFiles) {
+    throw new Error(
+      `size cap: ${files.length} scannable files exceed --max-files ${opts.maxFiles} — refusing to emit a partial report (determinism contract). Trim with --exclude, raise --max-files, or split the scan across roots.`
+    );
+  }
   const stack = recon(rootDir, files);
   const git = gitAvailable(rootDir);
   const tracked = git ? trackedFiles(rootDir) : new Set<string>();
@@ -81,7 +102,7 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
   }
 
   // adapters (--tools, off by default — determinism contract)
-  const metaExtras: { online_used?: boolean; adapters_used?: string[] } = {};
+  const metaExtras: { online_used?: boolean; adapters_used?: string[]; excluded?: { globs: string[]; files: number } } = {};
   if (opts.tools?.length) {
     const { findings, used } = runAdapters(ctx, opts.tools);
     raw.push(...findings);
@@ -115,6 +136,7 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
   const applicableChecks = CHECKS.filter((c) => c.applicable(stack.frameworks, git));
 
   if (opts.online) metaExtras.online_used = true;
+  if (opts.exclude?.length) metaExtras.excluded = { globs: opts.exclude, files: excludedFiles };
 
   return {
     tool: "anubis-guardian",
@@ -148,6 +170,8 @@ export interface ScanOptions {
   tools?: string[];
   online?: boolean;
   advisoryFile?: string;
+  exclude?: string[];   // v1.0.2 — repo-relative POSIX globs skipped before any rule/graph sees them
+  maxFiles?: number;    // v1.0.2 — fail-closed size cap: refusal (throw) instead of a partial report
   aiReview?: boolean;   // v0.3 — AI review runs at CLI level AFTER the deterministic scan
   quarantine?: string;  // v0.3 — quarantine dir for generated tests (never executed by the tool)
 }

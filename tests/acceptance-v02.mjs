@@ -162,5 +162,32 @@ check(Boolean(inv?.routes?.length), "inventory lists routes");
 const html = existsSync(join(art, "r.html")) ? readFileSync(join(art, "r.html"), "utf8") : "";
 check(html.includes("Classes NOT covered") || html.includes("classes NOT covered"), "HTML carries the honesty contract");
 
+// ---------- 8) --exclude / --max-files (v1.0.2) ----------
+const exclDir = join(tmp, "excl-app");
+mkdirSync(join(exclDir, "generated"), { recursive: true });
+writeFileSync(join(exclDir, "generated", "gen.ts"), 'export const dbPass = "postgres://user:SuperSecret123@host/db";\n');
+writeFileSync(join(exclDir, "open.ts"), 'export const productionDbUrl = "postgres://anubis_owner:AnotherSecret123@db.prod.anubis-internal:5432/proddb";\n');
+const rEx1 = run(["scan", exclDir, "--exclude", "**/generated/**", "--format", "json"]);
+if (rEx1.status === 0) {
+  const jEx = JSON.parse(rEx1.stdout);
+  check(jEx.findings.some((f) => f.file === "open.ts"), "--exclude: in-scope code still reported");
+  check(!jEx.findings.some((f) => f.file.startsWith("generated/")), "--exclude: excluded file produces NO finding");
+  check(Array.isArray(jEx.meta.excluded?.globs) && jEx.meta.excluded.globs.includes("**/generated/**") && jEx.meta.excluded.files === 1, "--exclude: meta.excluded lists globs + skipped count");
+  check(jEx.meta.files_scanned === 1, "--exclude: excluded files counted out of files_scanned (never fed to rules/graph)");
+} else check(false, `--exclude scan runs (exit 0, got ${rEx1.status})`);
+const rEx2 = run(["scan", exclDir, "--exclude", "**/generated/**", "--format", "json"]);
+check(rEx1.stdout === rEx2.stdout, "--exclude: byte-identical re-run with scope reduction (determinism holds)");
+const rEx3 = run(["scan", exclDir, "--format", "json"]);
+check(rEx3.status === 0 && rEx3.stdout !== rEx1.stdout && JSON.parse(rEx3.stdout).findings.some((f) => f.file.startsWith("generated/")), "no --exclude → default none, generated code is scanned");
+const rEx4 = run(["scan", exclDir, "--exclude", "**/generated/**", "--format", "json", "--inventory", join(tmp, "ex-inv.json")]);
+check(rEx4.status === 0 && !readFileSync(join(tmp, "ex-inv.json"), "utf8").includes("generated"), "--exclude: inventory/reachability never see excluded files");
+const rMx1 = run(["scan", join(root, "tests", "honeypot", "app"), "--max-files", "5", "--format", "json", "--output", join(tmp, "no-partial.json")]);
+check(rMx1.status === 2 && rMx1.stderr.includes("--max-files"), "--max-files: fail-closed exit 2 refusal");
+check(!existsSync(join(tmp, "no-partial.json")), "--max-files: refusal writes NO report (no partial output ever)");
+const rMx2 = run(["scan", join(root, "tests", "clean", "app"), "--max-files", "0", "--format", "json"]);
+check(rMx2.status === 2, "--max-files 0: invalid value → exit 2");
+const rMx3 = run(["scan", join(root, "tests", "clean", "app"), "--max-files", "100000", "--format", "json"]);
+check(rMx3.status === 0, "--max-files generous cap: scan exits 0 (cap is opt-in only)");
+
 console.log(failures ? `\nACCEPTANCE v0.2: ${failures} failure(s)` : "\nACCEPTANCE v0.2: ALL PASS");
 process.exit(failures ? 1 : 0);
