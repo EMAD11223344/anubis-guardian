@@ -1,11 +1,28 @@
 # Changelog
 
-## Unreleased — post-1.2.0 audit (evidence-based)
+## [1.3.0] — 2026-10-26
 
-- **Fixed — OSV-001 severity mapping (`src/adapters.ts`)**: the `--tools osv-scanner` adapter previously collapsed every non-`CRITICAL` `database_specific.severity` into `HIGH`, inflating MODERATE/LOW advisories in score and summary. Now explicit: `CRITICAL→critical · HIGH→high · MODERATE/MEDIUM→medium · LOW→low`; unknown or missing severity follows a documented policy — `medium` + `needs_confirmation` + the raw value disclosed in the finding note (never silently treated as known, never inflated). Regression gates **U17.13/U17.14** (`tests/verify-units.mjs`) cover every supported severity plus missing/unknown.
-- **Added test — CLI file-vs-directory refusal**: `scan <file>` was already refused with `not a project directory` + exit 2 (`src/cli.ts`), but no gate asserted it. **Phase-1 T1** now checks both the exit code and the stderr message (25 gates).
-- **Benchmarks re-anchored**: `BENCHMARKS.md` regenerated at the current commit (the previously recorded provenance commit was rewritten out of history during the v1.2.0 push-protection fixture defusal; results themselves were reproduced fresh).
-- **Audited, deferred (documented in §G of the audit report / METHODOLOGY §8)**: AST-based parsing for the SQL-sink rule (a measured false-negative exists for alias-built SQL strings — `const q = "…" + req.x; pool.query(q)` — while redirect/XSS/eval aliasing **is** caught by the taint layer); controlled POST/PATCH mutation testing in URL Mode L3 (GET-only differential IDOR stays enforced with verified ownership, A/B identities, 24-endpoint cap).
+Minor release: **one new detection + one severity-accuracy fix + positioning docs.** Semver is MINOR (not 1.2.1) because it carries both a bug fix and a new detection capability. **`v1.2.0` on npm does NOT include any of the changes below** — the OSV severity fix in particular was shipped in the codebase after the v1.2.0 tag, so the published 1.2.0 still upscales non-critical OSV severities to HIGH.
+
+### Added
+
+- **SAST-001 — single-hop variable propagation to SQL sinks** (`src/rules/sast.ts`): when a recognized sink's first argument is a bare identifier, its nearest preceding same-function string assignment is resolved and the SAME dynamic-SQL analysis runs on the resolved value.
+  - Before: `const q = "SELECT * FROM users WHERE name='" + req.query.name + "'"; pool.query(q)` was **silent** (a measured false-negative).
+  - After: **SAST-001 HIGH** (request-traced, `needs_confirmation: false`), evidence masked deterministically as `pool.query(q -> "<resolved value>")`. Also fires for alias into `prisma.$queryRawUnsafe`, multi-line template literals, and `pool.query(q, [id])` binding shapes.
+  - Scope stays one hop, same function only: chained aliases (`const q = r`) and cross-function assignments stay silent (gates U18.8f/U18.8g); tagged `prisma.$queryRaw` templates (U18.8d), `$1`-placeholder forms (U18.8c) and a constant alias (U18.8e) stay silent. Sinks themselves are unchanged; no new runtime dependencies.
+  - Gates: U18.8a–U18.8i (units 241 → 250). Regression: U18.1–U18.8 and the phase-2 safe-form gates behave exactly as before.
+- **Test — CLI file-vs-directory refusal gate** (phase-1 T1, gate #25): `scan <file>` was already refused with `not a project directory` + exit 2 (`src/cli.ts`), but no gate asserted it.
+- **Test — scanner crash/timeout path** (U17.15): a gitleaks/OSV process crash or timeout (`status: null`) is surfaced as an execution failure — never a clean scan, never a findings exit code.
+
+### Fixed
+
+- **OSV severity mapping** (`src/adapters.ts` `mapOsvSeverity`): the `--tools osv-scanner` adapter previously collapsed every non-`CRITICAL` `database_specific.severity` into `HIGH`, inflating MODERATE/LOW advisories in score and summary. Now explicit: `CRITICAL→critical · HIGH→high · MODERATE/MEDIUM→medium · LOW→low`; unknown or missing severity follows a documented policy — `medium` + `needs_confirmation` + the raw value disclosed in the finding note (never silently treated as known, never inflated). Gates **U17.13/U17.14** cover every supported severity plus missing/unknown. **Shipped after the v1.2.0 tag — `v1.2.0` on npm did not include this fix.**
+
+### Changed
+
+- **README positioning**: universal capabilities now lead the capability line (`Secrets · SAST · Taint · Dependencies (OSV) · CI/supply-chain · SARIF · Supabase RLS · Next.js · NestJS`), and the intro sentence leads with universal coverage on any stack, framing Supabase/Next.js/NestJS as the batteries-included case. `package.json` keywords reordered so `security`/`sast`/`ai-generated-code` precede `supabase`/`nextjs` (search discoverability). **No capability, rule, or Supabase mention was removed.**
+- **Benchmarks re-anchored**: `BENCHMARKS.md` re-measured at the current commit with an exact provenance SHA (the previously recorded provenance commit had been rewritten out of history; the dirty-tree label now honestly describes uncommitted code vs docs changes). 14 measured · 0 pending · 0 failed.
+- **Documented, not adopted** (unchanged, METHODOLOGY §8): AST-based parsing (no TS-capable parser is dependency-justified for the current rule set; single-hop regex propagation now covers the measured alias gap) and controlled POST/PATCH mutation testing in URL Mode L3 (GET-only differential IDOR stays enforced with verified ownership, A/B identities, 24-endpoint cap).
 
 ## 1.2.0 — 2026-10-26
 

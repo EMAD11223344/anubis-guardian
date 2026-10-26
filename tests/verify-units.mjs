@@ -809,6 +809,10 @@ const vc = await import(d("dist/rules/valueclass.js"));
   check("U18.8h alias multi-line template: unterminated template joined across lines still resolves → HIGH",
     sastFind("const q = `SELECT * FROM users WHERE\n  name='${req.query.name}'`;\nawait pool.query(q);\n")
       .some((f) => f.id === "SAST-001" && f.severity === "high"));
+  check("U18.8i alias with binding array: pool.query(q, [id]) still resolves the alias first arg",
+    sastFind("const q = `SELECT * FROM users WHERE name='${req.query.name}'`;\nawait pool.query(q, [req.query.id]);\n")
+      .some((f) => f.id === "SAST-001" && f.severity === "high" && /pool\.query\(q -> /.test(f.evidence.masked))
+      && sastIds('const q = "SELECT * FROM users WHERE id=$1";\nawait pool.query(q, [req.query.id]);\n').length === 0);
 
   // ---- T9: dynamic code execution (SAST-003 non-literal + TAINT-006) ----
   check("U18.9 T9: eval(<non-literal user var>) → SAST-003 MEDIUM + needs_confirmation",
