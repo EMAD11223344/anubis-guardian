@@ -22,10 +22,21 @@ const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 const TMP = join(tmpdir(), `anubis-bench-${process.pid}`);
 mkdirSync(TMP, { recursive: true });
 
+const gitCommit = (() => {
+  // provenance: the exact commit the binaries and fixtures came from (never estimated)
+  const r = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8", cwd: ROOT });
+  if (r.status !== 0) return "unavailable";
+  const dirty = spawnSync("git", ["status", "--porcelain"], { encoding: "utf8", cwd: ROOT });
+  const dirtyOut = dirty.status === 0 ? dirty.stdout.trim() : "";
+  return dirtyOut ? `${r.stdout.trim()} (+uncommitted working tree: docs/bench edits)` : r.stdout.trim();
+})();
+
 const env = {
   tool_version: pkg.version,
+  tool_commit: gitCommit,
   node: process.version,
   platform: `${platform()} · ${cpus().length} vCPU`,
+  command: "npm run build && node scripts/measure-benchmarks.mjs",
   date: new Date().toISOString().slice(0, 10),
 };
 
@@ -92,10 +103,10 @@ try {
   });
   const BAD = `http://127.0.0.1:${ready.bad}`;
   const t2 = Date.now();
-  const u1 = run(["node", CLI, "scan-url", BAD, "--level", "1", "--delay-ms", "2", "--format", "json", "-o", join(TMP, "url1.json")]);
+  const u1 = run(["node", CLI, "scan-url", BAD, "--level", "1", "--allow-private", "--delay-ms", "2", "--format", "json", "-o", join(TMP, "url1.json")]);
   record("URL Mode L1 passive scan wall time (local fixture)", u1.status === 0 ? `${((Date.now() - t2) / 1000).toFixed(2)}s` : `failed (exit ${u1.status})`, u1.status === 0 ? "measured" : "failed");
   const t3 = Date.now();
-  const u2 = run(["node", CLI, "scan-url", BAD, "--level", "3", "--ownership-token", ready.nonce, "--active-tests",
+  const u2 = run(["node", CLI, "scan-url", BAD, "--level", "3", "--allow-private", "--ownership-token", ready.nonce, "--active-tests",
     "--identity-a", "x-test-role: admin-bench", "--identity-b", "x-test-role: restricted-bench", "--delay-ms", "2", "--format", "json", "-o", join(TMP, "url3.json")]);
   const u3 = u2.status === 0 ? JSON.parse(readFileSync(join(TMP, "url3.json"), "utf8")) : null;
   record("URL Mode L3 full scan wall time (L2 probes + Supabase detect + differential IDOR, local fixture)",
@@ -147,8 +158,10 @@ const md = [`# BENCHMARKS.md — measured results only`,
   `| Environment | Value |`,
   `|---|---|`,
   `| Tool version | ${env.tool_version} |`,
+  `| Tool commit (provenance) | ${env.tool_commit} |`,
   `| Node | ${env.node} |`,
   `| Platform | ${env.platform} |`,
+  `| Command | \`${env.command}\` |`,
   `| Measured on | ${env.date} |`,
   ``,
   `## Results`,

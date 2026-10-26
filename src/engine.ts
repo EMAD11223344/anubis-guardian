@@ -29,7 +29,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { SEVERITY_ORDER, type Inventory } from "./types.js";
 
-export const VERSION = "1.1.1";
+export const VERSION = "1.2.0";
 export const ADVISORY_SNAPSHOT = "2026-10";
 
 /**

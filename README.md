@@ -10,10 +10,10 @@
 <img src="docs/assets/hero.jpg" alt="Anubis Guardian — deterministic security auditor for AI-built projects: offline static-only scanner with score 100/A" width="100%">
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.1.0-8b5cf6.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-1.2.0-8b5cf6.svg)](package.json)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-blue.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](tsconfig.json)
-[![Tests](https://img.shields.io/badge/regression%20gates-9%20suites-brightgreen.svg)](#-tests-regression-gates)
+[![Tests](https://img.shields.io/badge/regression%20gates-12%20suites-brightgreen.svg)](#-tests-regression-gates)
 
 **Codebase audit (offline) · URL audit (consent-gated) · Secrets · Supabase RLS · Next.js · NestJS · Dependencies (OSV) · CI/supply-chain · SARIF**
 
@@ -42,7 +42,7 @@ Existing scanners (Semgrep, Trivy, Gitleaks) are powerful but generic — they w
 | | Coverage |
 |---|---|
 | **Stack-specific** *(the differentiator — deep host-aware playbooks)* | **Supabase** — missing RLS, `USING (true)`, service-role exposure, Storage/Edge/policies, live L3 anon RLS probe (`SUPA-001..003`, `SUPA-R01..R08`) · **Next.js** — client/server boundary, public env, cookies, middleware-matcher gaps, CSRF heuristic (`NEXT-002`, `AUTH-001`) · **NestJS** — controller guards, CORS, helmet, throttler, Socket.IO gateways (`NEST-001..004`) |
-| **Universal** *(works on any JS/TS project, any framework, any host)* | secrets + masking (`SEED`/`ENV`/`FILE`/`LOGS`/`HDR-001`) · git-history leaks · taint (`TAINT-001..005` SSRF/open redirect/path traversal/command injection/XSS) · JWT auth (`JWT-001/002`) · crypto (`CRYPTO-001`) · dependencies (`DEP-001..005`: CVEs, malicious, typosquat, slopsquat) · mass assignment / webhooks / exposed docs · Docker + CI/supply-chain (`DOCKER-001..003`, `CI-001..004`) · agent-environment audit (`AGENT-001..004`) · URL Mode headers/secrets (L1–L2) |
+| **Universal** *(works on any JS/TS project, any framework, any host)* | secrets + masking (`SEED`/`ENV`/`FILE`/`LOGS`/`HDR-001`) · git-history leaks · taint (`TAINT-001..006` SSRF / open redirect / path traversal / command injection / XSS / **dynamic code execution** — `eval`/`new Function`/`vm.runIn*` of request-tainted values) · JWT auth (`JWT-001/002` + **JWT-003** hardcoded signing/session secrets — rotate-first) · crypto (`CRYPTO-001`) · dependencies (`DEP-001..005`: CVEs incl. **transitive packages resolved from the lockfile**, malicious, typosquat, slopsquat; advisory-snapshot staleness flagged when >90 days) · dynamic-SQL analysis (`SAST-001` first-argument interpolation/concat across SQL sinks) · mass assignment / webhooks / exposed docs · Docker + CI/supply-chain (`DOCKER-001..003`, `CI-001..004`) · agent-environment audit (`AGENT-001..004`) · URL Mode headers/secrets (L1–L2) |
 
 ## 🧪 What It Checks
 
@@ -55,12 +55,12 @@ Existing scanners (Semgrep, Trivy, Gitleaks) are powerful but generic — they w
 | Secrets | key patterns for major providers · **SUPA-001** service_role by JWT value-decode + client reachability (import-graph, transitive) · **HDR-001** DB creds in HTTP headers (receiver-first + cross-root linkage) · **SEED-001** seeder credentials · committed `.env` · **LOGS-001** secrets in logs |
 | History & files | git-history secrets (`git log -p`) · committed-then-deleted env files · `.gitignore` audit · sensitive-file inventory (dumps, backups, `.npmrc`, service accounts, `tfstate`, SSH keys) |
 | Dependencies | **DEP-001** CVEs vs a bundled OSV.dev snapshot · **DEP-002** known-malicious · **DEP-003** typosquat (≤2 edits) · **DEP-004** unresolved + no lockfile · **DEP-005** slopsquat (`--online`) |
-| SAST + crypto + taint | SQL string-concat · dangerous HTML · `eval`/`exec` · weak hashing · **CRYPTO-001** `Math.random` tokens · **TAINT-001..005** SSRF / open redirect / path traversal / command injection / reflected XSS (single-file scope, capped MEDIUM, canary tests generated — never executed) |
+| SAST + crypto + taint | **SAST-001** dynamic SQL — first-argument interpolation/concat across `$queryRawUnsafe`, `knex.raw`, `pool/client/db.query`, `sequelize.query` (tagged templates + `$1`/`?` placeholders stay silent; HIGH when request-traced) · unsafe HTML (`SAST-002`, sanitizer-aware) · dynamic code execution (`SAST-003` non-literal `eval`/`new Function`/`vm.runIn*`) · weak hashing · **CRYPTO-001** `Math.random` tokens · **TAINT-001..006** SSRF / open redirect (`redirect()`, `permanentRedirect`, `NextResponse.redirect`) / path traversal / command injection / reflected XSS / dynamic code execution (single-file scope, capped MEDIUM, canary tests generated — never executed) |
 | Framework playbooks | **Supabase**: missing RLS, `USING (true)`, views, SECURITY DEFINER, policy scoping, storage, `verify_jwt`, dashboard drift via schema export · **Next.js**: public env secrets, localStorage tokens, cookie flags, unguarded mutating routes, middleware-matcher gaps, CSRF heuristic · **NestJS**: unguarded controllers (APP_GUARD-aware), CORS, helmet, throttler, Socket.IO gateways |
-| Rule packs II | **MASS-001** mass assignment · **WEBHOOK-001** unverified webhooks · **JWT-001/002** decode-based auth / `algorithms:"none"` · **SWAGGER-001** exposed docs · **PRISMA-001** multi-tenancy hint |
+| Rule packs II | **MASS-001** mass assignment · **WEBHOOK-001** unverified webhooks · **JWT-001/002** decode-based auth / `algorithms:"none"` · **JWT-003** hardcoded signing/session secrets (rotate-first, placeholder defaults still flagged) · **SEED-001** default/b hardcoded creds in seeds, seeders, fixtures, factories (`seeds/`, `prisma/seed-*`, `scripts/*seed*`, create/init-admin) · **HDR-001** DB credentials sent client→server via headers (value-flow receivers: `connectionString`/`password`/`url`/`host`/`user`/`uri` on Pool/Client/mongoose.connect — any header name) · **SWAGGER-001** exposed docs · **PRISMA-001** multi-tenancy hint |
 | CI / supply chain | **CI-001..004** (SHA pinning, `pull_request_target`, script injection, permissions) · **DOCKER-001..003** (root, `:latest`, ARG secrets) |
 | Agent environment | **AGENT-001..004** — unpinned MCP servers, secrets in agent configs, permission wildcards/bypass, unpinned hooks running remote code |
-| Optional extras | **AI review** (`--ai-review`): LLM proposes, an independent deterministic verifier disposes—hallucinated snippets are rejected; AI findings cap at HIGH · **`test-authz`**: authorization matrix + failing-by-expectation Supertest suite, never executed · **`init-hook`**: pinned PreToolUse guard hook · **rules-lock**: SHA-256 pinning of community rule packs — tampered rules are refused before scanning |
+| Optional extras | **AI review** (`--ai-review`): LLM proposes, an independent deterministic verifier disposes—hallucinated snippets are rejected; AI findings cap at HIGH · **`test-authz`**: authorization matrix + failing-by-expectation Supertest suite, never executed · **`init-hook`**: pinned PreToolUse guard hook — **value-based R1–R4** (decoded service_role JWTs, RLS-kill + drop-policy-without-recreate SQL, secret-shaped env values, client-env assignments; comments stripped; public-by-design names pass; covers Write/Edit/MultiEdit/NotebookEdit/Bash heredoc·redirect·tee·`sed -i` best effort; escape hatches `ANUBIS_GUARD=block|warn|off` and `anubis-allow: <reason>`; fail-open on malformed input) · **rules-lock**: SHA-256 pinning of community rule packs — tampered rules are refused before scanning |
 
 ### Mode 2 — URL (live deployed site, by URL)
 
@@ -169,7 +169,15 @@ Pacing/caps: `--delay-ms` (default 250), `--max-requests` (per-level caps 40/120
 
 **Output contract (both modes):** `terminal` (default) · `json` · `md` · `sarif` · `html` · `compact` — plus `--fix-prompt fix.md` and `--inventory inventory.json` for codebase scans.
 
-**Exit codes:** `0` pass · `1` gate threshold breached (`--fail-on` / `--fail-on-cve`) · `2` usage/scan error.
+**Exit codes (both modes):**
+
+| Code | Meaning | Examples |
+|---|---|---|
+| `0` | scan completed; findings (if any) are below the gate | clean scan; findings without `--fail-on` |
+| `1` | gate threshold breached | `--fail-on critical` + CRITICAL findings; `--fail-on-cve` + advisory |
+| `2` | fail-closed — no report you can trust was produced | scan of a nonexistent path, an empty directory, unknown `--format`/`--fail-on`/`--tools`; `--max-files` exceeded; **unreachable `scan-url` target (grade `N/A`, score `null`)**; external-tool failure with `--tools` |
+
+No partial reports: a fail-closed run never writes output or prints a score. A failed fetch can never produce grade A. `scan <path> --allow-empty` explicitly opts a zero-file directory in (exit 0, honest empty report).
 
 ## 🧮 The Score
 

@@ -152,3 +152,142 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
   `ARG DB_URL=postgres://user:pass@host`) is a **backlog item, not a bug**:
   planned rule `DOCKER-004` (HIGH) would inspect ARG/ENV value literals while
   excluding credential-less endpoint URLs.
+
+## 9. v1.2 additions — heuristics and accepted trade-offs
+
+Independent-review fixes introduced a set of new heuristics. Each ships with at
+least one must-detect and one must-not-detect gate (unit + regression), and each
+carries a deliberate trade-off, stated here.
+
+### 9.1 SAST-001 — first-argument dynamic-SQL analysis
+
+- The old line-slice regex stopped at the first inner quote and excluded lines
+  containing `prisma.`. The new analysis extracts the **first argument of the
+  call** with paren-balance counting, then looks for `${...}` interpolation or
+  non-literal string concatenation inside it. This sees through inner quotes:
+  `db.query("SELECT … WHERE name='"+req.query.name+"'")` is detected.
+- Sinks: `$queryRawUnsafe`, `$executeRawUnsafe`, `knex.raw`, `sequelize.query`,
+  `pool/client/db/connection.query`, DB-handle `.execute(`.
+- **Safe-by-design silences (accepted FNs):** tagged templates
+  (`prisma.$queryRaw\`…\``, `Prisma.sql`…``) are parameterized by construction;
+  positional `$1`/`?` placeholders with a params array are parameterized;
+  constant strings carry no taint. These are deliberately silent — a tagged
+  template with interpolated input is FN-accepted because Prisma parameterizes
+  the interpolation.
+- **Severity ladder:** HIGH when the interpolated value traces to request data
+  (`req.*`, `params`, `query`, `body`, `searchParams`); MEDIUM +
+  `needs_confirmation` otherwise (non-request dynamic SQL is often builder code,
+  not an exploit path).
+- **Dedupe-key lesson:** the engine dedupes findings on
+  `fingerprint(id | file | type | masked-evidence)`. Rules that emit structurally
+  identical evidence for different findings collapse into one — SAST-001 keeps
+  the **masked sink call** (`knex.raw(…)`) in `evidence.masked` so distinct
+  findings stay distinct while the raw value stays masked.
+
+### 9.2 TAINT-006 / SAST-003 — dynamic code execution
+
+- TAINT-006 owns request-tainted `eval` / `new Function` / `vm.runIn*` /
+  `setTimeout(<ident>)`; SAST-003 also fires MEDIUM + `needs_confirmation` for
+  any non-literal argument **without** a trace to request data.
+- **De-duplication policy:** request-traced eval is reported once, by TAINT-006
+  (the taint layer has the data-flow evidence); SAST-003 defers. Literal
+  `eval('1+1')`, and `eval` inside comments or strings, never fire. Argument
+  extraction is paren-balanced within the line — a trailing comment after the
+  call cannot change the argument's classification.
+
+### 9.3 JWT-003 — hardcoded signing/session secrets
+
+A string literal (≥6 chars) reaching `jwt.sign/verify`, `JwtModule.register`,
+`secretOrKey`, `session({ secret })`, or a `JWT_SECRET`-like `const` is HIGH.
+**The generic placeholder skip deliberately does not apply** — a default like
+`'changeme-super-secret-key'` checked into source **is** the vulnerability
+(git-guessable by design). Templates (`process.env.*`, `${…}`, `<…>`,
+`YOUR_*`, `configService.get`) stay silent.
+
+### 9.4 SEED-001 — path semantics
+
+Matches `(seeds?|seeders?|factories|fixtures|db/seeds)/**` and named files
+(`seed[-_.]*`, `create/init/bootstrap-admin`, `prisma/seed-*`, `scripts/*seed*`).
+Encoding lesson: a bare `seeders?` alternation does **not** match the `seeds/`
+directory — the class must spell both names. Placeholder passwords and
+`*.test.*`/`__tests__` stay excluded (clean gates).
+
+### 9.5 HDR-001 — value-flow receivers over name heuristics
+
+- Receiver side: ANY value read from `req.headers[…]` / `req.header(…)` /
+  `headers().get(…)` — including Next.js `headers()` local aliases — flowing
+  into DB sink properties (`password`, `connectionString`, `url`, `host`,
+  `user`, `uri`) on `Pool`/`Client`/`createPool`/`mongoose.connect`/postgres/
+  drizzle is CRITICAL when sink-linked; header **names** no longer matter on the
+  receiver side (`x-pg-secret`, `x-dsn` are detected). The name heuristic
+  remains only for the client (sender) side, downgraded LOW.
+- **Regex lesson encoded:** when an alternation has multiple capture variants,
+  a matcher must use the **last DEFINED** capture group — undefined variant
+  groups silently break the comparison otherwise.
+- **Positional-call lesson:** argument scanning is nesting-aware
+  (`mongoose.connect(req.headers.get("x-dsn"))` survives parenthesis depth).
+
+### 9.6 Transitive dependency recall (DEP-001)
+
+- The lockfile (package-lock/v8-resolved tree) now supplies transitive
+  packages; any of them matching a moderate+ advisory produce one aggregated
+  `DEP-001` per package at the lockfile path, name-sorted, evidence capped
+  (5 advisories per package) — determinism holds.
+- **Snapshot staleness as an honest meta-date:** `meta.advisory_snapshot_date`
+  records the bundled OSV capture; terminal/JSON warn when >90 days old. This
+  converts "the snapshot is old" from an error into visible, dated context —
+  `update-advisories`/`--online` refresh it.
+- **FP calibration:** the snapshot only grades what OSV says — patched releases
+  of the same package (the clean comparator in the T14 gates) never fire.
+
+### 9.7 Guard hook — value-based detection (R1–R4)
+
+- **Decoded role beats substring:** every JWT-shaped stress (3 base64url
+  segments) is decoded; only decoded `role === "service_role"` decides R1, in
+  client-reachable contexts (`'use client'`, `components/`, pages/ non-api,
+  client-prefix `.env` names). Server contexts (`"use server"`, `app/api`,
+  route handlers, middleware, server path segments, `supabase/functions`) are
+  allowed. The substring-`"server"`-in-path heuristic is retired — `observer.ts`
+  is the regression-proof test.
+- **Comment stripping before pattern tests:** a comment mentioning
+  service_role never blocks (over-stripping biases fail-open, which is the
+  correct alarm direction for a write-time hook with an escape hatch).
+- **RLS pairing logic:** `drop policy` is blocked only when the same content
+  contains no `create policy` for the same table (table = last dot-segment
+  after `on`; quoted identifiers normalized). Drop-then-recreate migrations
+  pass; a name-only `DROP POLICY` (no `on` clause) blocks conservatively.
+- **Public-by-design env names** pass the R3/R4 name path (FIREBASE_API_KEY,
+  GOOGLE_MAPS, POSTHOG, ALGOLIA search keys, STRIPE_PUBLISHABLE,
+  SUPABASE_ANON/PUBLISHABLE, SENTRY_DSN, MAPBOX `pk.*`); the VALUE path still
+  applies (a genuinely secret-shaped value under a public name still ships to
+  the browser — blocked on the value).
+- **Bash coverage is best effort and documented as such:** heredoc / redirect /
+  tee / `sed -i` target extraction is heuristic token work; it is a guard, not
+  a security boundary, and both the SKILL and the generated script say so.
+- **Fail-open contract preserved:** malformed/empty stdin → exit 0. Escape
+  hatches: `ANUBIS_GUARD=block|warn|off` and the inline marker
+  `anubis-allow: <reason of 8+ chars>` (echoed to stderr; shorter reasons still
+  block — the gate exists to record intent, not to be slipped past).
+- **Version wiring:** the hook header, `settings.json` entry, and AGENTS.md
+  snippet derive from the real package version — no stale `v0.3.0` labels.
+
+### 9.8 Fail-closed CLI contract (behavior change)
+
+Nonexistent paths, zero scannable files, unknown flags, and unreachable
+`scan-url` targets now exit **2** with no score line and no report. The old
+behavior — a fake `100/A` for work that never happened — is the failure mode
+this contract exists to prevent; CI consumers should treat exit 2 as "fix the
+invocation", not "all clear". `--allow-empty` keeps the explicit opt-out.
+
+### 9.9 Accepted FN/FPP trade-offs (summary)
+
+- Tagged-template Prisma SQL with interpolated input → silent (parameterized
+  by design).
+- Non-request dynamic SQL/dynamic code → MEDIUM + needs_confirmation, never
+  HIGH without a request trace.
+- `drop policy` with an `on` clause, same-table recreate → allowed by design.
+- Bash-target extraction misses unusual redirection forms (quoted spaces,
+  `dd of=`) — documented gap, best effort only.
+- `create policy … using (true)` is blocked even when the table is genuinely
+  public — deliberate friction; the escape hatch records the intent.
+
