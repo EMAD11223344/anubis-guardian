@@ -111,6 +111,30 @@ function execStatus(e: unknown): number | null {
 
 type RunFail = (status: number | null, reason: string) => void;
 
+/**
+ * v1.2 audit — OSV/GHSA severity mapping, EXPLICIT per value:
+ *   CRITICAL → critical · HIGH → high · MODERATE/MEDIUM → medium · LOW → low.
+ * Missing or unrecognized severities follow a documented policy: MEDIUM with
+ * needs_confirmation and the raw value surfaced in the finding note — they are
+ * never silently treated as a known severity and never inflated to HIGH
+ * (the pre-audit default collapsed everything non-CRITICAL into HIGH).
+ */
+export function mapOsvSeverity(v: unknown): {
+  severity: "critical" | "high" | "medium" | "low";
+  needsConfirmation: boolean;
+  raw: string;
+} {
+  const raw = String((v as { database_specific?: { severity?: unknown } })?.database_specific?.severity ?? "").toUpperCase();
+  switch (raw) {
+    case "CRITICAL": return { severity: "critical", needsConfirmation: false, raw };
+    case "HIGH": return { severity: "high", needsConfirmation: false, raw };
+    case "MODERATE":
+    case "MEDIUM": return { severity: "medium", needsConfirmation: false, raw };
+    case "LOW": return { severity: "low", needsConfirmation: false, raw };
+    default: return { severity: "medium", needsConfirmation: true, raw };
+  }
+}
+
 function gitleaks(ctx: ScanContext, fail: RunFail, probe: AdapterProbe): Finding[] {
   const dir = mkdtempSync(join(tmpdir(), "anubis-gl-"));
   const report = join(dir, "gl.json");
@@ -174,14 +198,21 @@ function osvScanner(ctx: ScanContext, fail: RunFail, probe: AdapterProbe): Findi
     for (const res of data.results ?? []) {
       for (const pkg of res.packages ?? []) {
         for (const v of pkg.vulnerabilities ?? []) {
-          const sev = v.database_specific?.severity === "CRITICAL" ? "critical" : "high";
+          // v1.2 audit — explicit per-severity mapping (was: every non-CRITICAL
+          // collapsed to HIGH, inflating MODERATE/LOW). Unknown/missing severity
+          // follows a documented policy: MEDIUM + needs_confirmation + the raw
+          // value disclosed in the note — never silently treated as a known one.
+          const sev = mapOsvSeverity(v);
+          const sevNote = sev.needsConfirmation
+            ? ` [unrecognized OSV severity: ${sev.raw || "(none)"} — MEDIUM pending review]`
+            : "";
           out.push({
             id: "OSV-001",
-            severity: sev,
+            severity: sev.severity,
             title: `${v.id} — ${pkg.package?.name ?? "?"} (osv-scanner)`,
             file: "package.json",
             line: 0,
-            evidence: { type: "adapter:osv-scanner", masked: `${pkg.package?.name ?? "?"}@${pkg.package?.version ?? "?"}`, note: (v.summary ?? "").slice(0, 140) },
+            evidence: { type: "adapter:osv-scanner", masked: `${pkg.package?.name ?? "?"}@${pkg.package?.version ?? "?"}`, note: ((v.summary ?? "").slice(0, 140)) + sevNote },
             owasp: "A06",
             confidence: "medium",
             fix: `Upgrade ${pkg.package?.name ?? "the package"} to a version fixing ${v.id}.`,
@@ -192,6 +223,7 @@ function osvScanner(ctx: ScanContext, fail: RunFail, probe: AdapterProbe): Findi
             suppression: null,
             root: pkg.package?.name ?? v.id,
             root_cause: rootCause("OSV-001", pkg.package?.name ?? v.id),
+            ...(sev.needsConfirmation ? { needs_confirmation: true } : {}),
           });
         }
       }

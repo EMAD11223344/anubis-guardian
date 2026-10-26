@@ -28,7 +28,16 @@ const gitCommit = (() => {
   if (r.status !== 0) return "unavailable";
   const dirty = spawnSync("git", ["status", "--porcelain"], { encoding: "utf8", cwd: ROOT });
   const dirtyOut = dirty.status === 0 ? dirty.stdout.trim() : "";
-  return dirtyOut ? `${r.stdout.trim()} (+uncommitted working tree: docs/bench edits)` : r.stdout.trim();
+  const dirtyFiles = dirtyOut ? dirtyOut.split("\n").map((s) => s.slice(3).trim()).filter(Boolean) : [];
+  // describe the dirty tree honestly: docs-only vs anything touching code/tests
+  const allDocs = dirtyFiles.length > 0
+    && dirtyFiles.every((f) => /\.md$/.test(f) || f === "BENCHMARKS.md" || f.startsWith("docs/") || f === "scripts/measure-benchmarks.mjs");
+  const suffix = dirtyFiles.length
+    ? (allDocs
+      ? " (+uncommitted working tree: docs/bench edits)"
+      : ` (+uncommitted working tree: ${dirtyFiles.slice(0, 5).join(", ")}${dirtyFiles.length > 5 ? ` +${dirtyFiles.length - 5} more` : ""})`)
+    : "";
+  return dirtyOut ? r.stdout.trim() + suffix : r.stdout.trim();
 })();
 
 const env = {

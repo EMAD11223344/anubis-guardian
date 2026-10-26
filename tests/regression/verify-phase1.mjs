@@ -110,6 +110,12 @@ const commitAll = (dir, msg = "fixture") => git(["add", "-A"], dir).status === 0
     allowEmpty.code === 0 && allowEmpty.json && (allowEmpty.json.meta.files_scanned === 0), allowEmpty.stderr.slice(0, 140));
   // clean: a real scan still exits 0
   check("T1= normal scan of tests/clean/app exits 0", run(["scan", join(ROOT, "tests", "clean", "app")]).code === 0);
+  // v1.2 audit: a path that EXISTS but is a FILE (not a directory) is refused —
+  // never mis-scanned, never a misleading clean report
+  const fileRoot = join(TMP, "not-a-dir.txt");
+  writeFileSync(fileRoot, "just a file, not a project directory\n");
+  check("T1+ scan of a FILE path exits 2 ('not a project directory')",
+    run(["scan", fileRoot]).code === 2 && /not a project directory/.test(run(["scan", fileRoot]).stderr), `code=${run(["scan", fileRoot]).code}`);
 
   // positive: unreachable scan-url → exit 2, grade N/A, score null
   const un = run(["scan-url", "http://127.0.0.1:1", "--allow-private", "--level", "1", "--format", "json"]);

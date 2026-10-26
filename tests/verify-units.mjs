@@ -715,6 +715,13 @@ const vc = await import(d("dist/rules/valueclass.js"));
   check("U17.10 missing executable → missing list (fail-closed input)",
     ad.missing.includes("gitleaks") && ad.used.length === 0);
 
+  // v1.2 audit — crash / timeout path: execFileSync timeout or process crash
+  // surfaces as status=null; the truth table must treat it as a FAILURE (and
+  // the engine-level refusal then prevents a "clean" misrepresentation).
+  ad = runAdapters(dCtx, ["gitleaks"], fakeProbe(null, { stderr: "ETIMEDOUT" }));
+  check("U17.15 gitleaks crashed/timed out (exit null) → execution failure surfaced (never clean, never used)",
+    !ad.used.includes("gitleaks") && ad.failed.length === 1 && ad.failed[0].status === null && /crash/.test(ad.failed[0].reason));
+
   // engine-level seam: scan() with a controlled double keeps adapter findings
   // visible in the final unified report (+ fail-closed throw on failure)
   const { scan } = await import(d("dist/engine.js"));
@@ -729,6 +736,28 @@ const vc = await import(d("dist/rules/valueclass.js"));
   check("U17.12 engine scan(): failed adapter refuses the report (fail-closed throw)",
     threw instanceof Error && /adapter fail-closed/.test(threw.message) && /exit 2/.test(threw.message),
     String(threw && threw.message).slice(0, 120));
+
+  // v1.2 audit — OSV severity mapping: explicit per severity, no HIGH collapse
+  const OSV_SEV = (sev) => JSON.stringify({
+    results: [{ packages: [{ package: { name: "lodash", version: "4.17.4" },
+      vulnerabilities: [sev === undefined ? { id: "GHSA-x", summary: "s" } : { id: "GHSA-x", database_specific: { severity: sev }, summary: "s" }] }] }],
+  });
+  const oneOsv = (sev) => runAdapters(dCtx, ["osv-scanner"], fakeProbe(1, { reportKey: "--output", reportJson: OSV_SEV(sev) })).findings[0];
+  check("U17.13 OSV severity map: CRITICAL→critical · HIGH→high · MODERATE/MEDIUM→medium · LOW→low",
+    ["CRITICAL|critical", "HIGH|high", "MODERATE|medium", "MEDIUM|medium", "LOW|low"].every((p) => {
+      const [sev, want] = p.split("|");
+      return oneOsv(sev).severity === want;
+    }) && oneOsv("CRITICAL").needs_confirmation !== true,
+    ["CRITICAL", "HIGH", "MODERATE", "MEDIUM", "LOW"].map((s) => `${s}:${oneOsv(s).severity}`).join(" "));
+  check("U17.14 OSV severity map: missing/unknown severity → medium + needs_confirmation + raw value disclosed (never silent HIGH)",
+    (() => {
+      const fMissing = oneOsv(undefined);
+      const fWeird = oneOsv("CATACLYSMIC");
+      return fMissing.severity === "medium" && fMissing.needs_confirmation === true
+        && /\(none\)/.test(fMissing.evidence.note)
+        && fWeird.severity === "medium" && fWeird.needs_confirmation === true
+        && /CATACLYSMIC/.test(fWeird.evidence.note);
+    })());
   rmSync(fixtureRoot, { recursive: true, force: true });
 }
 

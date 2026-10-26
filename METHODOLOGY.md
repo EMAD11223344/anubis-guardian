@@ -121,6 +121,18 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
   registry in every report states what ran.
 - URL Mode is a black box: no server internals, no subdomain takeover, no DNS
   level attacks, no business-logic flaws beyond the restricted differential check.
+- **SQL-sink alias gap (measured, v1.2 audit)**: SAST-001 analyzes the sink call's
+  first argument locally. A query string assembled in an intermediate variable
+  escapes it (`const q = "…" + req.query.name + "'"; pool.query(q)` is NOT flagged),
+  while the taint layer DOES trace aliasing for redirect/XSS/eval sinks
+  (`const c = req.body.code; eval(c)` → TAINT-006). Proposed narrow fix: propagate
+  single-hop string-concat variables into sink analysis; a full AST parser was
+  evaluated and is NOT adopted for now (see the v1.2 audit §D).
+- **External adapter severities are explicit, not guessed**: `osv-scanner` findings
+  map CRITICAL→critical · HIGH→high · MODERATE/MEDIUM→medium · LOW→low; a missing
+  or unrecognized OSV severity lands at MEDIUM with `needs_confirmation` and the
+  raw value in the note (U17.13/U17.14). A severity the scanner does not name is
+  never silently inflated.
 - Git-history scanning requires that the scan root sit inside a git repository
   that actually **tracks files under the scan root** (`gitScope`). An untracked
   folder inside an unrelated ancestor repo gets NO history layer — that repo's

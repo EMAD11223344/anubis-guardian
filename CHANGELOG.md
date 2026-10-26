@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — post-1.2.0 audit (evidence-based)
+
+- **Fixed — OSV-001 severity mapping (`src/adapters.ts`)**: the `--tools osv-scanner` adapter previously collapsed every non-`CRITICAL` `database_specific.severity` into `HIGH`, inflating MODERATE/LOW advisories in score and summary. Now explicit: `CRITICAL→critical · HIGH→high · MODERATE/MEDIUM→medium · LOW→low`; unknown or missing severity follows a documented policy — `medium` + `needs_confirmation` + the raw value disclosed in the finding note (never silently treated as known, never inflated). Regression gates **U17.13/U17.14** (`tests/verify-units.mjs`) cover every supported severity plus missing/unknown.
+- **Added test — CLI file-vs-directory refusal**: `scan <file>` was already refused with `not a project directory` + exit 2 (`src/cli.ts`), but no gate asserted it. **Phase-1 T1** now checks both the exit code and the stderr message (25 gates).
+- **Benchmarks re-anchored**: `BENCHMARKS.md` regenerated at the current commit (the previously recorded provenance commit was rewritten out of history during the v1.2.0 push-protection fixture defusal; results themselves were reproduced fresh).
+- **Audited, deferred (documented in §G of the audit report / METHODOLOGY §8)**: AST-based parsing for the SQL-sink rule (a measured false-negative exists for alias-built SQL strings — `const q = "…" + req.x; pool.query(q)` — while redirect/XSS/eval aliasing **is** caught by the taint layer); controlled POST/PATCH mutation testing in URL Mode L3 (GET-only differential IDOR stays enforced with verified ownership, A/B identities, 24-endpoint cap).
+
 ## 1.2.0 — 2026-10-26
 
 Independent-review fixes in three phases — trust fixes → detection gaps → guard-hook rewrite. Every task shipped with at least one must-detect and one must-not-detect gate; the full test chain is green. **Behavior changes: exit codes are now fail-closed (2) for invalid input/unreachable targets, several severities were recalibrated, and the guard hook detection logic is rewritten (see below).**
