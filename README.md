@@ -15,7 +15,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](tsconfig.json)
 [![Tests](https://img.shields.io/badge/regression%20gates-12%20suites-brightgreen.svg)](#-tests-regression-gates)
 
-**Codebase audit (offline) · URL audit (consent-gated) · Secrets · Supabase RLS · Next.js · NestJS · Dependencies (OSV) · CI/supply-chain · SARIF**
+**Codebase audit (offline) · URL audit (consent-gated) · Secrets · SAST · Taint · Dependencies (OSV) · CI/supply-chain · SARIF · Supabase RLS · Next.js · NestJS**
 
 > 🛡️ **Real-time AI guard, not just another scanner.** Existing tools audit *after* the damage ships. Anubis Guardian can sit in the loop **at write time**: a pinned PreToolUse hook + skill block service-role keys, RLS-killing SQL, and secrets **before they enter your codebase** — detection, prevention, and repair guidance in one tool.
 
@@ -29,7 +29,7 @@
 
 AI coding agents (Claude Code, Cursor, Bolt, Lovable, Windsurf…) ship full-stack apps in days — but with a **consistent, repeating pattern of security mistakes**: service keys shipped to the client, database passwords in request headers, missing Row-Level Security, JWTs in `localStorage`, `.env` files pushed to GitHub, unpinned CI actions.
 
-Existing scanners (Semgrep, Trivy, Gitleaks) are powerful but generic — they were not designed for this failure pattern. **Anubis Guardian** is a deterministic, static-only security scanner built for AI-generated code — first-class playbooks for the **Supabase / Next.js / NestJS** stack, universal coverage everywhere else, and:
+Existing scanners (Semgrep, Trivy, Gitleaks) are powerful but generic — they were not designed for this failure pattern. **Anubis Guardian** is a deterministic, static-only security scanner built for AI-generated code — universal coverage on any stack, with batteries-included host-aware playbooks for the **Supabase / Next.js / NestJS** stack, and:
 
 - **Hard honesty contracts** — secrets are masked (first-4 chars + SHA-256) in *every* output, including the optional AI-review prompt; no CRITICAL without independent confirmation
 - **Byte-identical determinism** — same code + same tool version ⇒ identical `findings.json` / `fix-prompt.md`; for URL mode, one saved capture replays with zero network and identical results
