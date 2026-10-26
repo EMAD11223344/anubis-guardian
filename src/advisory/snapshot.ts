@@ -1,13 +1,14 @@
 // AUTO-GENERATED from OSV.dev (2026-10) — do not edit by hand.
 // Rebuild via scripts/build-advisory-snapshot.mjs (real advisories, bundled per tool release).
+// v1.2 policy: npm advisories MODERATE and above, max 60 per package (T14 dependency recall).
 
 export interface Advisory { id: string; aliases?: string[]; severity: string; summary: string; ranges: Array<{ events: Array<Record<string, string>> }>; fixed_hint?: string }
 
 export const SNAPSHOT: { snapshot_date: string; source: string; policy: string; packages: number; advisories: Record<string, Advisory[]>; known_malicious: Record<string, Advisory[]> } = {
   "snapshot_date": "2026-10",
   "source": "OSV.dev (api.osv.dev) — fetched at build time, bundled per tool release for determinism",
-  "policy": "HIGH/CRITICAL only, ECOSYSTEM/SEMVER ranges, max 60 per package",
-  "packages": 36,
+  "policy": "npm advisories MODERATE and above (v1.2), ECOSYSTEM/SEMVER ranges, max 60 per package",
+  "packages": 21,
   "advisories": {
     "next": [
       {
@@ -3922,6 +3923,1084 @@ export const SNAPSHOT: { snapshot_date: string; source: string; policy: string; 
         ],
         "fixed_hint": "6.13.9"
       }
+    ],
+    "express": [
+      {
+        "id": "GHSA-cm5g-3pgc-8rg4",
+        "aliases": [
+          "CVE-2024-10491"
+        ],
+        "severity": "moderate",
+        "summary": "Express ressource injection",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "4.0.0-rc1"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.0.0-rc1"
+      },
+      {
+        "id": "GHSA-gpvr-g6gh-9mc2",
+        "aliases": [
+          "CVE-2014-6393"
+        ],
+        "severity": "moderate",
+        "summary": "No Charset in Content-Type Header in express",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "3.11.0"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.5.0"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "3.11.0"
+      },
+      {
+        "id": "GHSA-rv95-896h-c2vc",
+        "aliases": [
+          "CVE-2024-29041"
+        ],
+        "severity": "moderate",
+        "summary": "Express.js Open Redirect in malformed URLs",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "4.19.2"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "5.0.0-alpha.1"
+              },
+              {
+                "fixed": "5.0.0-beta.3"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.19.2"
+      }
+    ],
+    "handlebars": [
+      {
+        "id": "GHSA-2w6w-674q-4c4q",
+        "aliases": [
+          "CVE-2026-33937"
+        ],
+        "severity": "critical",
+        "summary": "Handlebars.js has JavaScript Injection via AST Type Confusion",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.7.9"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.9"
+      },
+      {
+        "id": "GHSA-765h-qjxv-5f44",
+        "aliases": [
+          "CVE-2021-23383"
+        ],
+        "severity": "critical",
+        "summary": "Prototype Pollution in handlebars",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "4.7.7"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.7"
+      },
+      {
+        "id": "GHSA-8r5x-fm3f-whwj",
+        "aliases": [
+          "CVE-2026-106446"
+        ],
+        "severity": "critical",
+        "summary": "Handlebars: JavaScript Injection via AST Type Confusion in compile (bypass of CVE-2026-33937)",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.7.10"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.10"
+      },
+      {
+        "id": "GHSA-f2jv-r9rf-7988",
+        "aliases": [
+          "CVE-2021-23369"
+        ],
+        "severity": "critical",
+        "summary": "Remote code execution in handlebars when compiling templates",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "4.7.7"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.7"
+      },
+      {
+        "id": "GHSA-p8wg-vrv2-v86f",
+        "aliases": [
+          "CVE-2026-106445"
+        ],
+        "severity": "critical",
+        "summary": "Handlebars: JavaScript Injection via Own Property Check Bypass",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "3.0.0"
+              },
+              {
+                "fixed": "4.7.10"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.10"
+      },
+      {
+        "id": "GHSA-w457-6q6x-cgp9",
+        "aliases": [
+          "CVE-2019-19919"
+        ],
+        "severity": "critical",
+        "summary": "Prototype Pollution in handlebars",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.3.0"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "3.0.8"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.3.0"
+      },
+      {
+        "id": "GHSA-2cf5-4w76-r9qv",
+        "aliases": [],
+        "severity": "high",
+        "summary": "Arbitrary Code Execution in handlebars",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "3.0.8"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.5.2"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "3.0.8"
+      },
+      {
+        "id": "GHSA-3cqr-58rm-57f8",
+        "aliases": [
+          "CVE-2019-20920"
+        ],
+        "severity": "high",
+        "summary": "Arbitrary Code Execution in Handlebars",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "3.0.8"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.5.3"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "3.0.8"
+      },
+      {
+        "id": "GHSA-3mfm-83xf-c92r",
+        "aliases": [
+          "CVE-2026-33938"
+        ],
+        "severity": "high",
+        "summary": "Handlebars.js has JavaScript Injection via AST Type Confusion by tampering @partial-block",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.7.9"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.9"
+      },
+      {
+        "id": "GHSA-62gr-4qp9-h98f",
+        "aliases": [
+          "CVE-2019-20922"
+        ],
+        "severity": "high",
+        "summary": "Regular Expression Denial of Service in Handlebars",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.4.5"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.4.5"
+      },
+      {
+        "id": "GHSA-9cx6-37pm-9jff",
+        "aliases": [
+          "CVE-2026-33939"
+        ],
+        "severity": "high",
+        "summary": "Handlebars.js has Denial of Service via Malformed Decorator Syntax in Template Compilation",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.7.9"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.9"
+      },
+      {
+        "id": "GHSA-g9r4-xpmj-mj65",
+        "aliases": [],
+        "severity": "high",
+        "summary": "Prototype Pollution in handlebars",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "3.0.8"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.5.3"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "3.0.8"
+      },
+      {
+        "id": "GHSA-q2c6-c6pm-g3gh",
+        "aliases": [],
+        "severity": "high",
+        "summary": "Arbitrary Code Execution in handlebars",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "3.0.8"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.5.3"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "3.0.8"
+      },
+      {
+        "id": "GHSA-q42p-pg8m-cqh6",
+        "aliases": [],
+        "severity": "high",
+        "summary": "Prototype Pollution in handlebars",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.1.0"
+              },
+              {
+                "fixed": "4.1.2"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.0.14"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "3.0.7"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.1.2"
+      },
+      {
+        "id": "GHSA-xhpv-hc6g-r9c6",
+        "aliases": [
+          "CVE-2026-33940"
+        ],
+        "severity": "high",
+        "summary": "Handlebars.js has JavaScript Injection via AST Type Confusion when passing an object as dynamic partial",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.7.9"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.9"
+      },
+      {
+        "id": "GHSA-xjpj-3mr7-gcpf",
+        "aliases": [
+          "CVE-2026-33941"
+        ],
+        "severity": "high",
+        "summary": "Handlebars.js has JavaScript Injection in CLI Precompiler via Unescaped Names and Options",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.7.9"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.9"
+      },
+      {
+        "id": "GHSA-2qvq-rjwj-gvw9",
+        "aliases": [
+          "CVE-2026-33916"
+        ],
+        "severity": "moderate",
+        "summary": "Handlebars.js has Prototype Pollution Leading to XSS through Partial Template Injection",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.7.9"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.9"
+      },
+      {
+        "id": "GHSA-7rx3-28cr-v5wh",
+        "aliases": [],
+        "severity": "moderate",
+        "summary": "Handlebars.js has a Prototype Method Access Control Gap via Missing __lookupSetter__ Blocklist Entry",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.6.0"
+              },
+              {
+                "fixed": "4.7.9"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.9"
+      },
+      {
+        "id": "GHSA-9prh-257w-9277",
+        "aliases": [
+          "CVE-2015-8861"
+        ],
+        "severity": "moderate",
+        "summary": "Cross-Site Scripting in handlebars",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "4.0.0"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.0.0"
+      },
+      {
+        "id": "GHSA-f52g-6jhx-586p",
+        "aliases": [],
+        "severity": "moderate",
+        "summary": "Denial of Service in handlebars",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.4.5"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.4.5"
+      },
+      {
+        "id": "GHSA-xw65-4hp5-5hc7",
+        "aliases": [
+          "CVE-2026-106444"
+        ],
+        "severity": "moderate",
+        "summary": "Handlebars: JavaScript Injection via Unsafe Inline Embedding of Precompiled Templates",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "4.0.0"
+              },
+              {
+                "fixed": "4.7.10"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "4.7.10"
+      }
+    ],
+    "moment": [
+      {
+        "id": "GHSA-446m-mv8f-q348",
+        "aliases": [
+          "CVE-2017-18214"
+        ],
+        "severity": "high",
+        "summary": "Regular Expression Denial of Service in moment",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "2.19.3"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "2.19.3"
+      },
+      {
+        "id": "GHSA-8hfj-j24r-96c4",
+        "aliases": [
+          "CVE-2022-24785"
+        ],
+        "severity": "high",
+        "summary": "Path Traversal: 'dir/../../filename' in moment.locale",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "2.29.2"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "2.29.2"
+      },
+      {
+        "id": "GHSA-wc69-rhjr-hc9g",
+        "aliases": [
+          "CVE-2022-31129"
+        ],
+        "severity": "high",
+        "summary": "Moment.js vulnerable to Inefficient Regular Expression Complexity",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "2.18.0"
+              },
+              {
+                "fixed": "2.29.4"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "2.29.4"
+      },
+      {
+        "id": "GHSA-4p3w-j4w9-5jqw",
+        "aliases": [
+          "CVE-2026-17495"
+        ],
+        "severity": "moderate",
+        "summary": "moment vulnerable to Path Traversal via crafted non-string locale name",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "2.29.2"
+              },
+              {
+                "fixed": "2.31.0"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "2.31.0"
+      },
+      {
+        "id": "GHSA-87vv-r9j6-g5qv",
+        "aliases": [
+          "CVE-2016-4055"
+        ],
+        "severity": "moderate",
+        "summary": "Regular Expression Denial of Service in moment",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "2.11.2"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "2.11.2"
+      }
+    ],
+    "qs": [
+      {
+        "id": "GHSA-f9cm-p3w6-xvr3",
+        "aliases": [
+          "CVE-2014-10064"
+        ],
+        "severity": "high",
+        "summary": "Denial-of-Service Extended Event Loop Blocking in qs",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "1.0.0"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "1.0.0"
+      },
+      {
+        "id": "GHSA-gqgv-6jq5-jjj9",
+        "aliases": [
+          "CVE-2017-1000048"
+        ],
+        "severity": "high",
+        "summary": "Prototype Pollution Protection Bypass in qs",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "6.0.4"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "6.1.0"
+              },
+              {
+                "fixed": "6.1.2"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "6.2.0"
+              },
+              {
+                "fixed": "6.2.3"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "6.3.0"
+              },
+              {
+                "fixed": "6.3.2"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "6.0.4"
+      },
+      {
+        "id": "GHSA-hrpp-h998-j3pp",
+        "aliases": [
+          "CVE-2022-24999"
+        ],
+        "severity": "high",
+        "summary": "qs vulnerable to Prototype Pollution",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "6.10.0"
+              },
+              {
+                "fixed": "6.10.3"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "6.9.0"
+              },
+              {
+                "fixed": "6.9.7"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "6.8.0"
+              },
+              {
+                "fixed": "6.8.3"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "6.7.0"
+              },
+              {
+                "fixed": "6.7.3"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "6.6.0"
+              },
+              {
+                "fixed": "6.6.1"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "6.5.0"
+              },
+              {
+                "fixed": "6.5.3"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "6.4.0"
+              },
+              {
+                "fixed": "6.4.1"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "6.3.0"
+              },
+              {
+                "fixed": "6.3.3"
+              }
+            ]
+          },
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "6.2.4"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "6.10.3"
+      },
+      {
+        "id": "GHSA-jjv7-qpx3-h62q",
+        "aliases": [
+          "CVE-2014-7191"
+        ],
+        "severity": "high",
+        "summary": "Denial-of-Service Memory Exhaustion in qs",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "1.0.0"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "1.0.0"
+      },
+      {
+        "id": "GHSA-4mjr-xmp4-gh2g",
+        "aliases": [
+          "CVE-2026-82417"
+        ],
+        "severity": "moderate",
+        "summary": "qs: Denial of Service via Attacker Controlled isBuffer",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "2.2.5"
+              },
+              {
+                "fixed": "6.16.0"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "6.16.0"
+      },
+      {
+        "id": "GHSA-6rw7-vpxm-498p",
+        "aliases": [
+          "CVE-2025-15284"
+        ],
+        "severity": "moderate",
+        "summary": "qs's arrayLimit bypass in its bracket notation allows DoS via memory exhaustion",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "6.14.1"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "6.14.1"
+      },
+      {
+        "id": "GHSA-q8mj-m7cp-5q26",
+        "aliases": [
+          "CVE-2026-8723"
+        ],
+        "severity": "moderate",
+        "summary": "qs has a remotely triggerable DoS: qs.stringify crashes with TypeError on null/undefined entries in comma-format arrays when encodeValuesOnly is set",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "6.11.1"
+              },
+              {
+                "fixed": "6.15.2"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "6.15.2"
+      },
+      {
+        "id": "GHSA-x5fp-wj9c-mxmx",
+        "aliases": [
+          "CVE-2026-82562"
+        ],
+        "severity": "moderate",
+        "summary": "qs array-limit bypass via bracket-key comma parsing",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "6.14.2"
+              },
+              {
+                "fixed": "6.16.0"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "6.16.0"
+      }
+    ],
+    "serialize-javascript": [
+      {
+        "id": "GHSA-5c6j-r48x-rmvq",
+        "aliases": [],
+        "severity": "high",
+        "summary": "Serialize JavaScript is Vulnerable to RCE via RegExp.flags and Date.prototype.toISOString()",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "7.0.3"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "7.0.3"
+      },
+      {
+        "id": "GHSA-hxcc-f52p-wc94",
+        "aliases": [
+          "CVE-2020-7660"
+        ],
+        "severity": "high",
+        "summary": "Insecure serialization leading to RCE in serialize-javascript",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "3.1.0"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "3.1.0"
+      },
+      {
+        "id": "GHSA-76p7-773f-r4q5",
+        "aliases": [
+          "CVE-2024-11831"
+        ],
+        "severity": "moderate",
+        "summary": "Cross-site Scripting (XSS) in serialize-javascript",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "6.0.0"
+              },
+              {
+                "fixed": "6.0.2"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "6.0.2"
+      },
+      {
+        "id": "GHSA-h9rv-jmmf-4pgx",
+        "aliases": [
+          "CVE-2019-16769"
+        ],
+        "severity": "moderate",
+        "summary": "Cross-Site Scripting in serialize-javascript",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "0"
+              },
+              {
+                "fixed": "2.1.1"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "2.1.1"
+      },
+      {
+        "id": "GHSA-qj8w-gfj5-8c6v",
+        "aliases": [
+          "CVE-2026-34043"
+        ],
+        "severity": "moderate",
+        "summary": "Serialize JavaScript has CPU Exhaustion Denial of Service via crafted array-like objects",
+        "ranges": [
+          {
+            "events": [
+              {
+                "introduced": "5.0.0"
+              },
+              {
+                "fixed": "7.0.5"
+              }
+            ]
+          }
+        ],
+        "fixed_hint": "7.0.5"
+      }
     ]
   },
   "known_malicious": {
@@ -4169,7 +5248,7 @@ export const SNAPSHOT: { snapshot_date: string; source: string; policy: string; 
       }
     ]
   }
-};
+};;
 
 export const ACTION_PINS: { fetched: string; pins: Record<string, string>; note?: string } = {
   "fetched": "2026-10",

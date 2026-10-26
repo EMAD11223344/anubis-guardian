@@ -48,6 +48,13 @@ export function renderTerminal(r: ScanResult): string {
     if (sk) {
       L.push(C.yellow(`  ⚠ coverage partial: ${[sk.oversize ? `${sk.oversize} oversize (>512KB) files skipped` : null, sk.binary ? `${sk.binary} binary files skipped` : null, sk.unreadable ? `${sk.unreadable} unreadable files skipped` : null].filter(Boolean).join(" · ")}`));
     }
+    // v1.2 (T14) dependency-recall honesty: the bundled advisory snapshot is a
+    // point-in-time resource — stale snapshots under-report known CVEs.
+    if (r.meta.advisory_snapshot_stale) {
+      const d = r.meta.advisory_snapshot_date;
+      const age = d ? ` (snapshot ${d}, > 90 days old)` : "";
+      L.push(C.yellow(`  ⚠ advisory snapshot is stale${age} — re-run "anubis-guardian update-advisories" or fetch a newer release; results can silently miss recent CVEs`));
+    }
   }
   L.push("");
   L.push(`  ${C.red(`CRITICAL ${r.summary.critical}`)}  ${C.red(`HIGH ${r.summary.high}`)}  ${C.yellow(`MEDIUM ${r.summary.medium}`)}  ${C.gray(`LOW ${r.summary.low}`)}  ${C.cyan(`INFO ${r.summary.info}`)}`);

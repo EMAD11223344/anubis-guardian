@@ -10,8 +10,28 @@ import { maskSecret, rootCause } from "../util.js";
  * connection values, and .env.example files carrying REAL (non-placeholder) secrets.
  */
 
-const SEED_FILE = /(^|\/)(seeders?|factories|fixtures)\//;
 const SEED_NAMED = /(^|\/)(seed|seeds)\.(ts|js|sql)$|(^|\/)prisma\/seed\.(ts|js)$|(^|\/)supabase\/seed\.sql$/i;
+
+// ---- v1.2 (T11): path expansion — the review found seeded credentials in
+// seeds/, db/seeds/, scripts/seed-*, prisma/seed-<name>.ts and create-admin.ts
+// went UNFLAGGED. Named-file matcher covers seed|seeds|seeder|seed[-_.][\w-]+
+// plus the create/init/bootstrap-admin provisioning scripts, including SQL/Py.
+const SEED_DIR = /(^|\/)(seeds?|seeders?|factories|fixtures|db\/seeds)\//i;
+const SEED_NAMED_V12 = new RegExp(
+  [
+    "(?:^|/)(?:seed|seeds|seeder)(?:[-_.][\\w-]+)?\\.(?:ts|js|mjs|cjs|sql)$",
+    "(?:^|/)(?:create|init|bootstrap)[-_]?admin\\.(?:ts|js|mjs|cjs|sql|py)$",
+    "(?:^|/)prisma/seed(?:[-_][\\w-]+)?\\.(?:ts|js)$",
+    "(?:^|/)scripts/[\\w.-]*seed[\\w.-]*\\.(?:ts|js|mjs|cjs)$",
+  ].join("|"),
+  "i"
+);
+// explicit clean-case exclusion (kept from v1.1 — extends it)
+const SEED_TEST_EXCLUDE = /(?:\.test\.|\.spec\.|__tests__)/i;
+
+const isSeedPath = (rel: string): boolean =>
+  (SEED_DIR.test(rel) || SEED_NAMED.test(rel) || SEED_NAMED_V12.test(rel)) &&
+  !SEED_TEST_EXCLUDE.test(rel);
 
 const PW_ASSIGN = /\b(?:password|passwd|pwd)\b\s*[:=]\s*["'`]([^"'`\n]{4,})["'`]/gi;
 const ADMIN_USER = /\b(?:role|isAdmin|role_name)\b\s*[:=]\s*["'`]?(admin|superuser|super_admin|owner|root)["'`]?/i;
@@ -43,7 +63,7 @@ export function scanSeed001(ctx: ScanContext): RuleResult {
   const deployRefsSeed = checkDeployReferencesSeed(ctx);
 
   for (const f of ctx.files) {
-    const isSeedFile = SEED_FILE.test(f.rel) || SEED_NAMED.test(f.rel);
+    const isSeedFile = isSeedPath(f.rel);
     const isCompose = /(^|\/)docker-compose[^/]*\.ya?ml$|(^|\/)compose[^/]*\.ya?ml$/i.test(f.rel);
     const isEnvExample = /(^|\/)\.env\.(example|template|sample)$/i.test(f.rel);
     const isSql = /\.sql$/i.test(f.rel);

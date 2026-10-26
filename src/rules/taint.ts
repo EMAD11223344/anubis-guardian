@@ -39,10 +39,12 @@ const SINK_RULES: Array<{
   {
     id: "TAINT-002",
     title: "User-controlled value flows into a redirect target — open redirect (phishing pivot)",
-    sink: /(?:\.(?:redirect)\s*\(|NextResponse\.redirect\s*\(|["'`]Location["'']\s*[,:]\s)/.source,
-    sanitizer: /startsWith\s*\(\s*["'`]|isSafeRedirect|validateRedirect|allowedRedirect|safeRedirect|sameOrigin|ALLOWED_[A-Z_]+/,
+    // v1.2 (T13): sinks extended — next/navigation `redirect()`/`permanentRedirect()`
+    // (bare call, no receiver dot), NextResponse.redirect and res.redirect.
+    sink: /(?:\.(?:redirect|permanentRedirect)\s*\(|(?:^|[^.\w])(?:redirect|permanentRedirect)\s*\(|NextResponse\.redirect\s*\(|["'`]Location["'']\s*[,:]\s)/.source,
+    sanitizer: /startsWith\s*\(\s*["'`]|isSafeRedirect|validateRedirect|allowedRedirect|safeRedirect|sameOrigin|ALLOWED_[A-Z_]+|rejectIfAbsolute|isRelative/,
     owasp: "A01",
-    fix: "Only redirect to relative paths (reject absolute URLs and protocol-relative //host), or validate the target against an origin allowlist before redirecting.",
+    fix: "Only redirect to relative paths (reject absolute URLs and protocol-relative //host), or validate the target against an origin allowlist before redirecting. The recognized-safe guard is `value.startsWith(\"/\") && !value.startsWith(\"//\")` (or an origin allowlist).",
     note: "redirect(req.query.to) sends users anywhere — tokens/refs in the URL leak to attacker sites",
   },
   {
@@ -71,6 +73,20 @@ const SINK_RULES: Array<{
     owasp: "A03",
     fix: "Escape the value before it enters HTML (or render as text, never raw HTML); if HTML is required, sanitize server-side with an allowlist-based sanitizer.",
     note: "template HTML with ${req.query.x} — script payloads execute in the victim's browser",
+  },
+  {
+    id: "TAINT-006",
+    title: "User-controlled value flows into a code-evaluation sink — dynamic code execution",
+    // v1.2 (T9): eval / new Function / vm.runIn*Context / setTimeout(<string>).
+    // There is NO recognized sanitizer for "execute this string as code" — the
+    // escape hatch is validation, not sanitization — so the sanitizer window is
+    // deliberately never-matching and the finding stands (MEDIUM taint cap).
+    // SAST-003 additionally catches eval(new-literal) WITHOUT taint at MEDIUM.
+    sink: /(?:\beval\s*\(|new\s+Function\s*\(|\bvm\.runIn(?:New|This)?Context\s*\(|setTimeout\s*\(\s*[A-Za-z_$][\w$]*)/.source,
+    sanitizer: /$^/,
+    owasp: "A03",
+    fix: "Never pass request data to eval/new Function/vm. Replace with explicit parsing (JSON.parse), a safe expression evaluator, or allowlist-driven dispatch.",
+    note: "eval(req.body.code) executes arbitrary user input on the server — RCE by design",
   },
 ];
 

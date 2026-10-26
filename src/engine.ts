@@ -12,6 +12,7 @@ import { scanSupabase } from "./rules/supabase.js";
 import { scanNextjs } from "./rules/nextjs.js";
 import { scanNestjs } from "./rules/nestjs.js";
 import { scanSast } from "./rules/sast.js";
+import { scanJwtSecrets } from "./rules/jwtsecrets.js";
 import { scanCi } from "./rules/ci.js";
 import { scanDeps } from "./rules/deps.js";
 import { scanCrypto } from "./rules/crypto.js";
@@ -22,6 +23,7 @@ import { computeScore } from "./score.js";
 import { applySuppression, parseInlineIgnores, fingerprint, mkFinding, excludeToRegExp, type RawFinding } from "./util.js";
 import { CHECKS, CLASSES_COVERED, CLASSES_NOT_COVERED } from "./coverage.js";
 import { runAdapters, type AdapterProbe } from "./adapters.js";
+import { snapshotInfo } from "./rules/deps.js";
 import { loadOrgRules, runOrgRules } from "./rulesdir.js";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
@@ -93,6 +95,7 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
     ...scanNextjs(ctx).findings,
     ...scanNestjs(ctx).findings,
     ...scanSast(ctx).findings,
+    ...scanJwtSecrets(ctx).findings, // v1.2 (T10): hardcoded signing/session secrets
     ...scanCi(ctx).findings,
     ...scanDeps(ctx).findings,
     ...scanCrypto(ctx).findings,
@@ -109,7 +112,7 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
   }
 
   // adapters (--tools, off by default — determinism contract)
-  const metaExtras: { online_used?: boolean; adapters_used?: string[]; adapters_requested?: string[]; excluded?: { globs: string[]; files: number }; files_skipped?: { oversize: number; binary: number; unreadable: number } } = {};
+  const metaExtras: { online_used?: boolean; adapters_used?: string[]; adapters_requested?: string[]; excluded?: { globs: string[]; files: number }; files_skipped?: { oversize: number; binary: number; unreadable: number }; advisory_snapshot_date?: string; advisory_snapshot_stale?: boolean } = {};
   if (opts.tools?.length) {
     const ad = runAdapters(ctx, opts.tools, opts.adapterProbe);
     // v1.2 (T0, fail-closed): the operator EXPLICITLY requested this evidence.
@@ -164,6 +167,10 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
 
   if (opts.online) metaExtras.online_used = true;
   if (opts.exclude?.length) metaExtras.excluded = { globs: opts.exclude, files: excludedFiles };
+  // v1.2 (T14): advisory snapshot provenance + >90-day staleness flag
+  const snapInfo = snapshotInfo(ctx);
+  metaExtras.advisory_snapshot_date = snapInfo.snapshot_date;
+  if (snapInfo.stale) metaExtras.advisory_snapshot_stale = true;
 
   return {
     tool: "anubis-guardian",

@@ -135,6 +135,8 @@ export interface ScanResult {
     adapters_used?: string[]; // external tools merged (run only when explicitly requested)
     adapters_requested?: string[]; // v1.2: full --tools list as requested (fail-closed accounting)
     files_skipped?: { oversize: number; binary: number; unreadable: number }; // v1.2: honest skip counts (walk caps)
+    advisory_snapshot_date?: string;  // v1.2 (T14): bundled snapshot date actually used
+    advisory_snapshot_stale?: boolean; // v1.2 (T14): true when the snapshot is > 90 days old
     excluded?: { globs: string[]; files: number }; // v1.1.0: --exclude audit trail
     ai_used?: boolean;        // v0.3: AI review layer ran (--ai-review) — non-deterministic, flagged
     rules_lock?: "verified" | "off" | "bypassed"; // v1.0: rules supply-chain guard state (--rules-dir)

@@ -732,6 +732,151 @@ const vc = await import(d("dist/rules/valueclass.js"));
   rmSync(fixtureRoot, { recursive: true, force: true });
 }
 
+// ---------- U18: Phase 2 detection gaps (T8–T14) ----------
+{
+  const sctx = (content, rel = "app/api/x.ts") => ({ rootDir: "/p", files: [{ abs: `/p/${rel}`, rel, content, lines: content.split("\n") }] });
+  const { scanSast } = await import(d("dist/rules/sast.js"));
+  const sastFind = (c, rel) => scanSast(sctx(c, rel)).findings;
+  const sastIds = (c, rel) => sastFind(c, rel).map((f) => f.id);
+
+  // ---- T8: SQL injection via unsafe dynamic SQL (first-argument analysis) ----
+  check("U18.1 T8: $queryRawUnsafe with ${req.query.id} → SAST-001 HIGH",
+    sastFind("const r = await prisma.$queryRawUnsafe(`SELECT * FROM users WHERE id=${req.query.id}`);\n").some((f) => f.id === "SAST-001" && f.severity === "high"));
+  check("U18.2 T8: $executeRawUnsafe with '+ req.query.id' concat → SAST-001 HIGH",
+    sastFind("const r = await prisma.$executeRawUnsafe('DELETE FROM users WHERE id=' + req.query.id);\n").some((f) => f.id === "SAST-001" && f.severity === "high"));
+  check("U18.3 T8: pool.query with template interpolation → SAST-001 HIGH",
+    sastFind('const r = await pool.query(`SELECT * FROM users WHERE name="${req.query.name}"`);\n').some((f) => f.id === "SAST-001" && f.severity === "high"));
+  check("U18.4 T8: inner-quote concat db.query(\"…'\"+req.x+…\") no longer stops at the first quote",
+    sastFind('const r = await db.query("SELECT * FROM users WHERE name=\'" + req.query.name + "\'");\n').some((f) => f.id === "SAST-001" && f.severity === "high"));
+  check("U18.5 T8: knex.raw / sequelize.query / connection.execute sinks covered",
+    ["connection.execute(`SELECT ${t}`)", "knex.raw(`SELECT ${req.query.id}`)", "sequelize.query(`SELECT ${req.query.id}`)"]
+      .every((frag) => sastFind(`const r = ${frag};\n`).some((f) => f.id === "SAST-001")));
+  check("U18.6 T8 clean: positional placeholder pool.query('…$1', [req.query.id]) stays SILENT",
+    sastIds("const r = await pool.query('SELECT * FROM users WHERE id=$1', [req.query.id]);\n").length === 0);
+  check("U18.7 T8 clean: tagged template prisma.$queryRaw`…${req.x}` stays SILENT (parameterized by design)",
+    sastIds("const r = await prisma.$queryRaw`SELECT * FROM users WHERE id=${req.query.id}`;\n").length === 0);
+  check("U18.8 T8: non-request dynamic SQL → SAST-001 at MEDIUM + needs_confirmation",
+    sastFind("const userId = lookupId();\nconst r = await db.query(`DELETE FROM tokens WHERE id=${userId}`);\n")
+      .some((f) => f.id === "SAST-001" && f.severity === "medium" && f.needs_confirmation === true));
+
+  // ---- T9: dynamic code execution (SAST-003 non-literal + TAINT-006) ----
+  check("U18.9 T9: eval(<non-literal user var>) → SAST-003 MEDIUM + needs_confirmation",
+    sastFind("const out = eval(userProvidedString);\n").some((f) => f.id === "SAST-003" && f.severity === "medium" && f.needs_confirmation === true));
+  check("U18.10 T9: new Function(<non-literal>) and vm.runInNewContext covered",
+    ["const f = new Function(userCode);", "vm.runInNewContext(userCode, ctx);", "vm.runInThisContext(userCode);"]
+      .every((frag) => sastFind(`export function h() {\n  ${frag}\n}\n`).some((f) => f.id === "SAST-003")));
+  check("U18.11 T9 clean: eval('1+1') literal stays silent",
+    !sastFind("const r = eval('1+1');\n").some((f) => f.id === "SAST-003"));
+  check("U18.12 T9 clean: eval inside a comment / inside a string stays silent",
+    sastFind("// upgrade note: replace eval(x) later\nconst msg = 'you should not eval(userInput) here';\n").every((f) => f.id !== "SAST-003"));
+  check("U18.13 T9: eval(req.body.code) → TAINT-006 (taint layer, MEDIUM)",
+    taintIds('export async function POST(req: Request) {\n  return eval(req.body.code);\n}\n').includes("TAINT-006"));
+  check("U18.14 T9: setTimeout(<tainted string>) → TAINT-006",
+    taintIds('export function h(req, res) {\n  const t = req.query.cb;\n  setTimeout(t);\n}\n').includes("TAINT-006"));
+  check("U18.15 T9: request-traced eval does NOT double-report SAST-003 (taint owns it)",
+    sastFind("export function h(req) {\n  return eval(req.body.code);\n}\n").every((f) => f.id !== "SAST-003"));
+
+  // ---- T10: hardcoded signing/session secrets (JWT-003) ----
+  const { scanJwtSecrets } = await import(d("dist/rules/jwtsecrets.js"));
+  const jwtFind = (c, rel = "lib/auth.ts") => scanJwtSecrets(sctx(c, rel)).findings;
+  check("U18.16 T10: jwt.sign(_, 'secret123') → JWT-003 HIGH",
+    jwtFind("const token = jwt.sign({ sub: '1' }, 'secret123');\n").some((f) => f.id === "JWT-003" && f.severity === "high" && f.confidence === "high"));
+  check("U18.17 T10: const JWT_SECRET = 'literal' → JWT-003",
+    jwtFind("export const JWT_SECRET = 'super-secret-signing-key';\n").some((f) => f.id === "JWT-003"));
+  check("U18.18 T10: session({ secret: 'changeme-super-secret-key' }) FIRES — placeholder defaults ARE the vulnerability",
+    jwtFind("app.use(session({ secret: 'changeme-super-secret-key', resave: false }));\n").some((f) => f.id === "JWT-003"));
+  check("U18.19 T10: jwt.verify with literal covered",
+    jwtFind("const ok = jwt.verify(token, 'my-signing-secret');\n").some((f) => f.id === "JWT-003"));
+  check("U18.20 T10: JwtModule.register({ secret: 'literal' }) covered",
+    jwtFind("JwtModule.register({ secret: 'nestjs-jwt-secret-42' }),\n").some((f) => f.id === "JWT-003"));
+  check("U18.21 T10 clean: process.env / configService / template secrets stay silent",
+    ['const token = jwt.sign({ sub: "1" }, process.env.JWT_SECRET as string);',
+     "app.use(session({ secret: configService.get('JWT_SECRET') }));",
+     "JwtModule.register({ secret: `${process.env.NEST_JWT}` }),",
+     "JwtModule.register({ secret: '<your-secret>' }),",
+     "JwtModule.register({ secret: 'YOUR_SECRET HERE' }),"]
+      .every((frag) => jwtFind(`export function h() {\n  ${frag}\n}\n`).every((f) => f.id !== "JWT-003")));
+
+  // ---- T11: SEED-001 path expansion ----
+  const { scanSeed001 } = await import(d("dist/rules/seed001.js"));
+  const seedFind = (rel, content) => scanSeed001({ rootDir: "/p", files: [{ abs: `/p/${rel}`, rel, content, lines: content.split("\n") }] }).findings;
+  check("U18.22 T11: seeds/001-users.js with a literal password → SEED-001",
+    seedFind("seeds/001-users.js", 'await prisma.user.create({ data: { email: "admin@x.io", password: "Sup3r-Secret-Prod" } });\n').some((f) => f.id === "SEED-001"),
+    JSON.stringify(seedFind("seeds/001-users.js", 'await prisma.user.create({ data: { email: "admin@x.io", password: "Sup3r-Secret-Prod" } });\n')));
+  check("U18.23 T11: scripts/create-admin.ts and prisma/seed-admin.ts covered",
+    seedFind("scripts/create-admin.ts", 'const password = "Admin-Default-2024";\n').some((f) => f.id === "SEED-001")
+    && seedFind("prisma/seed-admin.ts", 'password: "Provision-Secret-9",\n').some((f) => f.id === "SEED-001"));
+  check("U18.24 T11: db/seeds/ directory covered",
+    seedFind("db/seeds/002-roles.js", 'role: "admin", password: "Role-Secret-77",\n').some((f) => f.id === "SEED-001"));
+  check("U18.25 T11 clean: seeds with PLACEHOLDER passwords stay silent",
+    !seedFind("seeds/001-users.js", 'await prisma.user.create({ data: { email: "a@b.io", password: "changeme-change-me-now" } });\n').some((f) => f.id === "SEED-001"));
+  check("U18.26 T11 clean: *.test.* seed files stay excluded",
+    !seedFind("seeds/001-users.test.ts", 'password: "Sup3r-Secret-Prod",\n').some((f) => f.id === "SEED-001"));
+
+  // ---- T12: HDR-001 receiver value-flow ----
+  const { scanHdr001 } = await import(d("dist/rules/hdr001.js"));
+  const hdrFind = (c, rel = "app/api/x/route.ts") => scanHdr001(sctx(c, rel)).findings;
+  const hdrCritical = (c, rel) => hdrFind(c, rel).some((f) => f.id === "HDR-001" && f.severity === "critical");
+  check("U18.27 T12: x-pg-secret via headers() alias → new Pool({connectionString}) → HDR-001 CRITICAL",
+    hdrCritical('import { Pool } from "pg";\nimport { headers } from "next/headers";\nexport async function GET() {\n  const h = await headers();\n  const secret = h.get("x-pg-secret");\n  const pool = new Pool({ connectionString: secret });\n  return Response.json(await pool.query("SELECT 1"));\n}\n'));
+  check("U18.28 T12: direct req.headers['x-dsn'] → new Client({connectionString}) → CRITICAL",
+    hdrCritical('import { Client } from "pg";\nexport async function POST(req: Request) {\n  const client = new Client({ connectionString: req.headers["x-dsn"] });\n}\n'));
+  check("U18.29 T12: honeypot shape — pool.options.password = <headerVar> → CRITICAL",
+    hdrCritical("const pool = new Pool({ max: 5 });\nexport async function POST(req: Request) {\n  const dbPassword = req.headers.get('x-db-connection-password') ?? '';\n  pool.options.password = dbPassword;\n}\n"));
+  check("U18.30 T12: mongoose.connect with a header DSN → CRITICAL",
+    hdrCritical('import mongoose from "mongoose";\nexport async function POST(req: Request) {\n  await mongoose.connect(req.headers.get("x-dsn") as string);\n}\n'));
+  check("U18.31 T12 clean: x-request-id logged / Authorization verified / headers forwarded → NO HDR-001",
+    hdrFind('import { headers } from "next/headers";\nexport async function GET() {\n  const h = await headers();\n  console.log("request id", h.get("x-request-id"));\n  const auth = h.get("authorization");\n  const ok = verifyToken(auth);\n  return fetch(upstream, { headers: { "x-forwarded-for": h.get("x-forwarded-for") } });\n}\n').every((f) => f.id !== "HDR-001"));
+
+  // ---- T13: open-redirect sink expansion ----
+  check("U18.32 T13: next/navigation redirect(<searchParams value>) → TAINT-002",
+    taintIds('import { redirect } from "next/navigation";\nexport async function GET(req: Request) {\n  const to = new URL(req.url).searchParams.get("next") as string;\n  redirect(to);\n}\n').includes("TAINT-002"));
+  check("U18.33 T13: permanentRedirect + NextResponse.redirect covered",
+    taintIds('import { permanentRedirect } from "next/navigation";\nexport async function GET(req: Request) {\n  const to = new URL(req.url).searchParams.get("next") as string;\n  permanentRedirect(to);\n}\n').includes("TAINT-002"),
+    JSON.stringify(taintIds('import { permanentRedirect } from "next/navigation";\nexport async function GET(req: Request) {\n  const to = new URL(req.url).searchParams.get("next") as string;\n  permanentRedirect(to);\n}\n')));
+  check("U18.34 T13 clean: redirect to a LITERAL path stays silent",
+    !taintIds('import { redirect } from "next/navigation";\nexport async function GET() {\n  redirect("/home");\n}\n').includes("TAINT-002"));
+  check("U18.35 T13 clean: startsWith(\"/\") guard before redirect stays silent",
+    !taintIds('import { redirect } from "next/navigation";\nexport async function GET(req: Request) {\n  const to = new URL(req.url).searchParams.get("next") ?? "/home";\n  if (!to.startsWith("/") || to.startsWith("//")) redirect("/home");\n  redirect(to);\n}\n').includes("TAINT-002"))
+
+  // ---- T14: transitive dependency recall + snapshot staleness ----
+  const { scanDeps, snapshotInfo } = await import(d("dist/rules/deps.js"));
+  const depRoot = mkdtempSync(join(tmpdir(), "anubis-u18-deps-"));
+  writeFileSync(join(depRoot, "package.json"), JSON.stringify({ name: "u18", version: "1.0.0", dependencies: { express: "^4.17.1" } }));
+  writeFileSync(join(depRoot, "package-lock.json"), JSON.stringify({
+    name: "u18", version: "1.0.0", lockfileVersion: 1, requires: true,
+    dependencies: { express: { version: "4.17.1", dependencies: { handlebars: { version: "4.5.0" }, qs: { version: "6.5.2" } } } },
+  }));
+  const depFindings = scanDeps({ rootDir: depRoot, rel: () => "", files: [], stack: { detected: [], frameworks: {}, notes: [] } }).findings;
+  check("U18.36 T14: TRANSITIVE handlebars@4.5.0 (via express lockfile) → DEP-001 HIGH/CRITICAL",
+    depFindings.some((f) => f.id === "DEP-001" && f.file === "package-lock.json" && /handlebars@4\.5\.0/.test(f.evidence.masked) && (f.severity === "critical" || f.severity === "high")),
+    JSON.stringify(depFindings.filter((f) => f.id === "DEP-001").map((f) => `${f.evidence.masked}:${f.severity}`)));
+  check("U18.37 T14: transitive qs@6.5.2 covered + direct express moderate advisory → MEDIUM",
+    depFindings.some((f) => f.id === "DEP-001" && /qs@6\.5\.2/.test(f.evidence.masked))
+    && depFindings.some((f) => f.id === "DEP-001" && /express@4\.17\.1/.test(f.evidence.masked) && f.severity === "medium"));
+  const cleanRoot = mkdtempSync(join(tmpdir(), "anubis-u18-deps-"));
+  writeFileSync(join(cleanRoot, "package.json"), JSON.stringify({ name: "u18c", version: "1.0.0", dependencies: { express: "^4.21.0" } }));
+  // moment@2.31.0 is past every bundled moment advisory (2.29.4 trips
+  // GHSA-4p3w-j4w9-5jqw, fixed 2.31.0 — real OSV data, rule is right)
+  writeFileSync(join(cleanRoot, "package-lock.json"), JSON.stringify({
+    name: "u18c", version: "1.0.0", lockfileVersion: 1, requires: true,
+    dependencies: { express: { version: "4.21.2", dependencies: { moment: { version: "2.31.0" } } } },
+  }));
+  const cleanDeps = scanDeps({ rootDir: cleanRoot, rel: () => "", files: [], stack: { detected: [], frameworks: {}, notes: [] } }).findings;
+  check("U18.38 T14 clean: MVC-patched transitive moment@2.31.0 → NO transitive DEP-001",
+    !cleanDeps.some((f) => f.id === "DEP-001" && f.file === "package-lock.json"));
+  // stale snapshot detection (ctx.advisoryFile override)
+  const staleRoot = mkdtempSync(join(tmpdir(), "anubis-u18-snap-"));
+  const staleFile = join(staleRoot, "old-snapshot.json");
+  writeFileSync(staleFile, JSON.stringify({ snapshot_date: "2020-01", advisories: {}, known_malicious: {} }));
+  check("U18.39 T14: snapshotInfo() — 2020-01 snapshot is STALE, bundled 2026-10 is not",
+    snapshotInfo({ advisoryFile: staleFile, rootDir: staleRoot }).stale === true
+    && snapshotInfo({ rootDir: staleRoot }).stale === false);
+  rmSync(depRoot, { recursive: true, force: true });
+  rmSync(cleanRoot, { recursive: true, force: true });
+  rmSync(staleRoot, { recursive: true, force: true });
+}
+
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);
 if (FAILS.length) {

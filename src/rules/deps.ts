@@ -122,7 +122,7 @@ export function scanDeps(ctx: ScanContext): RuleResult {
     if (advisories?.length && lockedVersion) {
       const hits = advisories.filter((a) => affects(a, lockedVersion));
       for (const h of hits.slice(0, 5)) {
-        const severity = h.severity === "critical" ? "critical" : "high";
+        const severity = advisorySeverity(h.severity);
         findings.push(mk(ctx, {
           id: "DEP-001",
           severity,
@@ -231,6 +231,55 @@ export function scanDeps(ctx: ScanContext): RuleResult {
       }
   }
 
+  // ---------- v1.2 (T14): TRANSITIVE recall — the lockfile, not package.json,
+  // decides what is actually installed. Direct dependencies were checked above;
+  // every OTHER resolved package in an npm-parsed lockfile gets the same
+  // advisory + known-malicious check (e.g. handlebars arriving via express).
+  // Deterministic: name-sorted, capped at 5 advisories per package.
+  const declaredSet = new Set(declared);
+  const transitiveNames = [...locked.keys()].sort((a, b) => a.localeCompare(b));
+  for (const name of transitiveNames) {
+    if (declaredSet.has(name)) continue;
+    const version = locked.get(name)!;
+    const mal = snap.known_malicious?.[name];
+    const malHit = mal?.length ? mal.find((m) => affects(m, version)) ?? mal[0] : undefined;
+    if (malHit) {
+      findings.push(mk(ctx, {
+        id: "DEP-002",
+        severity: "high",
+        title: `Transitive dependency "${name}@${version}" is a documented malicious/compromised package`,
+        file: "package-lock.json", line: 0,
+        evidence: {
+          type: "known_malicious_package",
+          masked: `${name}@${version}`,
+          note: `${malHit.id} — ${malHit.summary} [arrives transitively through the lockfile; snapshot ${snap.snapshot_date}]`,
+        },
+        owasp: "A06",
+        fix: `Find which direct dependency pulls "${name}" in (npm ls ${name}) and replace that branch. Remove, rotate any secret it could have reached (rotate-first), purge lockfile + node_modules.`,
+        root: name, root_cause: rootCause("DEP-002", name),
+      }));
+      continue;
+    }
+    const advisories = snap.advisories?.[name];
+    for (const h of (advisories ?? []).filter((a) => affects(a, version)).slice(0, 5)) {
+      const severity = advisorySeverity(h.severity);
+      findings.push(mk(ctx, {
+        id: "DEP-001",
+        severity,
+        title: `${name}@${version} — known ${h.severity} advisory ${h.id}${h.aliases?.[0] ? ` (${h.aliases[0]})` : ""}`,
+        file: "package-lock.json", line: 0,
+        evidence: {
+          type: "vulnerable_dependency",
+          masked: `${name}@${version}`,
+          note: `${h.summary}${h.fixed_hint ? ` — fixed in ${h.fixed_hint}` : ""} [transitive — resolved via the lockfile; snapshot ${snap.snapshot_date}]`,
+        },
+        owasp: "A06",
+        fix: `Upgrade ${name} to ${h.fixed_hint ?? "the patched release"} (advisory ${h.id}). npm ls ${name} shows which direct dependency pulls it in; commit the updated lockfile.`,
+        root: name, root_cause: rootCause("DEP-001", name),
+      }));
+    }
+  }
+
   // ---------- DEP-004 aggregated emission (v1.2 T5): ONE finding per project ----------
   if (unresolvedScoped.length) {
     const shown = unresolvedScoped.slice(0, 12);
@@ -255,6 +304,26 @@ export function scanDeps(ctx: ScanContext): RuleResult {
   }
 
   return { findings };
+}
+
+/** v1.2 (T14): snapshot severities now include moderate — map to finding ranks */
+function advisorySeverity(s: string): "critical" | "high" | "medium" {
+  return s === "critical" ? "critical" : s === "high" ? "high" : "medium";
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** v1.2 (T14): provenance + staleness of the snapshot the scan actually used
+ *  (> 90 days ⇒ stale — terminal warning + meta.advisory_snapshot_stale). */
+export function snapshotInfo(ctx: ScanContext): { snapshot_date: string; stale: boolean; age_days: number | null } {
+  const snap = loadSnapshot(ctx);
+  const date = snap.snapshot_date;
+  const parsed = /^(\d{4})-(\d{2})(?:-(\d{2}))?/.exec(date);
+  const start = parsed
+    ? new Date(Number(parsed[1]), Number(parsed[2]) - 1, parsed[3] ? Number(parsed[3]) : 1).getTime()
+    : null;
+  const age = start === null ? null : Math.floor((Date.now() - start) / DAY_MS);
+  return { snapshot_date: date, stale: age !== null && age > 90, age_days: age };
 }
 
 function depLine(pkg: Record<string, any>, name: string): number {
