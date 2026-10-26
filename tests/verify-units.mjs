@@ -788,6 +788,28 @@ const vc = await import(d("dist/rules/valueclass.js"));
     sastFind("const userId = lookupId();\nconst r = await db.query(`DELETE FROM tokens WHERE id=${userId}`);\n")
       .some((f) => f.id === "SAST-001" && f.severity === "medium" && f.needs_confirmation === true));
 
+  // ---- v1.3: single-hop variable propagation into SQL sinks (alias) ----
+  check("U18.8a alias: const q built by concatenating req.query.x + pool.query(q) → SAST-001 HIGH",
+    sastFind("const q = \"SELECT * FROM users WHERE name='\" + req.query.name + \"'\";\nawait pool.query(q);\n")
+      .some((f) => f.id === "SAST-001" && f.severity === "high" && f.needs_confirmation !== true
+        && /pool\.query\(q -> /.test(f.evidence.masked)));
+  check("U18.8b alias: `…${req.query.id}` const q + prisma.$queryRawUnsafe(q) → SAST-001 HIGH",
+    sastFind("const q = `SELECT * FROM users WHERE id=${req.query.id}`;\nconst r = await prisma.$queryRawUnsafe(q);\n")
+      .some((f) => f.id === "SAST-001" && f.severity === "high" && /queryRawUnsafe\(q -> /.test(f.evidence.masked)));
+  check("U18.8c alias clean: parameterized query via alias (const q = '…$1') stays SILENT",
+    sastIds('const q = "SELECT * FROM users WHERE id=$1";\nawait pool.query(q, [req.query.id]);\n').length === 0);
+  check("U18.8d alias clean: alias var interpolated into a TAGGED prisma.$queryRaw stays SILENT (parameterized by design)",
+    sastIds("const q = `SELECT * FROM users WHERE id=${req.query.id}`;\nconst r = await prisma.$queryRaw`SELECT * FROM t WHERE id=${q}`;\n").length === 0);
+  check("U18.8e alias clean: constant const q = 'SELECT 1' stays SILENT",
+    sastIds('const q = "SELECT 1";\nawait pool.query(q);\n').length === 0);
+  check("U18.8f alias scope: assignment in ANOTHER function does not resolve (same-function only)",
+    sastIds("export function leaky(req: Request) {\n  const q = \"SELECT * FROM users WHERE name='\" + req.query.name + \"'\";\n  return q;\n}\nexport function innocent(pool: any, req: any) {\n  await pool.query(q);\n}\n").length === 0);
+  check("U18.8g alias one-hop: a chained alias (const q = r) is NOT followed",
+    sastIds("const r = \"SELECT * FROM users WHERE name='\" + req.query.name + \"'\";\nconst q = r;\nawait pool.query(q);\n").length === 0);
+  check("U18.8h alias multi-line template: unterminated template joined across lines still resolves → HIGH",
+    sastFind("const q = `SELECT * FROM users WHERE\n  name='${req.query.name}'`;\nawait pool.query(q);\n")
+      .some((f) => f.id === "SAST-001" && f.severity === "high"));
+
   // ---- T9: dynamic code execution (SAST-003 non-literal + TAINT-006) ----
   check("U18.9 T9: eval(<non-literal user var>) → SAST-003 MEDIUM + needs_confirmation",
     sastFind("const out = eval(userProvidedString);\n").some((f) => f.id === "SAST-003" && f.severity === "medium" && f.needs_confirmation === true));

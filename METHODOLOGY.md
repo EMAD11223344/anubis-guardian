@@ -121,13 +121,15 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
   registry in every report states what ran.
 - URL Mode is a black box: no server internals, no subdomain takeover, no DNS
   level attacks, no business-logic flaws beyond the restricted differential check.
-- **SQL-sink alias gap (measured, v1.2 audit)**: SAST-001 analyzes the sink call's
-  first argument locally. A query string assembled in an intermediate variable
-  escapes it (`const q = "…" + req.query.name + "'"; pool.query(q)` is NOT flagged),
-  while the taint layer DOES trace aliasing for redirect/XSS/eval sinks
-  (`const c = req.body.code; eval(c)` → TAINT-006). Proposed narrow fix: propagate
-  single-hop string-concat variables into sink analysis; a full AST parser was
-  evaluated and is NOT adopted for now (see the v1.2 audit §D).
+- **SQL-sink alias propagation (v1.3, single-hop)**: SAST-001 now resolves a
+  sink's bare-identifier first argument to its nearest preceding same-function
+  string assignment and runs the same dynamic-SQL analysis on that value
+  (`const q = "…" + req.query.x; pool.query(q)` → HIGH). Scope stays one hop,
+  same function only: no multi-hop chains (q = r is not followed) and no
+  cross-function dataflow; tagged `$queryRaw` templates and `$1`-placeholder
+  forms stay silent (U18.8a–U18.8h). Sinks themselves are unchanged, and the
+  same limitation class remains for values assembled through more than one
+  variable or across function boundaries.
 - **External adapter severities are explicit, not guessed**: `osv-scanner` findings
   map CRITICAL→critical · HIGH→high · MODERATE/MEDIUM→medium · LOW→low; a missing
   or unrecognized OSV severity lands at MEDIUM with `needs_confirmation` and the

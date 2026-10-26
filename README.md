@@ -250,7 +250,7 @@ npm test   # build + reachability + honeypot + clean + sarif + acceptance v02/v0
 - **Rotate-first remediation** — every secret finding ships provider rotation steps
 - **Prevention included** — the guard hook blocks the classic mistakes at write time
 
-**Known limitations** (by design): taint-lite is single-file scope · no AST-level analysis (regex/structured heuristics; SQL-sink strings built in an intermediate variable are not traced — see METHODOLOGY §8) · JS/TS only for codebase mode (use the Semgrep adapter for other languages) · no DAST engine (delegated to the generated ZAP config) — full list in [METHODOLOGY.md](METHODOLOGY.md).
+**Known limitations** (by design): taint-lite is single-file scope · no AST-level analysis (regex/structured heuristics; SQL-sink aliasing is resolved single-hop only — see METHODOLOGY §8) · JS/TS only for codebase mode (use the Semgrep adapter for other languages) · no DAST engine (delegated to the generated ZAP config) — full list in [METHODOLOGY.md](METHODOLOGY.md).
 
 ## 🗺 Roadmap
 

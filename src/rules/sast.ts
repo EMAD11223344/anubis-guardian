@@ -44,6 +44,65 @@ function requestDerivedVars(content: string): Set<string> {
   return vars;
 }
 
+/**
+ * v1.3 — single-hop variable propagation into SQL sinks (closes the measured
+ * alias false-negative: `const q = "SELECT …'" + req.query.x + "'";
+ * pool.query(q)` was invisible because the first argument is a bare
+ * identifier). When a sink's first argument is a bare identifier, the SAME
+ * dynamic-SQL analysis runs on the variable's assigned value. Scope is
+ * deliberately one hop, same function only (regex-level bounds: assignment
+ * must precede the sink line with no column-0 closing brace and no new
+ * function/class/arrow scope opened between them). No multi-hop chains
+ * (q = r is NOT followed further), no cross-function dataflow, NO new
+ * runtime dependencies, and the sink list itself is unchanged.
+ */
+
+/** lines that OPEN a new scope (same-function bound for the alias lookup) */
+const SCOPE_OPEN_LINE = /(?:^|\W)(?:function\s*\(|function\s+[A-Za-z_$]|class\s+[A-Za-z_$]|=>\s*\{)/;
+
+/** string-building assignments per variable: `const|let|var NAME = <rhs>`; a
+ *  single unterminated template literal is joined forward (bounded) so
+ *  multi-line SQL templates resolve too */
+function stringVarAssignments(lines: string[]): Map<string, Array<{ line0: number; rhs: string }>> {
+  const out = new Map<string, Array<{ line0: number; rhs: string }>>();
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(.+?)\s*;?\s*$/.exec(lines[i]);
+    if (!m) continue;
+    let rhs = m[2].replace(/;\s*$/, "").trim();
+    if ((rhs.match(/`/g) ?? []).length % 2 === 1) {
+      let joined = rhs;
+      for (let j = i + 1; j < lines.length && j - i < 8 && (joined.match(/`/g) ?? []).length % 2 === 1; j++) {
+        joined += "\n" + lines[j];
+      }
+      if ((joined.match(/`/g) ?? []).length % 2 === 0) rhs = joined;
+    }
+    rhs = rhs.replace(/;\s*$/, "").trim();
+    if (rhs) {
+      const arr = out.get(m[1]) ?? [];
+      arr.push({ line0: i, rhs });
+      out.set(m[1], arr);
+    }
+  }
+  return out;
+}
+
+/** true when the lines strictly between the two zero-based indices stay in
+ *  one function body: a column-0 `}` (end of a function body in normal
+ *  formatting) or a new scope-opening line breaks the bound */
+function sameFunctionBound(lines: string[], from0: number, to0: number): boolean {
+  for (let i = from0 + 1; i < to0; i++) {
+    const line = lines[i] ?? "";
+    if (line.startsWith("}")) return false;
+    if (SCOPE_OPEN_LINE.test(line)) return false;
+  }
+  return true;
+}
+
+/** dynamic-SQL shape predicates — shared by inline and alias-resolved args */
+const hasInterp = (s: string): boolean => /\$\{[^}]*\}/.test(s) || (s.includes("${") && s.length > 8);
+const hasConcat = (s: string): boolean =>
+  /["'`]\s*\+\s*[A-Za-z_$]|\.concat\s*\(/.test(s) || /(?:[A-Za-z_$)\]])\s*\+\s*["'`]/.test(s);
+
 /** text of the first call argument, balancing parens across lines (bounded) */
 function firstCallArg(content: string, openParenIdx: number, cap = 500): string {
   let depth = 0;
@@ -108,7 +167,10 @@ export function scanSast(ctx: ScanContext): RuleResult {
     // analysis at recognized DB sinks, replacing the old first-quote-stopping
     // line regex (which had both a quote bug and a blanket `prisma.` exclusion).
     if (isServer) {
-      for (const sinkRe of SQLI_SINKS) {
+      // v1.3: alias candidates for single-hop resolution (per file, built lazily)
+    let aliasVars: Map<string, Array<{ line0: number; rhs: string }>> | null = null;
+
+    for (const sinkRe of SQLI_SINKS) {
         sinkRe.lastIndex = 0;
         let sm: RegExpExecArray | null;
         while ((sm = sinkRe.exec(f.content)) !== null) {
@@ -119,31 +181,51 @@ export function scanSast(ctx: ScanContext): RuleResult {
           const lineText = f.lines[lineNo - 1] ?? "";
           if (/^\s*(?:\/\/|\*|\/\*)/.test(lineText)) continue;             // commented sink
           if (TAGGED_SAFE.test(arg.trim())) continue;                       // Prisma.sql`…` inside Unsafe
+          const sinkName = sm[0].replace(/\s*\($/, "").trim();
+          const pushSast = (evalText: string, masked: string): void => {
+            const traced = isReqDerived(evalText);
+            findings.push({
+              id: "SAST-001", severity: traced ? "high" : "medium", confidence: traced ? "high" : "medium",
+              title: traced
+                ? "SQL query built from request data by interpolation/concatenation — injection risk"
+                : "Dynamic SQL built with interpolation/concatenation — parameterize",
+              file: f.rel, line: lineNo,
+              evidence: { type: "sqli_dynamic_sql", masked },
+              owasp: "A03",
+              fix: FIX.sqli,
+              fix_mode: "suggested-diff",
+              root: `${f.rel}:${lineNo}`,
+              root_cause: rootCause("SAST-001", `${f.rel}:${lineNo}`),
+              needs_confirmation: !traced,
+              verified: true,
+            });
+          };
           // unsafe = ${…} interpolation OR concat with a non-literal, in the
           // FIRST argument — regardless of inner quotes ("…'+req.x+'…" lands too)
-          const interp = /\$\{[^}]*\}/.test(arg) || (arg.includes("${") && arg.length > 8);
-          const usesConcat = /["'`]\s*\+\s*[A-Za-z_$]|\.concat\s*\(/.test(arg) || /(?:[A-Za-z_$)\]])\s*\+\s*["'`]/.test(arg);
-          if (!interp && !usesConcat) continue;                             // constant / $1 / ? anchored — safe
-          const traced = isReqDerived(arg);
-          // v1.2: the SINK NAME is part of the masked evidence — same argument
-          // text at different sinks (pool.query vs knex.raw) must stay distinct
-          // findings (the engine dedupe keys on evidence text).
-          const sinkName = sm[0].replace(/\s*\($/, "").trim();
-          findings.push({
-            id: "SAST-001", severity: traced ? "high" : "medium", confidence: traced ? "high" : "medium",
-            title: traced
-              ? "SQL query built from request data by interpolation/concatenation — injection risk"
-              : "Dynamic SQL built with interpolation/concatenation — parameterize",
-            file: f.rel, line: lineNo,
-            evidence: { type: "sqli_dynamic_sql", masked: `${sinkName}(${arg.replace(/\s+/g, " ").trim().slice(0, 120)})` },
-            owasp: "A03",
-            fix: FIX.sqli,
-            fix_mode: "suggested-diff",
-            root: `${f.rel}:${lineNo}`,
-            root_cause: rootCause("SAST-001", `${f.rel}:${lineNo}`),
-            needs_confirmation: !traced,
-            verified: true,
-          });
+          // v1.3 — single-hop alias attempt: pool.query(q) / pool.query(q, [id])
+          // resolve q to its nearest preceding same-function assignment and run
+          // the SAME analysis on the resolved value (chained aliases q = r are
+          // NOT followed further — one hop only).
+          const bare = /^\s*([A-Za-z_$][\w$]*)\s*(?:,|$)/.exec(arg);
+          if (bare) {
+            if (!aliasVars) aliasVars = stringVarAssignments(f.lines);
+            const cands = aliasVars.get(bare[1]);
+            const sink0 = lineNo - 1;
+            const c = cands
+              ? [...cands].reverse().find((a) => a.line0 < sink0 && sameFunctionBound(f.lines, a.line0, sink0))
+              : undefined;
+            if (c && (hasInterp(c.rhs) || hasConcat(c.rhs))) {
+              pushSast(c.rhs, `${sinkName}(${bare[1]} -> ${c.rhs.replace(/\s+/g, " ").trim().slice(0, 120)})`);
+              continue; // alias verdict made — no duplicate emission from the raw arg
+            }
+            // else: constant/resolved-safe alias ⇒ falls through to the inline
+            // analysis below, which stays silent for a plain identifier
+          }
+          if (!hasInterp(arg) && !hasConcat(arg)) continue;                 // constant / $1 / ? anchored — safe
+          pushSast(
+            arg,
+            `${sinkName}(${arg.replace(/\s+/g, " ").trim().slice(0, 120)})`
+          );
         }
       }
     }
