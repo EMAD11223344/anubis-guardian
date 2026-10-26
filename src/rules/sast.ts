@@ -60,13 +60,15 @@ function requestDerivedVars(content: string): Set<string> {
 /** lines that OPEN a new scope (same-function bound for the alias lookup) */
 const SCOPE_OPEN_LINE = /(?:^|\W)(?:function\s*\(|function\s+[A-Za-z_$]|class\s+[A-Za-z_$]|=>\s*\{)/;
 
-/** string-building assignments per variable: `const|let|var NAME = <rhs>`; a
- *  single unterminated template literal is joined forward (bounded) so
- *  multi-line SQL templates resolve too */
+/** string-building assignments per variable: `const|let|var NAME = <rhs>` AND
+ *  plain reassignments `NAME = <rhs>` (the last assignment before a use wins,
+ *  so a var demoted to a constant stops being tainted and one promoted to a
+ *  request-built string becomes tainted); a single unterminated template
+ *  literal is joined forward (bounded) so multi-line SQL templates resolve too */
 function stringVarAssignments(lines: string[]): Map<string, Array<{ line0: number; rhs: string }>> {
   const out = new Map<string, Array<{ line0: number; rhs: string }>>();
   for (let i = 0; i < lines.length; i++) {
-    const m = /^\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(.+?)\s*;?\s*$/.exec(lines[i]);
+    const m = /^\s*(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*(.+?)\s*;?\s*$/.exec(lines[i]);
     if (!m) continue;
     let rhs = m[2].replace(/;\s*$/, "").trim();
     if ((rhs.match(/`/g) ?? []).length % 2 === 1) {

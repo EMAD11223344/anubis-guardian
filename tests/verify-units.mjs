@@ -813,6 +813,13 @@ const vc = await import(d("dist/rules/valueclass.js"));
     sastFind("const q = `SELECT * FROM users WHERE name='${req.query.name}'`;\nawait pool.query(q, [req.query.id]);\n")
       .some((f) => f.id === "SAST-001" && f.severity === "high" && /pool\.query\(q -> /.test(f.evidence.masked))
       && sastIds('const q = "SELECT * FROM users WHERE id=$1";\nawait pool.query(q, [req.query.id]);\n').length === 0);
+  // v1.3 review fix — plain REASSIGNMENTS count as assignments: the last
+  // assignment before the sink decides. `let q = tainted…; q = "SELECT 1"`
+  // must stay SILENT (the FP direction), and the reverse must fire.
+  check("U18.8j alias reassignment: last assignment wins — demoted to constant stays SILENT, promoted to request-built fires HIGH",
+    sastIds('let q = "SELECT * FROM users WHERE id=" + req.query.id;\nq = "SELECT 1";\nawait pool.query(q);\n').length === 0
+      && sastFind('let q = "SELECT 1";\nq = "SELECT * FROM users WHERE id=" + req.query.id;\nawait pool.query(q);\n')
+          .some((f) => f.id === "SAST-001" && f.severity === "high" && /pool\.query\(q -> /.test(f.evidence.masked)));
 
   // ---- T9: dynamic code execution (SAST-003 non-literal + TAINT-006) ----
   check("U18.9 T9: eval(<non-literal user var>) → SAST-003 MEDIUM + needs_confirmation",

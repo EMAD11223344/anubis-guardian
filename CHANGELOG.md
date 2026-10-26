@@ -9,10 +9,13 @@ Minor release: **one new detection + one severity-accuracy fix + positioning doc
 - **SAST-001 — single-hop variable propagation to SQL sinks** (`src/rules/sast.ts`): when a recognized sink's first argument is a bare identifier, its nearest preceding same-function string assignment is resolved and the SAME dynamic-SQL analysis runs on the resolved value.
   - Before: `const q = "SELECT * FROM users WHERE name='" + req.query.name + "'"; pool.query(q)` was **silent** (a measured false-negative).
   - After: **SAST-001 HIGH** (request-traced, `needs_confirmation: false`), evidence masked deterministically as `pool.query(q -> "<resolved value>")`. Also fires for alias into `prisma.$queryRawUnsafe`, multi-line template literals, and `pool.query(q, [id])` binding shapes.
-  - Scope stays one hop, same function only: chained aliases (`const q = r`) and cross-function assignments stay silent (gates U18.8f/U18.8g); tagged `prisma.$queryRaw` templates (U18.8d), `$1`-placeholder forms (U18.8c) and a constant alias (U18.8e) stay silent. Sinks themselves are unchanged; no new runtime dependencies.
-  - Gates: U18.8a–U18.8i (units 241 → 250). Regression: U18.1–U18.8 and the phase-2 safe-form gates behave exactly as before.
-- **Test — CLI file-vs-directory refusal gate** (phase-1 T1, gate #25): `scan <file>` was already refused with `not a project directory` + exit 2 (`src/cli.ts`), but no gate asserted it.
-- **Test — scanner crash/timeout path** (U17.15): a gitleaks/OSV process crash or timeout (`status: null`) is surfaced as an execution failure — never a clean scan, never a findings exit code.
+  - Scope stays one hop, same function only: chained aliases (`const q = r`) and cross-function assignments stay silent (gates U18.8f/U18.8g); tagged `prisma.$queryRaw` templates (U18.8d), `$1`-placeholder forms (U18.8c) and a constant alias (U18.8e) stay silent. Plain reassignments count as assignments — **the last assignment before the sink decides**: a var demoted to a constant stays silent and one promoted to a request-built string fires (U18.8j). Sinks themselves are unchanged; no new runtime dependencies.
+  - Gates: U18.8a–U18.8j (units 241 → 251). Regression: U18.1–U18.8 and the phase-2 safe-form gates behave exactly as before.
+
+### Tests
+
+- **CLI file-vs-directory refusal gate** (phase-1 T1, gate #25): `scan <file>` was already refused with `not a project directory` + exit 2 (`src/cli.ts`), but no gate asserted it **(coverage for pre-existing behavior, no behavior change)**.
+- **Scanner crash/timeout path** (U17.15): a gitleaks/OSV process crash or timeout (`status: null`) is surfaced as an execution failure — never a clean scan, never a findings exit code **(coverage for pre-existing behavior, no behavior change)**.
 
 ### Fixed
 

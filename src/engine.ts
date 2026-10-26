@@ -206,7 +206,7 @@ export interface ScanOptions {
   advisoryFile?: string;
   exclude?: string[];   // v1.1.0 — repo-relative POSIX globs skipped before any rule/graph sees them
   maxFiles?: number;    // v1.1.0 — fail-closed size cap: refusal (throw) instead of a partial report
-  allowEmpty?: boolean; // v1.2 — accept a scan with 0 scannable files (default: refusal, fail-closed)
+  allowEmpty?: boolean; // v1.2.0 — accept a scan with 0 scannable files (default: refusal, fail-closed)
   aiReview?: boolean;   // v0.3 — AI review runs at CLI level AFTER the deterministic scan
   quarantine?: string;  // v0.3 — quarantine dir for generated tests (never executed by the tool)
   /** v1.2 (T0, TEST-ONLY seam): injects controlled adapter probes so the
