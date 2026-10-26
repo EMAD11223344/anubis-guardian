@@ -877,6 +877,19 @@ const vc = await import(d("dist/rules/valueclass.js"));
   rmSync(staleRoot, { recursive: true, force: true });
 }
 
+// ---------- U19: guard-hook version wiring (real package version, no stale labels) ----------
+{
+  const { HOOK_SCRIPT, SNIPPET } = await import(d("dist/inithook.js"));
+  const pkgVer = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
+  check(`U19.1 HOOK_SCRIPT header carries the REAL package version (v${pkgVer})`, HOOK_SCRIPT.includes(`v${pkgVer}`));
+  check("U19.2 SNIPPET npx pin matches the real version", SNIPPET.includes(`npx anubis-guardian@${pkgVer} scan`));
+  check("U19.3 settings.json hook entry will carry the real version", HOOK_SCRIPT.length > 0 && SNIPPET.includes(`v${pkgVer}`));
+  check("U19.4 hook script is self-contained (no require/import of the tool, Buffer-based JWT decode)",
+    !HOOK_SCRIPT.includes("from \"../") && !/^\s*import\s/m.test(HOOK_SCRIPT) && HOOK_SCRIPT.includes("Buffer.from"));
+  check("U19.5 hook fail-open contract present (malformed/empty stdin → exit 0)",
+    HOOK_SCRIPT.includes('catch { process.exit(0); }') && HOOK_SCRIPT.includes("if (!content.trim()) process.exit(0);"));
+}
+
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);
 if (FAILS.length) {

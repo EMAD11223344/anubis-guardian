@@ -117,14 +117,78 @@ ok(snap1 === snap2, "E3: init-hook idempotent (second run changes nothing)");
 const settings = JSON.parse(readFileSync(hookSettings, "utf8"));
 ok(JSON.stringify(settings).includes("anubis-guard-hook.mjs") && !/npx|@latest/.test(JSON.stringify(settings.hooks ?? {})), "E4: hook wiring is local + pinned (no npx/@latest in hook config)");
 const hookSrc = readFileSync(hookScript, "utf8");
-ok(hookSrc.includes("ROW\\s+LEVEL") && hookSrc.includes("service[_-]?role"), "E5: hook guards RLS-killing SQL + service_role");
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+ok(hookSrc.includes(`v${pkg.version}`), `E5: hook header carries the REAL package version (v${pkg.version})`);
+ok((settings.hooks?.PreToolUse ?? []).some((e) => e.hooks?.[0]?.version === pkg.version), "E5b: settings.json hook entry version = real package version");
 
-const feedHook = (input) => spawnSync(process.execPath, [hookScript], { input: JSON.stringify(input), encoding: "utf8" });
-ok(feedHook({ tool_name: "Edit", tool_input: { file_path: "app/components/P.tsx", content: "const k = process.env.SERVICE_ROLE_KEY" } }).status === 2, "E6: hook BLOCKS service_role into client-reachable code (exit 2)");
-ok(feedHook({ tool_name: "Edit", tool_input: { file_path: "supabase/migrations/x.sql", content: "alter table t disable row level security;" } }).status === 2, "E7: hook BLOCKS RLS-killing SQL (exit 2)");
-ok(feedHook({ tool_name: "Edit", tool_input: { file_path: ".env", content: "STRIPE_SECRET=sk_live_a1B2c3D4e5F6g7H8i9J0" } }).status === 2, "E8: hook BLOCKS real-looking secrets into .env (exit 2)");
-ok(feedHook({ tool_name: "Edit", tool_input: { file_path: "app/lib/util.ts", content: "export const add = (a,b) => a + b;" } }).status === 0, "E9: hook allows benign writes (exit 0)");
-ok(feedHook({ tool_name: "Bash", tool_input: { command: "ls" } }).status === 0, "E10: hook ignores non-write tools (exit 0)");
+// ---- E6..: table-driven WHY-block/ALLOW gates (≥24 cases, value-based detectors) ----
+// REAL JWTs are synthesized here (pure node, base64url) — no placeholders.
+const b64u = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+const mkJwt = (role) => `${b64u({ alg: "HS256", typ: "JWT" })}.${b64u({ role, sub: "user-42" })}.${Buffer.from("hook-test-signature-not-real").toString("base64url")}`;
+const SR = mkJwt("service_role");
+const ANON = mkJwt("anon");
+const OPAQUE = "a1B2c3D4e5F6g7H8i9J0kLmN";   // 24 chars, charset+entropy per valueclass
+const FBKEY = "AIza" + "S".repeat(35);       // matches ^AIza[0-9A-Za-z_-]{35}$ (public by design)
+
+const feed = (input, env) => spawnSync(process.execPath, [hookScript],
+  { input: JSON.stringify(input), encoding: "utf8", env: env ? { ...process.env, ...env } : process.env });
+const feedRaw = (raw, env) => spawnSync(process.execPath, [hookScript],
+  { input: raw, encoding: "utf8", env: env ? { ...process.env, ...env } : process.env });
+
+const HOOK_CASES = [
+  // ---------------- MUST BLOCK ----------------
+  ["BLOCK service_role JWT in a 'use client' file", 2, { tool_name: "Write", tool_input: { file_path: "app/components/AdminPanel.tsx", content: `const key = "${SR}";` } }],
+  ["BLOCK service_role JWT via Edit new_string", 2, { tool_name: "Edit", tool_input: { file_path: "app/app/components/P.tsx", new_string: `export const K = "${SR}";` } }],
+  ["BLOCK service_role JWT via MultiEdit edits array", 2, { tool_name: "MultiEdit", tool_input: { file_path: "src/pages/settings.tsx", edits: [{ old_string: "a", new_string: `const k = "${SR}";` }] } }],
+  ["BLOCK service_role JWT into NEXT_PUBLIC_ .env var", 2, { tool_name: "Write", tool_input: { file_path: ".env", content: `NEXT_PUBLIC_ADMIN_TOKEN=${SR}\nNEXT_PUBLIC_SUPABASE_URL=https://x.supabase.co\n` } }],
+  ["BLOCK VITE_ .env var with service_role JWT", 2, { tool_name: "Write", tool_input: { file_path: ".env.local", content: `VITE_ADMIN_TOKEN=${SR}\n` } }],
+  ["BLOCK mixed-CASE disable row level security", 2, { tool_name: "Edit", tool_input: { file_path: "supabase/migrations/0002.sql", content: "ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;" } }],
+  ["BLOCK multi-line create policy using (true) for anon", 2, { tool_name: "Edit", tool_input: { file_path: "supabase/migrations/0003.sql", content: 'create policy "everyone reads"\n  on profiles for select\n  to anon\n  using (true);' } }],
+  ["BLOCK drop policy with NO matching create policy (same change)", 2, { tool_name: "Edit", tool_input: { file_path: "supabase/migrations/0004.sql", content: 'drop policy if exists "all_access" on profiles;' } }],
+  ["BLOCK drop policy on table A while create policy covers table B", 2, { tool_name: "Edit", tool_input: { file_path: "supabase/migrations/0005.sql", content: 'drop policy "a" on secrets_table;\ncreate policy "b" on other_table for select using (auth.uid() = user_id);' } }],
+  ["BLOCK drop policy with NO on clause at all", 2, { tool_name: "Edit", tool_input: { file_path: "supabase/migrations/0006.sql", content: 'drop policy if exists "all_access";' } }],
+  ["BLOCK sk_live_ value into .env credential name (R3)", 2, { tool_name: "Write", tool_input: { file_path: ".env", content: `STRIPE_SECRET=${OPAQUE}\n` } }],
+  ["BLOCK private key body into .env", 2, { tool_name: "Write", tool_input: { file_path: ".env", content: "DEPLOY_KEY=-----BEGIN RSA PRIVATE KEY-----\\nMIIEpAIBAAKCAQEA7x\\n" } }],
+  ["BLOCK service_role JWT in a pages/ file (non-api)", 2, { tool_name: "Edit", tool_input: { file_path: "pages/upgrade.tsx", content: `const k = "${SR}";` } }],
+  ["BLOCK R4: NEXT_PUBLIC_ name assigned a secret-shaped value in code", 2, { tool_name: "Edit", tool_input: { file_path: "src/config.ts", content: `NEXT_PUBLIC_ANALYTICS_SECRET = "${OPAQUE}";` } }],
+  ["BLOCK Bash heredoc writing service_role JWT into components/", 2, { tool_name: "Bash", tool_input: { command: `cat > app/components/Leak.tsx <<'EOF'\nconst k = "${SR}";\nEOF` } }],
+  ["BLOCK Bash tee writing service_role JWT into components/", 2, { tool_name: "Bash", tool_input: { command: `echo 'const k = "${SR}";' | tee src/components/L.tsx` } }],
+  ["BLOCK Bash redirect (sed -i) placing service_role JWT into components/", 2, { tool_name: "Bash", tool_input: { command: `sed -i "s/PLACEHOLDER_TOKEN/${SR}/" app/components/Panel.tsx` } }],
+  ["BLOCK Bash psql disable row level security", 2, { tool_name: "Bash", tool_input: { command: 'psql -c "alter table profiles disable row level security"' } }],
+  ["BLOCK anubis-allow marker with TOO-SHORT reason (<8 chars)", 2, { tool_name: "Write", tool_input: { file_path: "app/components/AdminPanel.tsx", content: `const key = "${SR}"; // anubis-allow: fix` } }],
+  // ---------------- MUST ALLOW ----------------
+  ["ALLOW anubis-allow marker with an 8+ char reason", 0, { tool_name: "Write", tool_input: { file_path: "app/components/AdminPanel.tsx", content: `const key = "${SR}"; // anubis-allow: rotated and proxied server-side` } }],
+  ["ALLOW anon JWT in a client file", 0, { tool_name: "Write", tool_input: { file_path: "app/components/PublicFeed.tsx", content: `const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "${ANON}";` } }],
+  ["ALLOW drop policy if exists + create policy (same table, auth.uid())", 0, { tool_name: "Edit", tool_input: { file_path: "supabase/migrations/0007.sql", content: 'drop policy if exists all_access on profiles;\ncreate policy "owners only" on profiles for select using (auth.uid() = user_id);' } }],
+  ["ALLOW NEXT_PUBLIC_FIREBASE_API_KEY in .env (public by design)", 0, { tool_name: "Write", tool_input: { file_path: ".env", content: `NEXT_PUBLIC_FIREBASE_API_KEY=${FBKEY}\n` } }],
+  ["ALLOW process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY reference", 0, { tool_name: "Edit", tool_input: { file_path: "app/components/Map.tsx", content: "const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;" } }],
+  ["ALLOW the WORD service_role inside a comment (comment stripping)", 0, { tool_name: "Write", tool_input: { file_path: "app/components/Panel.tsx", content: `// never ship a service_role key from this component; use the server API\nconst k = process.env.NEXT_PUBLIC_SUPABASE_URL;` } }],
+  ["ALLOW service_role JWT used in an app/api route handler", 0, { tool_name: "Write", tool_input: { file_path: "app/api/admin/route.ts", content: `const admin = createClient(url, "${SR}");` } }],
+  ["ALLOW service_role JWT under a heavy 'use server' action file", 0, { tool_name: "Write", tool_input: { file_path: "app/actions/grant.ts", content: `'use server'\nexport async function grant() {\n  const admin = createClient(url, "${SR}");\n}` } }],
+  ["ALLOW path containing 'observer' (the old substring-'server' bug)", 0, { tool_name: "Write", tool_input: { file_path: "app/lib/observer.ts", content: `const admin = createClient(url, "${SR}");` } }],
+  ["ALLOW 'server' as a real path segment (src/server/db.ts)", 0, { tool_name: "Write", tool_input: { file_path: "src/server/db.ts", content: `const admin = createClient(url, "${SR}");` } }],
+  ["ALLOW server-side .env service_role config (SUPABASE_SERVICE_ROLE_KEY)", 0, { tool_name: "Write", tool_input: { file_path: ".env", content: `SUPABASE_SERVICE_ROLE_KEY=${SR}\n` } }],
+  ["ALLOW SUPABASE_ANON_KEY / STRIPE_PUBLISHABLE_KEY / SENTRY_DSN / MAPBOX pk. in .env", 0, { tool_name: "Write", tool_input: { file_path: ".env", content: `SUPABASE_ANON_KEY=${ANON}\nSTRIPE_PUBLISHABLE_KEY=pk_live_9iLIbsAJXmpattern\nSENTRY_DSN=https://d@o.ingest.sentry.io/1\nMAPBOX_PUBLIC=pk.eyJ1IjoiZXhhbXBsZS1wdWJsaWMtdG9rZW4tMjM0NTY3OA\n` } }],
+  ["ALLOW placeholder/unknown short env values", 0, { tool_name: "Write", tool_input: { file_path: ".env", content: "DEBUG=changeme\\nLOG_LEVEL=info\\n" } }],
+  ["ALLOW .env.example with credential-shaped entries", 0, { tool_name: "Write", tool_input: { file_path: ".env.example", content: `STRIPE_SECRET=sk_live_REPLACE_ME_WITH_A_REAL_KEY_42\n` } }],
+  ["ALLOW Bash anon JWT into components/ (public by design)", 0, { tool_name: "Bash", tool_input: { command: `echo 'const k = "${ANON}";' > app/components/Public.tsx` } }],
+  ["ALLOW benign write", 0, { tool_name: "Edit", tool_input: { file_path: "app/lib/util.ts", content: "export const add = (a,b) => a + b;" } }],
+  ["ALLOW benign Bash (non-write command)", 0, { tool_name: "Bash", tool_input: { command: "ls" } }],
+  ["ALLOW non-write tools (Grep) regardless of content", 0, { tool_name: "Grep", tool_input: { pattern: SR } }],
+];
+let hookPass = 0;
+for (const [name, expect, input] of HOOK_CASES) {
+  const r = feed(input);
+  if (r.status === expect) { hookPass++; console.log("ok  " + name); }
+  else { failures++; console.error(`FAIL E-hook: ${name} — expected exit ${expect}, got ${r.status}${r.stderr ? ` :: ${(r.stderr.trim().split("\\n")[0] ?? "")}` : ""}`); }
+}
+// escape-hatch + fail-open + warn-mode (env-controlled)
+ok(feed(HOOK_CASES[0][2], { ANUBIS_GUARD: "off" }).status === 0, "E: ANUBIS_GUARD=off disables enforcement entirely");
+ok(feed(HOOK_CASES[0][2], { ANUBIS_GUARD: "warn" }).status === 0, "E: ANUBIS_GUARD=warn reports but exits 0");
+ok(feedRaw("{not json").status === 0, "E: malformed JSON stdin fails OPEN");
+ok(feedRaw("").status === 0, "E: empty stdin fails OPEN");
+ok(hookPass === HOOK_CASES.length, `E: hook gate table — ${hookPass}/${HOOK_CASES.length} cases`);
+
 
 // ---- F. SKILL.md hard-rule contract ----
 const skill = readFileSync(join(root, "skill", "SKILL.md"), "utf8");
