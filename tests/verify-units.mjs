@@ -1709,6 +1709,35 @@ const vc = await import(d("dist/rules/valueclass.js"));
       JSON.stringify({ ms: Math.round(msB), ten: ten.map((x) => ({ line: x.line, file: x.file })) }));
     rmD(b, { recursive: true, force: true });
   }
+
+  // --- U26.5: whole-engine SCAN budget on a many-short-line WINDOWED fixture ---
+  // This is the tripwire for the class of regression U26.4 fixed: rules must
+  // never again pay superlinear work over windowed pad runs. Measured after the
+  // scanTenant fix (2026-10-27): ~4.9s locally for this fixture (was 117.9s).
+  // Thresholds are generous for CI variance; a regression to the pre-fix
+  // behavior trips the gate long before any human notices a slow scan.
+  {
+    const { mkdtempSync: mkTS, writeFileSync: wf, mkdirSync: mkd, rmSync: rmD } = await import("node:fs");
+    const { join: jn } = await import("node:path");
+    const { tmpdir: tdir } = await import("node:os");
+    const { performance: perf } = await import("node:perf_hooks");
+    const perfDir = mkTS(jn(tdir(), "u26-scanper-"));
+    mkd(jn(perfDir, "app"), { recursive: true });
+    wf(jn(perfDir, "package.json"), JSON.stringify({ name: "u26e", dependencies: {} }));
+    // 1MB − margin of one-char rows (~545k lines) + one secret tail row;
+    // windowed (>512KB) → every window carries a huge empty pad run
+    const sec = 'const AUTH_SECRET = "u26-perf-scan-tail";\n';
+    wf(jn(perfDir, "app", "rows.ts"), "x\n".repeat(270 * 1024) + sec);
+    if (global.gc) global.gc();
+    const tS = perf.now();
+    const res = await (await import(d("dist/engine.js"))).scan(perfDir);
+    const msS = perf.now() - tS;
+    const j3 = res.findings.filter((f) => f.id === "JWT-003" && f.file.includes("rows.ts"));
+    check("U26.5 E perf: FULL engine scan of a 1MB many-short-line windowed file stays inside the scan budget (<30s; measured ~5s post-fix, was ~118s pre-fix) and still detects the secret at its exact absolute line",
+      msS < 30_000 && j3.length >= 1 && j3[0].line === 270 * 1024 + 1,
+      JSON.stringify({ ms: Math.round(msS), jwt: j3.map((f) => f.line) }));
+    rmD(perfDir, { recursive: true, force: true });
+  }
 }
 
 // ---------- report ----------

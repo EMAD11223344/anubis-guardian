@@ -131,6 +131,19 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
   conservative non-detection, never a false positive. The scanner itself stays
   linear on adversarial inputs (U20.34 budget gate + U22.1 battery gate; the
   100 KB→3 MB stress run confirms sublinear behavior on the worst cases).
+  **Cost is also disclosed:** pads preserve exact absolute line numbering by
+  repeating rows into every window (Σ pad rows ≈ 4 × line count per 4 MB file),
+  so an adversarial 4 MB file of ~2M single-character rows takes ~70 s to fully
+  scan (measured 2026-10-27; realistic-density files scan far faster). Budget
+  gates lock the behavior: U26.3 (walk construction), U26.4 (per-pack boundedness),
+  U26.5 (whole-scan <30 s at the 1 MB scale this class was fixed at). **Planned
+  evolution:** the per-window pad block is a candidate for explicit
+  absolute-line offsets (windows without repeated rows, a `(lineBase=windowStart)`
+  field consumed by a single line-number helper) — a later major-border refactor:
+  it touches 78 per-rule `i+1` line computation sites across 15 rule files and
+  must reproduce the seam `}` row's brace/scope-boundary semantics (9 files carry
+  brace-depth logic that treats the seam row as a real closer), so it is gated on
+  byte-identity + exact-line oracle tests of the U26 class before any switch.
 - **Capability packs are review prompts, not verdicts (v1.4/1.5)**: AUTHZ/TEN/
   LEAK/RES/UPLOAD findings that depend on invisible layers carry
   `needs_confirmation` plus a note naming exactly what the static check cannot

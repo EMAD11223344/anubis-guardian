@@ -27,7 +27,7 @@ It is built around the failure patterns of AI-generated ("vibe-coded") applicati
 
 > 🛡️ **Different from after-the-fact scanners:** beyond detection, an optional pinned agent hook (`init-hook`) blocks service-role keys, RLS-killing SQL, and secret literals **at write time**, before they enter your codebase.
 
-## Works everywhere — any database, any ORM
+## Any database, any ORM — what the scanner actually recognizes
 
 The core rules run on **plain JavaScript/TypeScript with no framework assumptions** at the call site. Whatever database or ORM you use — the rules recognize the **common query patterns** your code actually writes: raw SQL strings built by hand or by a query builder, Prisma / Drizzle / TypeORM-style client calls, chained `.from(...)` builders, and committed `.env` files:
 
@@ -190,7 +190,7 @@ Found a security issue in Anubis Guardian itself (not in your scanned code)? Rep
 - **Single file scope for taint-lite**, capped at MEDIUM, with generated canary tests you run yourself
 - **Authorization/tenant/isolation findings are evidence, not proof** — invisible middleware, RLS, or runtime values always win
 - **JS/TS only for codebase mode** (non-JS languages: use the supplied Semgrep adapter)
-- **Large files:** >512 KB analyzed in windows to 4 MB (exact absolute line numbers); above 4 MB disclosed as skipped; window-seam dataflow chains beyond the overlap stay non-detections
+- **Large files:** >512 KB analyzed in windows to 4 MB (exact absolute line numbers); above 4 MB disclosed as skipped; window-seam dataflow chains beyond the overlap stay non-detections. **Worst-case wall time is honest:** an adversarial 4 MB file of ~2M single-character rows scans in ~70 s (the padded absolute-line windows multiply per-rule row visits); realistic-density files scan far faster. Locked by regression gates U26.1–U26.5.
 - **No DAST engine** — URL mode is consent-gated, bounded, and passive-first; deep dynamic testing belongs to your own tooling (a ZAP baseline config can be generated)
 - Full list with rationale: [METHODOLOGY.md §8](METHODOLOGY.md)
 
