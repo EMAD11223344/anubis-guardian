@@ -627,10 +627,11 @@ const vc = await import(d("dist/rules/valueclass.js"));
   writeFileSync(join(wDir, "blob.bin"), Buffer.concat([Buffer.from("PNG"), Buffer.alloc(16, 0)]));
   const { walkWithStats } = await import(d("dist/walk.js"));
   const stats = walkWithStats(wDir);
-  check("U16.9 walkWithStats: oversize + binary counted, text kept",
-    stats.skipped.oversize === 1 && stats.skipped.binary === 1 && stats.skipped.unreadable === 0
-    && stats.files.length === 1 && stats.files[0].rel === "ok.ts",
-    JSON.stringify(stats.skipped));
+  check("U16.9 walkWithStats: >4MB + binary counted, text kept; 512KB file is WINDOWED (v1.4 capability E — the oversize boundary moved from 512KB to 4MB)",
+    stats.skipped.oversize === 0 && stats.skipped.binary === 1 && stats.skipped.unreadable === 0
+    && stats.files.length === 2 && stats.files.some((f) => f.rel === "ok.ts")
+    && stats.windowed.length === 1 && stats.windowed[0].file === "big.ts" && stats.windowed[0].windows >= 1,
+    JSON.stringify(stats));
   check("U16.10 walk(): CRLF robustness preserved (extract of U11)",
     (() => { const n = walkWithStats(wDir).files; return n.every((f) => !f.lines.some((l) => l.endsWith("\r"))); })());
   rmSync(wDir, { recursive: true, force: true });
@@ -1173,6 +1174,246 @@ const vc = await import(d("dist/rules/valueclass.js"));
   check("U20.38 SAST-003: path segment scoping — latest.ts is NOT a test path (no accidental demotion)",
     sastFind('const out = eval("validate(" + expr + ")");\n', "src/latest.ts")
       .some((f) => f.id === "SAST-003" && f.severity === "high"));
+}
+
+// ---------- U21: capability packs A–F (v1.4) — positives, cleans, generalizations ----------
+{
+  const actx = (files) => ({ stack: { frameworks: {}, detected: [] }, rel: (x) => x, trackedFiles: new Set(), gitAvailable: false, files });
+  const mkf = (rel, content) => ({ abs: `/p/${rel}`, rel, content, lines: content.split("\n") });
+  const { scanAuthz, scanTenant } = await import(d("dist/rules/authzpack.js"));
+  const { scanLeak } = await import(d("dist/rules/leakpack.js"));
+  const { scanDos } = await import(d("dist/rules/dospack.js"));
+  const { scanUpload } = await import(d("dist/rules/upload.js"));
+  const idsOf = (mod, files) => mod(actx(files)).findings.map((f) => `${f.id}/${f.severity}`);
+
+  // ---- A: RBAC/authz ----
+  const postBody =
+    'export async function POST(req: NextRequest) {\n' +
+    '  const data = await req.json();\n' +
+    '  await prisma.user.update({ where: { id: data.id }, data: { role: data.role } });\n' +
+    '  return NextResponse.json({ ok: true });\n' +
+    '}\n';
+  check("U21.1 A: mutating handler + privileged op, no authz shape → AUTHZ-001 MEDIUM needs_confirmation + invisible-layer note",
+    (() => {
+      const fs = scanAuthz(actx([mkf("app/api/u/route.ts", postBody)])).findings;
+      return fs.some((f) => f.id === "AUTHZ-001" && f.severity === "medium" && f.needs_confirmation === true)
+        && /middleware|APP_GUARD|RLS/.test(fs[0].evidence.note ?? "");
+    })());
+  check("U21.2 A clean: same handler with an authorization call in body → SILENT",
+    scanAuthz(actx([mkf("app/api/u/route.ts",
+      postBody.replace("const data =", "const session = await getSession(userEmail);\n  const data ="))])).findings.length === 0);
+  check("U21.3 A: client-decided authorization (req.body.isAdmin) → AUTHZ-002 HIGH; server-state decision → SILENT",
+    idsOf(scanAuthz, [mkf("app/api/a/route.ts", 'export async function POST(req: Request) {\n  if (req.body.isAdmin) { await grantAdmin(); }\n}\n')]).includes("AUTHZ-002/high")
+    && scanAuthz(actx([mkf("app/api/a/route.ts", "export async function POST(req: Request) {\n  const u = await db.user.findUnique({ where: { id: sess.userId } });\n  if (u.role === 'admin') grantAdmin();\n}\n")])).findings.length === 0);
+  check("U21.4 A generalize: express router + DB destructive call (different framework shape) → AUTHZ-001",
+    idsOf(scanAuthz, [mkf("server/routes.ts", 'router.post("/users/del", (req, res) => {\n  db.collection("users").deleteOne({ _id: req.params.id });\n  res.json({ ok: true });\n});\n')]).includes("AUTHZ-001/medium"));
+
+  // ---- B: multi-tenant ----
+  const schema = mkf("prisma/schema.prisma", "model Doc {\n  id Int @id\n  organizationId Int\n  ownerId Int\n}\n");
+  check("U21.5 B: by-ID mutation of tenant entity, request-sourced id → TEN-002; tenant-scoped where → SILENT; no tenant declaration → SILENT",
+    idsOf(scanTenant, [schema, mkf("app/api/d/route.ts", "export async function DELETE(req: Request) {\n  await prisma.doc.update({ where: { id: req.params.id }, data: { deleted: true } });\n}\n")]).includes("TEN-002/medium")
+    && scanTenant(actx([schema, mkf("app/api/d/route.ts", "export async function DELETE(req: Request) {\n  await prisma.doc.update({ where: { id: req.params.id, organizationId: sess.orgId }, data: { deleted: true } });\n}\n")])).findings.length === 0
+    && scanTenant(actx([mkf("app/api/d/route.ts", "export async function DELETE(req: Request) {\n  await prisma.doc.update({ where: { id: req.params.id }, data: { deleted: true } });\n}\n")])).findings.length === 0);
+  check("U21.6 B: unscoped SQL on tenant table + req value → TEN-001; scoped (org predicate) → SILENT",
+    idsOf(scanTenant, [
+      mkf("migrations/0001_init.sql", "CREATE TABLE workspace_docs (id INT, workspace_id INT, owner_id INT);\n"),
+      mkf("server/db.ts", 'export async function rm(req: Request) {\n  return pool.query("DELETE FROM workspace_docs WHERE id = " + req.params.id);\n}\n'),
+    ]).includes("TEN-001/medium")
+    && scanTenant(actx([
+      mkf("migrations/0001_init.sql", "CREATE TABLE workspace_docs (id INT, workspace_id INT, owner_id INT);\n"),
+      mkf("server/db.ts", 'export async function rm(req: Request, org: number) {\n  return pool.query("DELETE FROM workspace_docs WHERE id = $1 AND workspace_id = $2", [req.params.id, org]);\n}\n'),
+    ])).findings.length === 0);
+  check("U21.6b B generalize: tenant entity declared via ALTER TABLE migration also gates the pack",
+    idsOf(scanTenant, [
+      mkf("migrations/0002.sql", "ALTER TABLE projects ADD COLUMN workspace_id INT;\n"),
+      mkf("server/db.ts", 'export async function rm(req: Request) {\n  return pool.query("DELETE FROM projects WHERE id = " + req.params.id);\n}\n'),
+    ]).includes("TEN-001/medium"));
+
+  // ---- C: leakage ----
+  check("U21.7 C: credential field in NextResponse.json → LEAK-001; password:undefined → SILENT",
+    idsOf(scanLeak, [mkf("app/api/login/route.ts", "const u = await findUser(id);\nreturn NextResponse.json({ id: u.id, password: u.password });\n")]).includes("LEAK-001/medium")
+    && scanLeak(actx([mkf("app/api/login/route.ts", "return NextResponse.json({ id: u.id, password: undefined });\n")])).findings.length === 0);
+  check("U21.8 C: PII to log → LEAK-002 LOW note; redact() → SILENT; JSON.stringify variant also fires (generalization)",
+    idsOf(scanLeak, [mkf("server/metrics.ts", "console.log('login ok', user.email);\n")]).includes("LEAK-002/low")
+    && scanLeak(actx([mkf("server/metrics.ts", "console.log('login ok', redact(user.email));\n")])).findings.length === 0
+    && idsOf(scanLeak, [mkf("server/app.js", "app.get('/n', (req, res) => {\n  res.send(JSON.stringify({ apiKey: cfg.apiKey }));\n});\n")]).includes("LEAK-001/medium"));
+
+  // ---- D: resource exhaustion ----
+  check("U21.9 D: new RegExp(req.query.q) → RES-001 HIGH; flow-resolved var → RES-001 MEDIUM needs_confirmation; literal regex → SILENT",
+    idsOf(scanDos, [mkf("app/api/search/route.ts", "const re = new RegExp(req.query.q);\nreturn db.find(re);\n")]).includes("RES-001/high")
+    && idsOf(scanDos, [mkf("app/api/search/route.ts", "const pat = req.query.q;\nconst re = new RegExp(pat);\n")]).includes("RES-001/medium")
+    && scanDos(actx([mkf("app/api/search/route.ts", "const re = new RegExp('^\\\\w+$');\n")])).findings.length === 0);
+  check("U21.9b D generalize: express route handler shape also reaches RES-001 (direct req.body regex)",
+    idsOf(scanDos, [mkf("server/routes.js", "router.post('/search', (req, res) => {\n  const re = new RegExp(req.body.term);\n});\n")]).includes("RES-001/high"));
+  check("U21.10 D: prisma.findMany() inside a handler → RES-002; take-cap → SILENT; same call OUTSIDE a handler → SILENT",
+    idsOf(scanDos, [mkf("app/api/list/route.ts", "export async function GET() {\n  const rows = await prisma.user.findMany();\n  return NextResponse.json(rows);\n}\n")]).includes("RES-002/medium")
+    && scanDos(actx([mkf("app/api/list/route.ts", "export async function GET() {\n  const rows = await prisma.user.findMany({ take: 20 });\n  return NextResponse.json(rows);\n}\n")])).findings.length === 0
+    && scanDos(actx([mkf("server/seed.ts", "const all = await prisma.user.findMany();\nfor (const u of all) seed(u);\n")])).findings.length === 0);
+
+  // ---- F: uploads ----
+  check("U21.11 F: request-derived write into served dir → UPLOAD-001 HIGH; fixed name → SILENT",
+    idsOf(scanUpload, [mkf("server/upload.ts", 'const file = req.file;\nfs.writeFile(path.join("public/uploads", file.originalname), data);\n')]).includes("UPLOAD-001/high")
+    && scanUpload(actx([mkf("server/upload.ts", 'fs.writeFile(path.join("assets/brand", "logo.png"), data);\n')])).findings.length === 0);
+  check("U21.12 F: multer({dest}) / Busboy without limits → UPLOAD-002; limits-config → SILENT",
+    idsOf(scanUpload, [mkf("server/upload.ts", 'const upload = multer({ dest: "uploads/" });\n')]).includes("UPLOAD-002/medium")
+    && scanUpload(actx([mkf("server/upload.ts", 'const upload = multer({ limits: { fileSize: 5 * 1024 * 1024 } });\n')])).findings.length === 0
+    && idsOf(scanUpload, [mkf("server/up.js", "const busboy = new Busboy({ headers: req.headers });\n")]).includes("UPLOAD-002/medium"));
+  check("U21.13 F: extractAllTo without guards → UPLOAD-003 EXACTLY ONCE (same root cause); guarded window → SILENT; tar.x pipeline variant fires",
+    (() => {
+      const pos = scanUpload(actx([mkf("server/extract.ts", "const zip = new AdmZip(buf);\nzip.extractAllTo(outputDir);\n")])).findings;
+      return pos.filter((f) => f.id === "UPLOAD-003").length === 1
+        && pos[0].severity === "medium" && pos[0].needs_confirmation === true
+        && scanUpload(actx([mkf("server/extract.ts", "const zip = new AdmZip(buf);\nzip.getEntries().filter(e => !e.entryName.includes('..') && e.header.size < MAX).forEach(e => zip.extractEntryTo(e, outDir));\n")])).findings.length === 0
+        && idsOf(scanUpload, [mkf("server/extract.js", "fs.createReadStream(p).pipe(tar.x({ cwd: out }))\n")]).includes("UPLOAD-003/medium");
+    })());
+}
+
+// ---------- U22: adversarial ReDoS battery LOCK (scanner self-resilience, v1.4) ----------
+// The v1.3 "ReDoS not reproduced" conclusion was WRONG: adversarial word-run /
+// quote-run inputs exposed quadratic breaches in HDR-001 (9s@100KB → 81s@300KB,
+// 18s@100KB → 167s@300KB) and friends — fixed by bounding greedy identifier runs
+// to {0,64}. This gate locks the contract: pathological ≤512KB inputs stay
+// LINEAR (growth < 6x when tripling) and under budget.
+{
+  const batteryCtx = (content) => ({ stack: { frameworks: {}, detected: [] }, rel: (x) => x, trackedFiles: new Set(), gitAvailable: false, files: [{ abs: "/p/a.ts", rel: "app/api/a.ts", content, lines: content.split("\n") }] });
+  const { scanSecrets: bSecrets } = await import(d("dist/rules/secrets.js"));
+  const { scanHdr001: bHdr } = await import(d("dist/rules/hdr001.js"));
+  const { scanSast: bSast } = await import(d("dist/rules/sast.js"));
+  const { scanTaint: bTaint } = await import(d("dist/rules/taint.js"));
+  const bgen = {
+    jwt_run: (n) => "eyJ" + "a".repeat(n) + "\n",
+    quote_run: (n) => 'req.headers["' + "x".repeat(n) + "\n",
+    ctx_bait: (n) => "eval " + "P".repeat(n) + "\n",
+    stack_bait: (n) => "res.send('<p>" + "+".repeat(n) + "req.query.q</p>');\n",
+  };
+  const brules = [["secrets", bSecrets], ["hdr001", bHdr], ["sast", bSast], ["taint", bTaint]];
+  let batteryOk = true;
+  const BN = 60000, BN2 = 180000;
+  for (const [bname, bfn] of brules) {
+    for (const [bkind, bgenf] of Object.entries(bgen)) {
+      const t1 = (() => { const t0 = process.hrtime.bigint(); bfn(batteryCtx(bgenf(BN))); return Number(process.hrtime.bigint() - t0) / 1e6; })();
+      const t2 = (() => { const t0 = process.hrtime.bigint(); bfn(batteryCtx(bgenf(BN2))); return Number(process.hrtime.bigint() - t0) / 1e6; })();
+      const growth = t2 / Math.max(t1, 0.05);
+      // the GROWTH assert only means something when the base measurement itself
+      // is above scheduler noise (≥10 ms); tiny runs are linear-or-better and
+      // only the absolute budget is asserted for them
+      if (t2 > 2000 || (t1 > 10 && growth > 6)) { batteryOk = false; console.error(`  battery ${bname}/${bkind}: n=${t1.toFixed(0)}ms 3n=${t2.toFixed(0)}ms growth=x${growth.toFixed(1)}`); }
+    }
+  }
+  check(`U22.1 battery lock (${brules.length * Object.keys(bgen).length} cases): adversarial inputs stay LINEAR + under budget`, batteryOk);
+}
+
+// ---------- U23: capability E — large-file windowed scanning (v1.4) ----------
+{
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "anubis-capE-"));
+  const sub = join(dir, "app");
+  mkdirSync(sub, { recursive: true });
+  // 600KB+ file: JWT secret at line 2, dynamic-SQL sink near the bottom (>512KB)
+  const lines = ["// capE fixture", 'const JWT_SECRET = "supa-staging-raw-pass-xyz-longenough";'];
+  for (let i = 0; i < 14000; i++) lines.push(`const pad${i} = "padding padding padding padding padding padding padding padding padding";`);
+  lines.push("const n = req.query.name;");
+  lines.push('pool.query("SELECT * FROM users WHERE n = " + n);');
+  writeFileSync(join(sub, "big.js"), lines.join("\n"));
+  writeFileSync(join(sub, "huge.txt"), "y".repeat(5 * 1024 * 1024));
+  const { walkWithStats } = await import(d("dist/walk.js"));
+  const { windowed } = walkWithStats(dir);
+  const { scan: bigScan } = await import(d("dist/engine.js"));
+  const res = bigScan(dir, { format: "json" });
+  const bigFinds = res.findings.filter((f) => f.file.includes("big.js"));
+  check("U23.1 E: files >512KB are analyzed in windows (walk windowed + meta disclosure)",
+    windowed.length === 1 && windowed[0].windows >= 2 && windowed[0].kb > 512
+    && res.meta.files_windowed?.length === 1,
+    JSON.stringify(windowed));
+  check("U23.2 E: findings keep ABSOLUTE line numbers across seams (secret at line 2, sink at line " + lines.length + ")",
+    bigFinds.some((f) => f.id === "JWT-003" && f.line === 2)
+    && bigFinds.some((f) => f.id === "SAST-001" && f.line === lines.length),
+    JSON.stringify(bigFinds.map((f) => `${f.id}:${f.line}`)));
+  check("U23.3 E: >4MB stays skipped + disclosed (oversize) and files_scanned counts unique FILES",
+    res.meta.files_skipped?.oversize === 1 && res.meta.files_scanned === 1);
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// ---------- U24: test-authz inventory — per-HANDLER guard attribution (v1.4) ----------
+// NEST-001/test-authz investigation (synthetic Nest + Next fixtures): the
+// v1.3-audit made hasAuthzCheck call-shape-based but still FILE-level — one
+// guard call in one handler marked every route in the file "guarded", so a
+// mixed POST-guarded/DELETE-unguarded route.ts under-reported test-authz risk
+// (the authz matrix skipped the unguarded mutation). Attribution is now
+// per handler body; file-level truth survives only as the conservative
+// fallback for handlers whose body cannot be bounded.
+{
+  const { buildInventory } = await import(d("dist/inventory.js"));
+  const { buildAuthzMatrix } = await import(d("dist/authz.js"));
+  const ictx = (files) => ({ stack: { frameworks: { nestjs: true }, detected: [] }, rel: (x) => x, trackedFiles: new Set(), gitAvailable: false, files });
+  const imkf = (rel, content) => ({ abs: `/p/${rel}`, rel, content, lines: content.split("\n") });
+
+  const mixedRoute =
+    "export async function POST(req: Request) {\n" +
+    "  const s = await getSession();\n" +
+    "  await prisma.user.update({ where: { id: s.userId }, data: { name: \"x\" } });\n" +
+    "}\n" +
+    "export async function DELETE(req: Request) {\n" +
+    "  await prisma.user.delete({ where: { id: req.params.id } });\n" +
+    "}\n";
+  const nestBare =
+    "import { Controller, Get, Delete } from '@nestjs/common';\n" +
+    "@Controller('admin')\n" +
+    "export class AdminController {\n" +
+    "  @Get()\n" +
+    "  stats() { return {}; }\n" +
+    "  @Delete(':id')\n" +
+    "  purge() { return {}; }\n" +
+    "}\n";
+  const inv = buildInventory(ictx([
+    imkf("app/api/mixed/route.ts", mixedRoute),
+    imkf("src/admin.controller.ts", nestBare),
+  ]));
+  const routeRows = inv.routes.filter((r) => r.kind === "route");
+  const postRow = routeRows.find((r) => r.method === "POST");
+  const delRow = routeRows.find((r) => r.method === "DELETE");
+  check("U24.1 inventory: guard attribution is PER-HANDLER (POST guarded, DELETE null in the same file)",
+    postRow?.guard === "in-file" && delRow?.guard === null,
+    `post=${postRow?.guard} del=${delRow?.guard}`);
+
+  const matrix = buildAuthzMatrix(inv);
+  const delMatrix = matrix.find((r) => r.method === "DELETE" && r.path === "/api/mixed");
+  check("U24.2 test-authz: the unguarded mutation now reaches the matrix as authz_risk=true (was silently guarded)",
+    delMatrix?.authz_risk === true && delMatrix?.exposure === "unguarded"
+    && matrix.find((r) => r.method === "POST" && r.path === "/api/mixed")?.authz_risk === false,
+    JSON.stringify(delMatrix));
+
+  // fallback honesty: a handler the bounder cannot close keeps the file-level truth
+  const giant =
+    "export async function POST(req: Request) {\n" +
+    "  " + Array.from({ length: 70 }, (_, i) => `x${i} = ${i};`).join("\n  ") + "\n" +
+    "  await requireAuth();\n" +
+    "  await prisma.user.deleteMany();\n" +
+    "}\n";
+  const invGiant = buildInventory(ictx([imkf("app/api/giant/route.ts", giant)]));
+  check("U24.3 inventory: handler beyond the bounding budget falls back to file-level truth (conservative, not silent)",
+    invGiant.routes.find((r) => r.kind === "route")?.guard === "in-file");
+
+  // Nest method-level > class-level > APP_GUARD attribution (seeded global guard via file content)
+  const nestClass =
+    "import { Controller, Get, UseGuards } from '@nestjs/common';\n" +
+    "@UseGuards(JwtAuthGuard)\n" +
+    "@Controller('pets')\n" +
+    "export class PetsController {\n" +
+    "  @Get()\n" +
+    "  list() { return []; }\n" +
+    "}\n";
+  const invNest = buildInventory(ictx([
+    imkf("src/admin.controller.ts", nestBare),
+    imkf("src/pets.controller.ts", nestClass),
+    imkf("src/app.module.ts", "import { APP_GUARD } from '@nestjs/core';\n{ provide: APP_GUARD, useClass: AdminGuard }\n"),
+  ]));
+  const nestRows = invNest.routes.filter((r) => r.kind === "controller-method");
+  check("U24.4 inventory: Nest guard attribution = method-level > class-level > APP_GUARD (global sentinel in evidence)",
+    nestRows.find((r) => r.method === "GET" && r.file.includes("pets"))?.guard === "JwtAuthGuard"
+    && nestRows.filter((r) => r.file.includes("admin")).every((r) => r.guard === "APP_GUARD"),
+    JSON.stringify(nestRows.map((r) => `${r.file}:${r.method}=${r.guard}`)));
 }
 
 // ---------- report ----------

@@ -135,6 +135,7 @@ export interface ScanResult {
     adapters_used?: string[]; // external tools merged (run only when explicitly requested)
     adapters_requested?: string[]; // v1.2: full --tools list as requested (fail-closed accounting)
     files_skipped?: { oversize: number; binary: number; unreadable: number }; // v1.2: honest skip counts (walk caps)
+    files_windowed?: Array<{ file: string; kb: number; windows: number }>; // v1.4 (E): >512KB files analyzed in overlapping windows, disclosed
     advisory_snapshot_date?: string;  // v1.2 (T14): bundled snapshot date actually used
     advisory_snapshot_stale?: boolean; // v1.2 (T14): true when the snapshot is > 90 days old
     excluded?: { globs: string[]; files: number }; // v1.1.0: --exclude audit trail

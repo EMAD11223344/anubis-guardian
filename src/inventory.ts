@@ -1,4 +1,5 @@
 import type { Inventory, ScanContext } from "./types.js";
+import { AUTHZ_CALL } from "./rules/authzpack.js";
 
 /**
  * Recon inventory (Plan Section 6 Phase 0 — v1.6 item A; shipped v0.2).
@@ -27,9 +28,19 @@ export function buildInventory(ctx: ScanContext): Inventory {
       // reported 0 unguarded mutations. Now it requires a recognizable
       // AUTHORIZATION CHECK shape (a session/token/guard CALL or a real header
       // read), not a word.
-      const guard = hasAuthzCheck(f.content) ? "in-file" : null;
+      // v1.4 investigation fix (§NEST-001 probe): attribution is per-HANDLER —
+      // one guard call in one handler no longer marks every handler in the
+      // file guarded (a mixed POST-guarded/DELETE-unguarded route.ts used to
+      // report DELETE as "in-file guarded"). File-level truth remains only as
+      // the conservative fallback when a handler body cannot be bounded.
       for (const m of methods.length ? methods : ["GET"]) {
-        inv.routes.push({ path, file: f.rel, kind: "route", method: m, guard });
+        inv.routes.push({
+          path,
+          file: f.rel,
+          kind: "route",
+          method: m,
+          guard: handlerGuardAttribution(f, new RegExp(`export\\s+(?:async\\s+)?function\\s+${m}\\b`, "i")),
+        });
       }
       if (/webhook/i.test(path)) inv.webhooks.push({ path, file: f.rel });
     }
@@ -43,7 +54,7 @@ export function buildInventory(ctx: ScanContext): Inventory {
           file: f.rel,
           kind: "server-action",
           method: "POST",
-          guard: hasAuthzCheck(f.content) ? "in-file" : null,
+          guard: handlerGuardAttribution(f, new RegExp(`export\\s+(?:async\\s+)?function\\s+${a}\\b`)),
         });
       }
     }
@@ -120,4 +131,38 @@ export function buildInventory(ctx: ScanContext): Inventory {
  */
 function hasAuthzCheck(content: string): boolean {
   return /(?:getSession|getServerSession|getAuth|auth\s*\(\)|requireUser|requireAuth|requireAdmin|requireLogin|requireSignIn|assertAuth|checkAuth|isAuthenticated|isLoggedIn|verifyToken|jwt\.verify|verifyJWT|UseGuards|getCurrentUser|currentUser\s*\(|getUser\s*\(|cookies\s*\(\s*\)\s*\.get|\.cookies\.get|authorization["'`]?\s*[,\]:]|headers\(\)\.get\(\s*["'`]authorization)/i.test(content);
+}
+
+/**
+ * v1.4 — per-HANDLER guard attribution for the authz matrix (test-authz).
+ * Finds the handler's `export (async) function NAME` declaration, bounds its
+ * body by brace-walking (≤60 lines), and answers "does THIS handler contain a
+ * recognizable authorization-check call?". File-level truth (hasAuthzCheck)
+ * stays ONLY as the conservative fallback when the declaration cannot be
+ * found or the body cannot be closed within the bound — never as proof for a
+ * different, fully-visible handler.
+ */
+function handlerGuardAttribution(
+  f: { content: string; lines: string[] },
+  declRe: RegExp
+): "in-file" | null {
+  const isComment = (l: string) => /^\s*(?:\/\/|\*|\/\*)/.test(l);
+  const declIdx = f.lines.findIndex((l) => declRe.test(l));
+  if (declIdx === -1) return hasAuthzCheck(f.content) ? "in-file" : null;
+
+  // brace-walk from the declaration line (first "{" within the next 4 lines)
+  let started = false;
+  let depth = 0;
+  for (let j = declIdx; j < Math.min(f.lines.length, declIdx + 60); j++) {
+    for (const ch of f.lines[j]) {
+      if (ch === "{") { depth++; started = true; }
+      else if (ch === "}") { depth--; if (started && depth === 0) {
+        // body fully visible — THIS handler's truth (comments never count)
+        const body = f.lines.slice(declIdx, j + 1);
+        return body.some((l) => !isComment(l) && AUTHZ_CALL.test(l)) ? "in-file" : null;
+      } }
+    }
+  }
+  // body exceeded the bounding budget — conservative file-level fallback
+  return hasAuthzCheck(f.content) ? "in-file" : null;
 }

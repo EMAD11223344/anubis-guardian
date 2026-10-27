@@ -14,3 +14,4 @@ dist/
 tests/honeypot/findings.json
 tests/clean/findings.json
 tests/mode2/servers/*.tgz
+tests/capab/findings.json

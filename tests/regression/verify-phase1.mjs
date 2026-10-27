@@ -270,16 +270,21 @@ const commitAll = (dir, msg = "fixture") => git(["add", "-A"], dir).status === 0
     JSON.stringify((rc.json?.findings ?? []).filter((f) => f.id === "TAINT-001")));
 }
 
-// ================================================================ T7 — walk skip accounting
+// ================================================================ T7 — walk skip accounting (v1.4 contract)
+// v1.4 (capability E): the oversize skip moved 512KB → 4MB; a 512KB file is
+// now analyzed in windows and disclosed via meta.files_windowed. Only >4MB
+// still counts as oversize.
 {
   const dir = makeRepo("t7-skip", { commit: false });
   writeFileSync(join(dir, "ok.ts"), "export const a = 1;\n");
-  writeFileSync(join(dir, "big.txt"), "x".repeat(512 * 1024 + 1));
+  writeFileSync(join(dir, "big.txt"), "x".repeat(512 * 1024 + 1));            // windowed — still analyzed
+  writeFileSync(join(dir, "huge.txt"), "y".repeat(4 * 1024 * 1024 + 1));      // >4MB — oversize-skipped
   writeFileSync(join(dir, "blob.bin"), Buffer.concat([Buffer.from("PNG"), Buffer.alloc(8, 0)]));
   const r = run(["scan", dir, "--format", "json"]);
-  check("T7+ oversize/binary files appear in meta.files_skipped",
-    r.json?.meta?.files_skipped?.oversize === 1 && r.json?.meta?.files_skipped?.binary === 1,
-    JSON.stringify(r.json?.meta?.files_skipped));
+  check("T7+ oversize(>4MB)/binary files appear in meta.files_skipped; the 512KB file is WINDOWED (meta.files_windowed), not skipped",
+    r.json?.meta?.files_skipped?.oversize === 1 && r.json?.meta?.files_skipped?.binary === 1
+    && r.json?.meta?.files_windowed?.length === 1,
+    JSON.stringify({ skipped: r.json?.meta?.files_skipped, windowed: r.json?.meta?.files_windowed }));
   // clean: no oversized/binary files → no skip notice
   const dir2 = makeRepo("t7-clean", { commit: false });
   writeFileSync(join(dir2, "ok.ts"), "export const a = 1;\n");

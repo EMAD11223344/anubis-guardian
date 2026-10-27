@@ -18,6 +18,10 @@ import { scanDeps } from "./rules/deps.js";
 import { scanCrypto } from "./rules/crypto.js";
 import { scanPacks2 } from "./rules/packs2.js";
 import { scanTaint } from "./rules/taint.js";
+import { scanAuthz, scanTenant } from "./rules/authzpack.js";
+import { scanLeak } from "./rules/leakpack.js";
+import { scanDos } from "./rules/dospack.js";
+import { scanUpload } from "./rules/upload.js";
 import { scanAgentEnv } from "./rules/agentenv.js";
 import { computeScore } from "./score.js";
 import { applySuppression, parseInlineIgnores, fingerprint, mkFinding, excludeToRegExp, type RawFinding } from "./util.js";
@@ -40,7 +44,7 @@ export const ADVISORY_SNAPSHOT = "2026-10";
  * (npm/registry metadata calls happen ONLY behind --online — flagged in meta.)
  */
 export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
-  const { files: walked, skipped } = walkWithStats(rootDir);
+  const { files: walked, skipped, windowed } = walkWithStats(rootDir);
   // --exclude (v1.1.0): ONE filter point right after walk() — rules, the
   // reachability graph, inventory, suppression and meta counts all see the
   // same filtered set, so the graph can never form stale edges through an
@@ -102,6 +106,11 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
     ...scanPacks2(ctx).findings,   // v0.3 rule packs II
     ...scanTaint(ctx).findings,    // v0.3 taint-lite (MEDIUM cap)
     ...scanAgentEnv(ctx).findings, // v0.3 agent-environment checks
+    ...scanAuthz(ctx).findings,    // v1.4 capability A: RBAC/authz pack
+    ...scanTenant(ctx).findings,   // v1.4 capability B: multi-tenant isolation pack
+    ...scanLeak(ctx).findings,     // v1.4 capability C: data-leakage pack
+    ...scanDos(ctx).findings,      // v1.4 capability D: resource-exhaustion pack
+    ...scanUpload(ctx).findings,   // v1.4 capability F: upload-security pack
   ];
 
   // org rules (--rules-dir, v1.4 organizational deployment)
@@ -112,7 +121,7 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
   }
 
   // adapters (--tools, off by default — determinism contract)
-  const metaExtras: { online_used?: boolean; adapters_used?: string[]; adapters_requested?: string[]; excluded?: { globs: string[]; files: number }; files_skipped?: { oversize: number; binary: number; unreadable: number }; advisory_snapshot_date?: string; advisory_snapshot_stale?: boolean } = {};
+  const metaExtras: { online_used?: boolean; adapters_used?: string[]; adapters_requested?: string[]; excluded?: { globs: string[]; files: number }; files_skipped?: { oversize: number; binary: number; unreadable: number }; files_windowed?: Array<{ file: string; kb: number; windows: number }>; advisory_snapshot_date?: string; advisory_snapshot_stale?: boolean } = {};
   if (opts.tools?.length) {
     const ad = runAdapters(ctx, opts.tools, opts.adapterProbe);
     // v1.2 (T0, fail-closed): the operator EXPLICITLY requested this evidence.
@@ -137,6 +146,12 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
   // tree the report claims to cover; their absence is now visible in meta.
   if (skipped.oversize || skipped.binary || skipped.unreadable) {
     metaExtras.files_skipped = skipped;
+  }
+  // v1.4 (capability E): files analyzed in windows are disclosed — the scan DID
+  // include them (every line, via overlapping windows), with one static-analysis
+  // caveat: variable chains crossing a seam cannot resolve (documented).
+  if (windowed.length) {
+    metaExtras.files_windowed = windowed;
   }
 
   // inline suppression (v1.2) — file-scoped, reason + expiry mandatory
@@ -191,7 +206,9 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
     inventory: buildInventory(ctx),
     meta: {
       no_exec: true,
-      files_scanned: files.length,
+      // v1.4 (E): windowed files appear once per window in `files` — the
+      // disk-file count (unique rel paths) is what `files_scanned` reports.
+      files_scanned: new Set(files.map((x) => x.rel)).size,
       git_history_scanned: git,
       ...metaExtras,
     },
@@ -356,6 +373,8 @@ export function scanRoots(paths: string[], opts: ScanOptions = {}): ScanResult {
   if (opts.online) mergedMetaExtras.online_used = true;
   if (opts.exclude?.length) mergedMetaExtras.excluded = { globs: opts.exclude, files: results.reduce((a, r) => a + (r.meta.excluded?.files ?? 0), 0) };
   if (skippedSum.oversize || skippedSum.binary || skippedSum.unreadable) mergedMetaExtras.files_skipped = skippedSum;
+  const windowedAll = results.flatMap((r) => r.meta.files_windowed ?? []);
+  if (windowedAll.length) mergedMetaExtras.files_windowed = windowedAll;
 
   return {
     tool: "anubis-guardian",
