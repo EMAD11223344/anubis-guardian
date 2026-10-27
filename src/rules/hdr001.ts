@@ -31,9 +31,13 @@ const SINK_PROP_VALUE_RE = /\b(password|connectionString|url|host|user|uri)\s*:\
 const SINK_POSITIONAL_RE = /\b(?:postgres|drizzle|mongoose\.connect)\s*\(\s*((?:[^(),]|\([^()]*\))+)/;
 
 /** v1.2 (T12): options-object ASSIGNMENT form (honeypot shape):
- *   `pool.options.password = <headerValue>` / `client.connectionString = …` */
+ *   `pool.options.password = <headerValue>` / `client.connectionString = …`
+ * v1.4 (ReDoS re-audit): the greedy `[\w$]*` prefix before the required
+ * Pool/Client literal backtracked O(n) per start position on adversarial
+ * word-runs (measured 9 s @ 100 KB → 81 s @ 300 KB, quadratic) — bounded to
+ * {0,64} (identifier-length cap), same matches, linear behavior. */
 const SINK_ASSIGN_RE =
-  /[\w$]*(?:[Pp]ool|[Cc]lient|onnection|mongoose)(?:\.options)?\.(?:password|connectionString|user|host|uri|url)\s*=\s*([^;\n]+)/;
+  /[\w$]{0,64}(?:[Pp]ool|[Cc]lient|onnection|mongoose)(?:\.options)?\.(?:password|connectionString|user|host|uri|url)\s*=\s*([^;\n]+)/;
 
 const SECRET_SHAPE = /^(?:[A-Za-z0-9+/=_-]{20,}|[A-Fa-f0-9]{16,}|.{8,}@[A-Za-z0-9.-]+:.{3,})$/;
 const PLACEHOLDER = /(changeme|xxxxx|<[^>]*>|\$\{[^}]*\}|your[-_]|example|placeholder|test|dummy|\*{3,})/i;
@@ -101,12 +105,15 @@ export function scanHdr001(ctx: ScanContext): RuleResult {
     const hasHeaderRead = buildReceiverMatcher(f.lines);
     const headerVars = new Map<string, string>(); // varName → header name
     for (const line of f.lines) {
-      if (!hasHeaderRead(line)) continue;
-      const headerName = hasHeaderRead(line) ?? "(unknown header)";
-      for (const m of line.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g)) {
+      const headerName = hasHeaderRead(line);
+      if (!headerName) continue; // v1.4: evaluated ONCE per line (was twice — 2× scan tax)
+      // v1.4 (ReDoS re-audit): identifier runs bounded to {0,64} — unbounded
+      // greedy runs before required literals backtrack quadratic-style on
+      // adversarial word-runs (measured). Same matches, linear behavior.
+      for (const m of line.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]{0,64})\s*=/g)) {
         if (!headerVars.has(m[1])) headerVars.set(m[1], headerName);
       }
-      for (const m of line.matchAll(/([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?[A-Za-z_$.]/g)) {
+      for (const m of line.matchAll(/([A-Za-z_$][\w$]{0,64})\s*=\s*(?:await\s+)?[A-Za-z_$.]/g)) {
         if (!headerVars.has(m[1])) headerVars.set(m[1], headerName);
       }
       // v1.3-audit (§3.5): destructured header reads also bind header values —

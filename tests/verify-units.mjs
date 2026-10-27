@@ -804,8 +804,16 @@ const vc = await import(d("dist/rules/valueclass.js"));
     sastIds('const q = "SELECT 1";\nawait pool.query(q);\n').length === 0);
   check("U18.8f alias scope: assignment in ANOTHER function does not resolve (same-function only)",
     sastIds("export function leaky(req: Request) {\n  const q = \"SELECT * FROM users WHERE name='\" + req.query.name + \"'\";\n  return q;\n}\nexport function innocent(pool: any, req: any) {\n  await pool.query(q);\n}\n").length === 0);
-  check("U18.8g alias one-hop: a chained alias (const q = r) is NOT followed",
-    sastIds("const r = \"SELECT * FROM users WHERE name='\" + req.query.name + \"'\";\nconst q = r;\nawait pool.query(q);\n").length === 0);
+  check("U18.8g v1.4 flow: a chained alias (const q = r) IS followed (bounded multi-hop chase — was one-hop-only)",
+    sastFind("const r = \"SELECT * FROM users WHERE name='\" + req.query.name + \"'\";\nconst q = r;\nawait pool.query(q);\n")
+      .some((f) => f.id === "SAST-001" && f.severity === "high" && f.needs_confirmation !== true));
+  check("U18.8g-v2 flow cap: a >4-hop alias chain does NOT resolve (bounded chase, no half-verdicts)",
+    sastIds("const v0 = \"SELECT * FROM users WHERE name='\" + req.query.name + \"'\";\nconst v1 = v0;\nconst v2 = v1;\nconst v3 = v2;\nconst v4 = v3;\nconst v5 = v4;\nconst v6 = v5;\nawait pool.query(v6);\n").length === 0);
+  check("U18.8g-v3 flow cycle: self/cross-referencing assignment chains never fire (cycle guard)",
+    sastIds("let q = \"x\";\nq = q + q;\nconst r = q;\nawait pool.query(r);\n").length === 0);
+  check("U18.8g-v4 flow method-wrap: intermediate b = a.trim() still resolves the origin SQL build",
+    sastFind("const a = \"SELECT * FROM users WHERE name='\" + req.query.name + \"'\";\nconst b = a.trim();\nconst q = b;\nawait pool.query(q);\n")
+      .some((f) => f.id === "SAST-001" && f.severity === "high"));
   check("U18.8h alias multi-line template: unterminated template joined across lines still resolves → HIGH",
     sastFind("const q = `SELECT * FROM users WHERE\n  name='${req.query.name}'`;\nawait pool.query(q);\n")
       .some((f) => f.id === "SAST-001" && f.severity === "high"));
@@ -820,6 +828,41 @@ const vc = await import(d("dist/rules/valueclass.js"));
     sastIds('let q = "SELECT * FROM users WHERE id=" + req.query.id;\nq = "SELECT 1";\nawait pool.query(q);\n').length === 0
       && sastFind('let q = "SELECT 1";\nq = "SELECT * FROM users WHERE id=" + req.query.id;\nawait pool.query(q);\n')
           .some((f) => f.id === "SAST-001" && f.severity === "high" && /pool\.query\(q -> /.test(f.evidence.masked)));
+
+  // ---- v1.4 (§2): cross-file imported-helper SQL build flow (no-exec: reads the helper source) ----
+  check("U18.8k x-file: pool.query(buildQuery(req.params.id)) + local helper builds SQL → SAST-001 HIGH",
+    (() => {
+      const route = `import { buildQuery } from "../lib/sql";\nexport async function GET(req: Request) {\n  const rows = pool.query(buildQuery(req.params.id));\n}\n`;
+      const helper = `export function buildQuery(id: string) { return "SELECT * FROM users WHERE id=" + id; }\n`;
+      const out = scanSast({ rootDir: "/p", files: [
+        { abs: "/p/app/api/route.ts", rel: "app/api/route.ts", content: route, lines: route.split("\n") },
+        { abs: "/p/app/lib/sql.ts", rel: "app/lib/sql.ts", content: helper, lines: helper.split("\n") },
+      ] }).findings;
+      return out.some((f) => f.id === "SAST-001" && f.severity === "high" && /buildQuery/.test(f.evidence.masked) && /builds SQL/.test(f.evidence.masked));
+    })());
+  check("U18.8l x-file clean: local helper builds a parameterized query → SILENT",
+    (() => {
+      const route = `import { buildQuery } from "../lib/sql";\nexport async function GET(req: Request) {\n  const rows = pool.query(buildQuery(req.params.id));\n}\n`;
+      const helper = `export function buildQuery(id: string) { return sql("SELECT * FROM users WHERE id=$1", [id]); }\n`;
+      const out = scanSast({ rootDir: "/p", files: [
+        { abs: "/p/app/api/route.ts", rel: "app/api/route.ts", content: route, lines: route.split("\n") },
+        { abs: "/p/app/lib/sql.ts", rel: "app/lib/sql.ts", content: helper, lines: helper.split("\n") },
+      ] }).findings;
+      return out.filter((f) => f.id === "SAST-001").length === 0;
+    })());
+  check("U18.8m x-file: npm-imported helper is NEVER followed (non-relative spec)",
+    (() => {
+      const route = `import { buildQuery } from "some-npm-package";\nexport async function GET(req: Request) {\n  const rows = pool.query(buildQuery(req.params.id));\n}\n`;
+      const helper = `export function buildQuery(id: string) { return "SELECT * FROM users WHERE id=" + id; }\n`;
+      const out = scanSast({ rootDir: "/p", files: [
+        { abs: "/p/app/api/route.ts", rel: "app/api/route.ts", content: route, lines: route.split("\n") },
+        { abs: "/p/some-npm-package/sql.ts", rel: "some-npm-package/sql.ts", content: helper, lines: helper.split("\n") },
+      ] }).findings;
+      return out.filter((f) => f.id === "SAST-001").length === 0;
+    })());
+  check("U18.8n generalize: sink-arg resolver handles concat-with-traced-var + method wrap (var names not from any example)",
+    sastFind("const r = req.query.filter;\nconst q2 = \"SELECT * FROM users WHERE name IN (\" + r.toUpperCase() + \")\";\nawait pool.query(q2);\n")
+      .some((f) => f.id === "SAST-001" && f.severity === "high"));
 
   // ---- T9: dynamic code execution (SAST-003 non-literal + TAINT-006) ----
   check("U18.9 T9: eval(<non-literal user var>) → SAST-003 MEDIUM + needs_confirmation",

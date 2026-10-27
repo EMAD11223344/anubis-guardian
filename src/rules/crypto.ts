@@ -39,7 +39,10 @@ export function scanCrypto(ctx: ScanContext): RuleResult {
       if (CLEAN_CONTEXT.test(line)) continue;
 
       const window = f.lines.slice(Math.max(0, i - 4), i + 5).join("\n");
-      const assignTarget = (line.match(/([A-Za-z_$][\w$]*)\s*=\s*(?:Math\.random|.*Math\.random)/) ?? [])[1] ?? "";
+      // v1.4 (ReDoS re-audit): the `.*Math.random` alternative scanned O(n) per
+      // start position on adversarial long lines — the assignment value is by
+      // construction on the same line and short: bound both runs.
+      const assignTarget = (line.match(/([A-Za-z_$][\w$]{0,64})\s*=\s*(?:Math\.random|.{0,200}Math\.random)/) ?? [])[1] ?? "";
 
       const tokenVar = TOKENISH_VAR.test(assignTarget) || TOKENISH_VAR.test(window.split("Math.random")[0].slice(-60));
       const sinkNear = SECURITY_SINK.test(window);

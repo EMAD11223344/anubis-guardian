@@ -1,6 +1,10 @@
-import type { ScanContext, RuleResult } from "../types.js";
+import type { ScanContext, RuleResult, ScannedFile } from "../types.js";
 import { rootCause } from "../util.js";
 import { classifyFile } from "./context.js";
+import {
+  collectAssignments, sameFunctionBound, resolveVarFlow, findLocalHelperBody, helperParamFlow,
+  type Assignment,
+} from "./flow.js";
 
 /**
  * Layer 4 — SAST Light (Plan Section 6, v0.1 rows of the coverage matrix):
@@ -33,7 +37,10 @@ const SQLI_SINKS: RegExp[] = [
   // carries the verdict, so ANY receiver `.query(`/`.execute(` qualifies. Non-SQL shapes
   // stay silent because verdicts require interpolation/concat/alias-dynamic in arg #1
   // (`.querySelector(`/xstate `.execute(state,…)` never meet the shape).
-  /(?<![\w$.])[\w$]*(?:\.[\w$]+)*\.(?:query|execute)\s*\(/g,
+  // v1.4 (ReDoS re-audit): identifier runs bounded to {0,64} — the unbounded
+  // greedy `[\w$]*` before the required `.` backtracked quadratic-style on
+  // adversarial word-runs; same matches, linear scans.
+  /(?<![\w$.])[\w$]{0,64}(?:\.[\w$]{1,64})*\.(?:query|execute)\s*\(/g,
 ];
 /** receiver prefixes on the general `.query(/.execute(` sink that are NOT databases */
 const NON_SQL_RECV = /^(?:document|window|ctx|canvas|dom|el|elem|html|api|router|program)\b/i;
@@ -46,69 +53,27 @@ function requestDerivedVars(content: string): Set<string> {
   const source = /req(?:uest)?\s*\.\s*(?:query|params|body|headers|cookies)|searchParams\s*\.\s*get|@Param|@Query|@Body|@Headers/;
   for (const line of content.split(/\r?\n/)) {
     if (!source.test(line)) continue;
-    for (const m of line.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g)) vars.add(m[1]);
-    for (const m of line.matchAll(/([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:req(?:uest)?\s*\.\s*(?:query|params|body|headers|cookies)|searchParams\s*\.\s*get)\s*\.?\s*[^;\n]{0,60}?;?$/g)) vars.add(m[1]);
+    // v1.4 (ReDoS re-audit): identifier runs bounded to {0,64} — unbounded
+    // greedy identifier runs before required literals backtrack quadratically
+    // on adversarial word-runs (measured). Same matches, linear behavior.
+    for (const m of line.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]{0,64})\s*=/g)) vars.add(m[1]);
+    for (const m of line.matchAll(/([A-Za-z_$][\w$]{0,64})\s*=\s*(?:await\s+)?(?:req(?:uest)?\s*\.\s*(?:query|params|body|headers|cookies)|searchParams\s*\.\s*get)\s*\.?\s*[^;\n]{0,60}?;?$/g)) vars.add(m[1]);
   }
   return vars;
 }
 
 /**
- * v1.3 — single-hop variable propagation into SQL sinks (closes the measured
- * alias false-negative: `const q = "SELECT …'" + req.query.x + "'";
- * pool.query(q)` was invisible because the first argument is a bare
- * identifier). When a sink's first argument is a bare identifier, the SAME
- * dynamic-SQL analysis runs on the variable's assigned value. Scope is
- * deliberately one hop, same function only (regex-level bounds: assignment
- * must precede the sink line with no column-0 closing brace and no new
- * function/class/arrow scope opened between them). No multi-hop chains
- * (q = r is NOT followed further), no cross-function dataflow, NO new
- * runtime dependencies, and the sink list itself is unchanged.
+ * v1.4 — bounded multi-hop variable propagation into SQL sinks (§2): the v1.3
+ * single-hop alias resolution is now a flow CHASE (max 4 hops, cycle-guarded,
+ * same-function bound) via the shared `rules/flow.ts` module — intermediate
+ * variables (`const r = "SQL…"+req.x; const q = r; pool.query(q)`) resolve,
+ * closing the documented chain gap. Scope is still one function body, no
+ * call-graph, no cross-file dataflow EXCEPT the bounded imported-helper
+ * check below (`.query(buildQuery(req.params.x))` — reads the helper's own
+ * source, never executes it). No new runtime dependencies.
  */
 
-/** lines that OPEN a new scope (same-function bound for the alias lookup) */
-const SCOPE_OPEN_LINE = /(?:^|\W)(?:function\s*\(|function\s+[A-Za-z_$]|class\s+[A-Za-z_$]|=>\s*\{)/;
-
-/** string-building assignments per variable: `const|let|var NAME = <rhs>` AND
- *  plain reassignments `NAME = <rhs>` (the last assignment before a use wins,
- *  so a var demoted to a constant stops being tainted and one promoted to a
- *  request-built string becomes tainted); a single unterminated template
- *  literal is joined forward (bounded) so multi-line SQL templates resolve too */
-function stringVarAssignments(lines: string[]): Map<string, Array<{ line0: number; rhs: string }>> {
-  const out = new Map<string, Array<{ line0: number; rhs: string }>>();
-  for (let i = 0; i < lines.length; i++) {
-    const m = /^\s*(?:(?:const|let|var)\s+)?([A-Za-z_$][\w$]*)\s*=\s*(.+?)\s*;?\s*$/.exec(lines[i]);
-    if (!m) continue;
-    let rhs = m[2].replace(/;\s*$/, "").trim();
-    if ((rhs.match(/`/g) ?? []).length % 2 === 1) {
-      let joined = rhs;
-      for (let j = i + 1; j < lines.length && j - i < 8 && (joined.match(/`/g) ?? []).length % 2 === 1; j++) {
-        joined += "\n" + lines[j];
-      }
-      if ((joined.match(/`/g) ?? []).length % 2 === 0) rhs = joined;
-    }
-    rhs = rhs.replace(/;\s*$/, "").trim();
-    if (rhs) {
-      const arr = out.get(m[1]) ?? [];
-      arr.push({ line0: i, rhs });
-      out.set(m[1], arr);
-    }
-  }
-  return out;
-}
-
-/** true when the lines strictly between the two zero-based indices stay in
- *  one function body: a column-0 `}` (end of a function body in normal
- *  formatting) or a new scope-opening line breaks the bound */
-function sameFunctionBound(lines: string[], from0: number, to0: number): boolean {
-  for (let i = from0 + 1; i < to0; i++) {
-    const line = lines[i] ?? "";
-    if (line.startsWith("}")) return false;
-    if (SCOPE_OPEN_LINE.test(line)) return false;
-  }
-  return true;
-}
-
-/** dynamic-SQL shape predicates — shared by inline and alias-resolved args */
+/** dynamic-SQL shape predicates — shared by inline, alias-resolved and helper-resolved args */
 const hasInterp = (s: string): boolean => /\$\{[^}]*\}/.test(s) || (s.includes("${") && s.length > 8);
 const hasConcat = (s: string): boolean =>
   /["'`]\s*\+\s*[A-Za-z_$]|\.concat\s*\(/.test(s) || /(?:[A-Za-z_$)\]])\s*\+\s*["'`]/.test(s);
@@ -180,8 +145,26 @@ export function scanSast(ctx: ScanContext): RuleResult {
     // analysis at recognized DB sinks, replacing the old first-quote-stopping
     // line regex (which had both a quote bug and a blanket `prisma.` exclusion).
     if (isServer) {
-      // v1.3: alias candidates for single-hop resolution (per file, built lazily)
-    let aliasVars: Map<string, Array<{ line0: number; rhs: string }>> | null = null;
+      // v1.4: assignment map for the bounded flow chase (built lazily per file)
+    let assignments: Map<string, Assignment[]> | null = null;
+    let importSpecs: Map<string, string> | null = null;
+    const importRelSpec = (name: string): string | null => {
+      if (!importSpecs) {
+        importSpecs = new Map();
+        for (const line of f.lines) {
+          const im = /^import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/.exec(line);
+          if (im) {
+            for (const part of im[1].split(",")) {
+              const n = part.match(/(?:\w+\s+as\s+)?([A-Za-z_$][\w$]*)\s*$/)?.[1];
+              if (n) importSpecs.set(n, im[2]);
+            }
+          }
+          const ds = /^import\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*["']([^"']+)["']\s*\)/.exec(line);
+          if (ds) importSpecs.set(ds[1], ds[2]);
+        }
+      }
+      return importSpecs.get(name) ?? null;
+    };
     const seenSinks = new Set<number>(); // content-offset dedupe: sinks matched by several patterns count once
 
     for (const sinkRe of SQLI_SINKS) {
@@ -220,28 +203,68 @@ export function scanSast(ctx: ScanContext): RuleResult {
           };
           // unsafe = ${…} interpolation OR concat with a non-literal, in the
           // FIRST argument — regardless of inner quotes ("…'+req.x+'…" lands too)
-          // v1.3 — single-hop alias attempt: pool.query(q) / pool.query(q, [id])
-          // resolve q to its nearest preceding same-function assignment and run
-          // the SAME analysis on the resolved value (chained aliases q = r are
-          // NOT followed further — one hop only).
+          // v1.4 — bounded multi-hop chase: pool.query(q) resolves q through
+          // intermediate variables to its effective value (max 4 hops,
+          // cycle-guarded, same-function bound) and runs the SAME analysis on
+          // the resolved value.
           const bare = /^\s*([A-Za-z_$][\w$]*)\s*(?:,|$)/.exec(arg);
           if (bare) {
-            if (!aliasVars) aliasVars = stringVarAssignments(f.lines);
-            const cands = aliasVars.get(bare[1]);
-            const sink0 = lineNo - 1;
-            const c = cands
-              ? [...cands].reverse().find((a) => a.line0 < sink0 && sameFunctionBound(f.lines, a.line0, sink0))
-              : undefined;
-            if (c && (hasInterp(c.rhs) || hasConcat(c.rhs))) {
-              pushSast(c.rhs, `${sinkName}(${bare[1]} -> ${c.rhs.replace(/\s+/g, " ").trim().slice(0, 120)})`);
-              continue; // alias verdict made — no duplicate emission from the raw arg
+            if (!assignments) assignments = collectAssignments(f.lines);
+            const flow = resolveVarFlow(f.lines, assignments, bare[1], lineNo - 1);
+            if (flow) {
+              // v1.4: ANY link in the chase chain being dynamic-SQL shaped fires —
+              // the effective value reaches the sink through intermediates.
+              const shaped = flow.chain.find((r) => hasInterp(r) || hasConcat(r));
+              if (shaped) {
+                const val = shaped.replace(/\s+/g, " ").trim().slice(0, 120);
+                pushSast(shaped, `${sinkName}(${bare[1]} -> ${val}${flow.hops > 1 ? ` (via ${flow.hops - 1} intermediate${flow.hops - 1 === 1 ? "" : "s"})` : ""})`);
+                continue; // alias verdict made — no duplicate emission from the raw arg
+              }
             }
             // else: constant/resolved-safe alias ⇒ falls through to the inline
             // analysis below, which stays silent for a plain identifier
           }
+          // v1.4 — inline composite args get identifier tracing too:
+          // `"const prefix -- " + r` where r resolves to request data => HIGH.
+          // Bounded to 4 identifiers per arg; verdict surface unchanged otherwise.
+          let tracedArg = "";
+          if ((hasInterp(arg) || hasConcat(arg)) && !isReqDerived(arg)) {
+            if (!assignments) assignments = collectAssignments(f.lines);
+            const idents = [...new Set(arg.match(/[A-Za-z_$][\w$]*/g) ?? [])].slice(0, 4);
+            for (const id of idents) {
+              if (/\b(await|function|return|typeof|new|const|let|var|if|else|null|undefined|true|false)\b/.test(id)) continue;
+              const flow = resolveVarFlow(f.lines, assignments, id, lineNo - 1);
+              if (flow && isReqDerived(flow.value)) { tracedArg = flow.value; break; }
+            }
+          }
+          // v1.4 — cross-file helper flow (single-hop, bounded):
+          // `pool.query(buildQuery(req.params.id))` — if the FIRST argument is
+          // a call to a LOCALLY imported helper, read the helper's own source
+          // (never executed) and check whether its parameter builds dynamic
+          // SQL. Honors the no-exec + determinism contracts.
+          const helperCall = /^\s*([A-Za-z_$][\w$]*)\s*\((.*)$/.exec(arg);
+          if (helperCall && helperCall[2]?.length) {
+            const inner = helperCall[2].replace(/\s*\)\s*;?\s*$/, "");
+            if (isReqDerived(inner)) {
+              const spec = importRelSpec(helperCall[1]);
+              if (spec) {
+                const helperFile = findLocalHelperBody(helperCall[1], spec, f, ctx.files);
+                if (helperFile) {
+                  const param = helperParamFlow(helperFile, helperCall[1], 0);
+                  if (param) {
+                    pushSast(
+                      `${inner} (helper ${helperCall[1]} builds SQL from "${param}")`,
+                      `${sinkName}(${helperCall[1]}(${inner.replace(/\s+/g, " ").trim().slice(0, 80)} -> ${helperFile.rel} builds SQL from "${param}")`
+                    );
+                    continue;
+                  }
+                }
+              }
+            }
+          }
           if (!hasInterp(arg) && !hasConcat(arg)) continue;                 // constant / $1 / ? anchored — safe
           pushSast(
-            arg,
+            tracedArg ? `${arg} → ${tracedArg}` : arg,
             `${sinkName}(${arg.replace(/\s+/g, " ").trim().slice(0, 120)})`
           );
         }

@@ -1,6 +1,7 @@
 import type { ScanContext, RuleResult, ScannedFile } from "../types.js";
 import { rootCause } from "../util.js";
 import { classifyFile } from "./context.js";
+import { collectAssignments, propagateTaint } from "./flow.js";
 
 /**
  * Taint-lite (Plan Section 6 Layer 4, v1.6 item — v0.3):
@@ -34,7 +35,8 @@ const SINK_RULES: Array<{
     // §3.6 verdict: a hostname-based origin allowlist IS a destination
     // validation — `["app.example"].includes(u.hostname)` / `u.hostname === …`
     // counts, not just ALLOWED_-named variables.
-    sanitizer: /allowlist|allowList|whitelist|allowed[_-]?hosts?|trusted[_-]?hosts?|isAllowed|validateUrl|assertUrl|ALLOWED_[A-Z_]+|hostname\s*(?:===|!==)|includes\s*\(\s*[A-Za-z_$][\w$.]*\.?hostname/,
+    // v1.4: sanitizeUrl/safeUrl/cleanUrl/isValidUrl helpers count as URL validators too.
+    sanitizer: /allowlist|allowList|whitelist|allowed[_-]?hosts?|trusted[_-]?hosts?|isAllowed|validateUrl|assertUrl|sanitizeUrl|safeUrl|cleanUrl|isValidUrl|ALLOWED_[A-Z_]+|hostname\s*(?:===|!==)|includes\s*\(\s*[A-Za-z_$][\w$.]*\.?hostname/,
     owasp: "A10",
     fix: "Validate the destination against a host allowlist (scheme + exact host) before any outbound request; block private/link-local ranges (169.254.x, 127.x, 10.x, 172.16-31.x, 192.168.x) and metadata endpoints.",
     note: "classic vibe-coding SSRF: 'fetch anything by URL' helpers — internal services/metadata IPs become reachable",
@@ -101,20 +103,21 @@ const SINK_RULES: Array<{
   },
 ];
 
-/** a tainted variable: assigned from a source expression anywhere in the file */
+/** a tainted variable: assigned from a source expression anywhere in the file,
+ *  PLUS — v1.4 (§2) — every intermediate variable transitively derived from one
+ *  (bounded fixpoint via rules/flow.ts): `const a = req.x; const b = a.trim()`
+ *  no longer hides `b` from the sink check. */
 function taintedVars(lines: string[]): Set<string> {
-  const vars = new Set<string>();
-  for (const line of lines) {
-    if (!SOURCE_EXPR.test(line)) continue;
-    for (const m of line.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g)) vars.add(m[1]);
-    for (const m of line.matchAll(/([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:req(?:uest)?\.(?:query|body|params)|searchParams\.get|cookies\(\)\.get|headers\(\)\.get)/g)) vars.add(m[1]);
-  }
+  const assigns = collectAssignments(lines);
+  const tainted = propagateTaint(lines, assigns, (rhs) => SOURCE_EXPR.test(rhs));
   // NestJS decorator-bound request values are sources too:
   //   read(@Param('name') name: string) / @Query('q') q / @Body() body
   for (const line of lines) {
-    for (const m of line.matchAll(/@(?:Param|Query|Body|Headers)\s*\(\s*['"]?[\w.-]*['"]?\s*\)\s+([A-Za-z_$][\w$]*)/g)) vars.add(m[1]);
+    for (const m of line.matchAll(/@(?:Param|Query|Body|Headers)\s*\(\s*['"]?[\w.-]*['"]?\s*\)\s+([A-Za-z_$][\w$]*)/g)) {
+      if (!/^\s*(?:\/\/|\*|\/\*)/.test(line)) tainted.add(m[1]);
+    }
   }
-  return vars;
+  return tainted;
 }
 
 function containsTaint(line: string, vars: Set<string>): boolean {
