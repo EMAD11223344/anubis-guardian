@@ -41,37 +41,206 @@ const PRIVILEGED_OP =
 const CLIENT_AUTHZ_DECISION =
   /(?:if\s*\(|(?:===|!==|==|!=)\s*["'`]?(?:true|false|admin|1)|=\s*(?:true|"admin"|"1"))?\s*(?:req(?:uest)?|session|auth)\s*\.\s*(?:body|query|headers|nextUrl\.searchParams|cookies)\b[^\n]{0,60}\b(?:is[_-]?admin|admin|role|permission|privilege|is[_-]?super(?:user)?)/i;
 
+/**
+ * v1.5.2 — the parsed request BODY (`const body = await request.json()`) is
+ * exactly as client-controlled as `req.body`; decisions taken from ITS fields
+ * are the same AUTHZ-002 anti-pattern. Precision contract: only a
+ * DECISION shape (if/switch, equality, ternary) over authorization-related
+ * fields fires — ordinary body fields (displayName, item, …) never do.
+ */
+const AUTHZ_FIELD =
+  /\b(?:is[_-]?admin|is[_-]?super(?:user)?|admin|role|roles|permission|permissions|privilege|privileges|is[_-]?owner|scope|scopes)\b/i;
+/** conditional/decision operators a line must carry besides the authz-field access */
+const DECISION_OP = /\b(?:if|switch)\s*\(|===|!==|==|!=|\?(?!\.)/;
+/** `const body = (await)? request.json()` — the parsed-body local */
+const REQ_JSON_PARSE =
+  /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\(?\s*)?(?:await\s+)?req(?:uest)?\s*\.\s*json\s*\(\s*\)/;
+/** `const { a, b: c } = await request.json()` — destructured fields */
+const REQ_JSON_DESTRUCTURE =
+  /(?:const|let|var)\s*\{([^}]+)\}\s*=\s*(?:\(?\s*)?(?:await\s+)?req(?:uest)?\s*\.\s*json\s*\(\s*\)/;
+/** one-hop body alias: `const auth = body;` */
+const REQ_JSON_ALIAS = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*;?\s*$/;
+
+interface BodyLocals { bodyVars: string[]; authzIdents: string[] }
+/** bounded per-block collection of request-body locals (parse + destructure + one-hop alias) */
+function requestBodyLocals(body: string[]): BodyLocals {
+  const bodyVars: string[] = [];
+  const authzIdents: string[] = [];
+  for (const bl of body) {
+    if (isComment(bl)) continue;
+    if (bodyVars.length < 8) { // bounded local set (documented)
+      const mp = REQ_JSON_PARSE.exec(bl);
+      if (mp) { bodyVars.push(mp[1] as string); continue; }
+      const md = REQ_JSON_DESTRUCTURE.exec(bl);
+      if (md) {
+        for (const part of (md[1] as string).split(",")) {
+          const id = /^([A-Za-z_$][\w$]*)/.exec(part.split(":").pop()?.trim() ?? "")?.[1];
+          if (id && AUTHZ_FIELD.test(id)) authzIdents.push(id);
+        }
+      }
+    }
+  }
+  for (const bl of body) {
+    if (bodyVars.length >= 8) break;
+    if (!bodyVars.length) break;
+    const ma = REQ_JSON_ALIAS.exec(bl.trim());
+    if (ma && bodyVars.includes(ma[2] as string) && !bodyVars.includes(ma[1] as string)) {
+      bodyVars.push(ma[1] as string);
+    }
+  }
+  return { bodyVars, authzIdents };
+}
+/** does line decide on `<var>.<authzField>` (incl. optional chains)? */
+const bodyVarDecision = (l: string, v: string): boolean =>
+  new RegExp(`\\b${v}\\b\\s*\\??\\s*\\.[\\s\\S]{0,40}?${AUTHZ_FIELD.source}`, "i").test(l);
+/** does line decide on a bare destructured authz field? */
+const bareIdentDecision = (l: string, a: string): boolean =>
+  new RegExp(`(^|[^\\w$.])${a}\\b`, "i").test(l);
+
 interface HandlerBlock { name: string; line0: number; bodyEnd0: number; mutating: boolean; }
 
+/** bounded signature search window (lines) for the handler body locator */
+const SIG_WINDOW = 60;
+/** per-handler body budget in lines (same documented bound as v1.4) */
+const BODY_MAX = 40;
+/** absolute character cap for one bounded body-location scan */
+const CHAR_BUDGET = 20000;
+
+type HMode = "fn" | "express";
+
+/** string/comment/template frames of the bounded tokenizer */
+type Frame =
+  | { kind: "linec" }
+  | { kind: "blockc" }
+  | { kind: "str"; quote: string }
+  | { kind: "tpl" }
+  | { kind: "tplcode"; depth: number };
+
+interface BodySpan { open0: number; close0: number }
+
 /**
- * Bounded handler-body extraction (never deeper than ~40 lines/block, brace-depth
- * counted): Next.js App Router `export async function POST(req)`, Express-style
- * `(req, res) => {`-handlers via app.<method>(“/path”, …), and NestJS decorated
- * methods (@Post/@Get … when NestJS is in the stack).
+ * v1.5.2 — robust handler-body identification (was: "first `{` in a 4-line
+ * window", which mistook destructured-parameter / TS-annotation braces for the
+ * body opening and truncated the handler before the security-relevant calls).
+ *
+ * Bounded, string/comment/template-aware scanner: parentheses of the parameter
+ * list/type arguments are tracked, and the BODY is the depth-0 `{` AFTER the
+ * parameter list closes (`fn` mode: `export (async) function METHOD(...)` /
+ * `export const METHOD = ... =>` / NestJS `@Post() method(...)`), or the `{`
+ * following the callback `=>` while the call is still open (`express` mode:
+ * `app.post("/path", (req, res) => { … })`).
+ *
+ * Documented corners (bounded heuristic, review-note rule — never a verdict):
+ * a `{`-bearing object default inside the starkest express callback parameter
+ * or a TS return-type annotation that itself holds object braces can still
+ * misplace the boundary; both are rare in route handlers and the rule contract
+ * stays needs_confirmation.
+ */
+function handlerBodySpan(lines: string[], start0: number, mode: HMode): BodySpan | null {
+  const hiLine = Math.min(lines.length, start0 + SIG_WINDOW);
+  const frames: Frame[] = [];
+  let paren = 0, openedParen = false, closedOnce = false, sawArrow = false;
+  let bodyOpen0 = -1, bodyDepth = 0;
+  let chars = 0;
+  for (let li = start0; li < hiLine; li++) {
+    const line = lines[li] ?? "";
+    let col = 0;
+    while (col < line.length) {
+      if (++chars > CHAR_BUDGET) {
+        return bodyOpen0 === -1 ? null : { open0: bodyOpen0, close0: Math.min(lines.length - 1, bodyOpen0 + BODY_MAX) };
+      }
+      const c = line[col] as string;
+      const nx = col + 1 < line.length ? (line[col + 1] as string) : "";
+      const top = frames[frames.length - 1];
+      if (top) {
+        if (top.kind === "linec") break; // rest of the line is a comment
+        if (top.kind === "blockc") {
+          if (c === "*" && nx === "/") { frames.pop(); col += 2; } else col++;
+          continue;
+        }
+        if (top.kind === "str") {
+          if (c === "\\") { col += 2; }
+          else if (c === top.quote) { frames.pop(); col++; }
+          else col++;
+          continue;
+        }
+        if (top.kind === "tpl") {
+          if (c === "\\") { col += 2; }
+          else if (c === "`") { frames.pop(); col++; }
+          else if (c === "$" && nx === "{") { frames.push({ kind: "tplcode", depth: 1 }); col += 2; }
+          else col++;
+          continue;
+        }
+        // tplcode — inside `${ … }` of a template literal
+        if (c === "{") { top.depth++; col++; continue; }
+        if (c === "}") { top.depth--; col++; if (top.depth === 0) frames.pop(); continue; }
+        if (c === "`") { frames.push({ kind: "tpl" }); col++; continue; }
+        if (c === '"' || c === "'") { frames.push({ kind: "str", quote: c }); col++; continue; }
+        col++;
+        continue;
+      }
+      // ————— top is code —————
+      if (c === "/" && nx === "/") { frames.push({ kind: "linec" }); col += 2; continue; }
+      if (c === "/" && nx === "*") { frames.push({ kind: "blockc" }); col += 2; continue; }
+      if (c === '"' || c === "'") { frames.push({ kind: "str", quote: c }); col++; continue; }
+      if (c === "`") { frames.push({ kind: "tpl" }); col++; continue; }
+      if (bodyOpen0 !== -1) {
+        // body already located — count only braces to its close
+        if (c === "{") { bodyDepth++; col++; continue; }
+        if (c === "}") { bodyDepth--; col++; if (bodyDepth === 0) return { open0: bodyOpen0, close0: li }; continue; }
+        col++;
+        continue;
+      }
+      if (c === "(") { paren++; openedParen = true; sawArrow = false; col++; continue; }
+      if (c === ")") { if (paren > 0) { paren--; if (paren === 0) closedOnce = true; } col++; continue; }
+      if (c === "=" && nx === ">") { sawArrow = true; col += 2; continue; }
+      if (c === "{") {
+        const openBody =
+          mode === "fn"
+            ? paren === 0 && (closedOnce || (!openedParen && sawArrow))
+            : paren > 0 && sawArrow && !closedOnce;
+        if (openBody) { bodyOpen0 = li; bodyDepth = 1; }
+        col++;
+        continue;
+      }
+      col++;
+    }
+  }
+  if (bodyOpen0 === -1) return null;
+  return { open0: bodyOpen0, close0: Math.min(lines.length - 1, bodyOpen0 + BODY_MAX) };
+}
+
+/**
+ * Bounded handler extraction (body windows budgeted ≤ BODY_MAX lines):
+ * Next.js App Router `export (async) function POST(req…)` AND — v1.5.2 —
+ * arrow route handlers `export const POST = (async) (…) => { … }`,
+ * Express-style `app.<method>("path", …)` callbacks, and NestJS decorated
+ * methods (@Post/@Get …). Body identification is brace-position-exact via
+ * handlerBodySpan (destructuring/type braces no longer truncate the block).
  */
 export function handlerBlocks(f: ScannedFile): HandlerBlock[] {
   const out: HandlerBlock[] = [];
   const lines = f.lines;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+    const line = lines[i] as string;
     if (isComment(line)) continue;
     const exportHandler = /export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/.exec(line);
+    const exportArrow = /export\s+const\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*(?::[^=\n]{0,80})?=\s*(?:async\s*)?/.exec(line);
     const expressHandler = /\b(?:app|router|server)\.(get|post|put|patch|delete|all)\s*\(\s*["'`][^"'`]+["'`]/.exec(line);
     const nestMethod = /@(Get|Post|Put|Patch|Delete|All)\s*\(/.exec(line);
-    const method = (exportHandler?.[1] ?? expressHandler?.[1]?.toUpperCase() ?? nestMethod?.[1]?.toUpperCase() ?? "").toUpperCase();
+    let mode: HMode = "fn";
+    let method = "";
+    if (exportHandler) method = (exportHandler[1] as string).toUpperCase();
+    else if (exportArrow) method = (exportArrow[1] as string).toUpperCase();
+    else if (expressHandler) { mode = "express"; method = (expressHandler[1] as string).toUpperCase(); }
+    else if (nestMethod) method = (nestMethod[1] as string).toUpperCase();
     if (!method) continue;
-    const braceStart = lines.slice(i, i + 4).join("\n").indexOf("{");
-    let depth = 0;
-    let end = i + 40; // hard bound: handlers larger than 40 lines are scanned as-is (bounded budget)
-    if (braceStart !== -1) {
-      depth = 0;
-      let started = false;
-      outer: for (let j = i; j < Math.min(lines.length, i + 60); j++) {
-        for (const ch of lines[j]) {
-          if (ch === "{") { depth++; started = true; }
-          else if (ch === "}") { depth--; if (started && depth === 0) { end = j; break outer; } }
-        }
-      }
+    // bounded fallback (concise-bodies / signatureless): same 40-line window as v1.4
+    let end = Math.min(lines.length - 1, i + BODY_MAX);
+    const span = handlerBodySpan(lines, i, mode);
+    if (span) end = Math.min(span.close0, span.open0 + BODY_MAX);
+    else if (exportArrow && !/\(|=>/.test(lines.slice(i, Math.min(lines.length, i + 4)).join(""))) {
+      continue; // `export const METHOD = <not a function>` — not a route handler
     }
     out.push({ name: `${method}:${line.slice(0, 60).trim()}`, line0: i, bodyEnd0: end, mutating: /^(POST|PUT|PATCH|DELETE)$/.test(method) });
     i = end; // skip the body — nested handlers are not a thing per language
@@ -92,19 +261,43 @@ export function scanAuthz(ctx: ScanContext): RuleResult {
 
     for (const block of blocks) {
       const body = f.lines.slice(block.line0, block.bodyEnd0 + 1);
-      // AUTHZ-002 first (evidence-backed anti-pattern) — client-sourced decision
-      const clientDecision = body.find((l) => !isComment(l) && CLIENT_AUTHZ_DECISION.test(l));
-      if (clientDecision) {
+      // AUTHZ-002 first (evidence-backed anti-pattern) — the authorization
+      // DECISION is taken from client-controlled input. Two bounded
+      // recognitions, one finding per block (the first decision line wins):
+      //  a) legacy direct form: `req.body.isAdmin`, `req.query.role`, …
+      //  b) v1.5.2 parsed-body form: locals bound via `await request.json()`
+      //     (direct / destructured / one-hop alias) deciding on authz fields.
+      const locals = requestBodyLocals(body);
+      let decisionLine = -1;
+      let decisionText = "";
+      for (let bi = 0; bi < body.length; bi++) {
+        const bl = body[bi] as string;
+        if (isComment(bl)) continue;
+        const legacy = CLIENT_AUTHZ_DECISION.test(bl);
+        let parsed = false;
+        if (!legacy && (DECISION_OP.test(bl))) {
+          for (const v of locals.bodyVars) { if (bodyVarDecision(bl, v)) { parsed = true; break; } }
+          if (!parsed) {
+            for (const a of locals.authzIdents) { if (bareIdentDecision(bl, a)) { parsed = true; break; } }
+          }
+        }
+        if (legacy || parsed) {
+          decisionLine = block.line0 + bi + 1; // absolute 1-based line (v1.5.2: exact index, was dup-prone indexOf)
+          decisionText = bl;
+          break;
+        }
+      }
+      if (decisionLine !== -1) {
         findings.push({
           id: "AUTHZ-002", severity: "high", confidence: "medium",
           title: "Authorization decision is taken from client-controlled input (mass-role / is-admin anti-pattern)",
-          file: f.rel, line: f.lines.indexOf(clientDecision) + 1,
-          evidence: { type: "authz_client_decision", masked: clientDecision.trim().slice(0, 120) },
+          file: f.rel, line: decisionLine,
+          evidence: { type: "authz_client_decision", masked: decisionText.trim().slice(0, 120) },
           owasp: "A01",
           fix: FIX_CLIENT_AUTHZ,
           fix_mode: "suggested-diff",
-          root: `${f.rel}:${f.lines.indexOf(clientDecision) + 1}`,
-          root_cause: rootCause("AUTHZ-002", `${f.rel}:${f.lines.indexOf(clientDecision) + 1}`),
+          root: `${f.rel}:${decisionLine}`,
+          root_cause: rootCause("AUTHZ-002", `${f.rel}:${decisionLine}`),
           needs_confirmation: true, // evidence-backed anti-pattern; still reviewed before enforcement
           verified: true,
         });

@@ -1776,6 +1776,256 @@ const vc = await import(d("dist/rules/valueclass.js"));
       && badge === pkg.version,
       JSON.stringify({ pkg: pkg.version, cli: cliOut, scan: scanRes.version, runtime: runtimeVersion, lock: lock.version, lockPkgs: lock.packages[""].version, badge }));
   }
+
+  // ---------- U27: v1.5.2 — Next.js App Router detection gaps (reproduced → fixed) ----------
+  // Three reported defect classes, each first REPRODUCED against the unmodified
+  // v1.5.1 engine (real scan of the fixture tree fired zero AUTHZ/TAINT findings;
+  // only unrelated RES-003 notes appeared):
+  //   (1) AUTHZ-001 missed — destructured `{ params }` / TS-type braces in the
+  //       route signature were mistaken for the handler body opening, truncating
+  //       the inspected body before the privileged operation.
+  //   (2) AUTHZ-001 missed — arrow route handlers (`export const DELETE = async …`)
+  //       were not recognized as handlers at all.
+  //   (3) AUTHZ-002 missed — authorization decisions read from
+  //       `const body = await request.json()` locals never matched the
+  //       req.body-shaped pattern; now bounded body-locals tracking (parse,
+  //       destructure, one-hop alias) + decision-shape + authz-field contract.
+  //   (4) TAINT-001 missed — request JSON was not a recognized source; the fix
+  //       routes it through the EXISTING bounded flow machinery: SOURCE_EXPR
+  //       gains `req.json()`, destructured binds are seeded directly, the
+  //       propagateTaint fixpoint carries aliases/members onward.
+  {
+    const actx = (files) => ({ stack: { frameworks: {}, detected: [] }, rel: (x) => x, trackedFiles: new Set(), gitAvailable: false, files });
+    const mkf = (rel, content) => ({ abs: `/p/${rel}`, rel, content, lines: content.split("\n") });
+    const { scanAuthz, handlerBlocks } = await import(d("dist/rules/authzpack.js"));
+    const { scanTaint } = await import(d("dist/rules/taint.js"));
+    const of = (mod, files) => mod(actx(files)).findings;
+
+    // reported fixture (1): multiline destructured dynamic-route signature
+    const destr =
+      "export async function DELETE(\n" +
+      "  request: Request,\n" +
+      "  { params }: { params: Promise<{ id: string }> }\n" +
+      ") {\n" +
+      "  await prisma.user.delete({\n" +
+      "    where: { id: (await params).id }\n" +
+      "  });\n" +
+      "  return Response.json({ ok: true });\n" +
+      "}\n";
+    check("U27.1 AUTHZ-001: destructured `{ params }: Promise<{id}>` dynamic-route handler is INSPECTED (was truncated at the signature braces) → AUTHZ-001 MEDIUM needs_confirmation at the exact handler line, no other rule there",
+      (() => {
+        const fs = of(scanAuthz, [mkf("app/api/d/route.ts", destr)]);
+        return fs.length === 1
+          && fs[0].id === "AUTHZ-001" && fs[0].severity === "medium" && fs[0].needs_confirmation === true
+          && fs[0].line === 1 && fs[0].file === "app/api/d/route.ts"
+          && /middleware|APP_GUARD|RLS/.test(fs[0].evidence.note ?? "");
+      })());
+
+    check("U27.2 handlerBlocks: multiline destructured signature body window is brace-EXACT (ends at the real closing `}` row 8 0-based, covering the privileged op; not the v1.5.1 truncation at the type-annotation braces)",
+      (() => {
+        const blocks = handlerBlocks(mkf("app/api/bb/route.ts", destr));
+        return blocks.length === 1
+          && blocks[0].bodyEnd0 === 8
+          && blocks[0].line0 === 0
+          && blocks[0].mutating === true;
+      })());
+
+    // reported fixture (2): arrow route handler; PLUS the arrow+destructure combo
+    const arrow =
+      "export const DELETE = async (request: Request, context) => {\n" +
+      "  await prisma.user.delete({\n" +
+      "    where: { id: \"123\" }\n" +
+      "  });\n" +
+      "  return Response.json({ ok: true });\n" +
+      "};\n";
+    const arrowDestr =
+      "export const DELETE = async (request: Request, { params }: { params: Promise<{ id: string }> }) => {\n" +
+      "  await prisma.user.delete({\n" +
+      "    where: { id: (await params).id }\n" +
+      "  });\n" +
+      "  return Response.json({ ok: true });\n" +
+      "};\n";
+    check("U27.3 AUTHZ-001: arrow route handler `export const DELETE = async (…) =>` is recognized and fully inspected → AUTHZ-001 at line 1",
+      (() => {
+        const fs = of(scanAuthz, [mkf("app/api/arrow/route.ts", arrow)]);
+        return fs.length === 1 && fs[0].id === "AUTHZ-001" && fs[0].severity === "medium" && fs[0].line === 1;
+      })());
+    check("U27.4 AUTHZ-001: arrow + destructured-params combo recognized → AUTHZ-001 MEDIUM needs_confirmation; typex-braces do not truncate",
+      (() => {
+        const fs = of(scanAuthz, [mkf("app/api/ad/route.ts", arrowDestr)]);
+        return fs.length === 1 && fs[0].id === "AUTHZ-001" && fs[0].needs_confirmation === true && fs[0].line === 1;
+      })());
+
+    // reported fixture (3): AUTHZ-002 through the parsed body local
+    const promote =
+      "export async function POST(request: Request) {\n" +
+      "  const body = await request.json();\n" +
+      "\n" +
+      "  if (body.isAdmin) {\n" +
+      "    await promoteUser(body.userId);\n" +
+      "  }\n" +
+      "\n" +
+      "  return Response.json({ ok: true });\n" +
+      "}\n";
+    check("U27.5 AUTHZ-002: authorization decision from `const body = await request.json()` (the exact reported fixture) → AUTHZ-002 HIGH at the EXACT decision line 4",
+      (() => {
+        const fs = of(scanAuthz, [mkf("app/api/promote/route.ts", promote)]);
+        return fs.length === 1 && fs[0].id === "AUTHZ-002" && fs[0].severity === "high"
+          && fs[0].needs_confirmation === true && fs[0].line === 4
+          && fs[0].evidence.masked.includes("body.isAdmin");
+      })());
+    check("U27.6 AUTHZ-002 precision: ordinary body fields (displayName/item) NEVER fire AUTHZ-002 (their mass-write still earns its own AUTHZ-001 review note), server-state decisions stay SILENT",
+      (() => {
+        const ordField =
+          "export async function POST(request: Request) {\n" +
+          "  const body = await request.json();\n" +
+          "  if (body.displayName) { apply(body.displayName); }\n" +
+          "  await orders.create({ data: { item: body.item } });\n" +
+          "  return Response.json({ ok: true });\n" +
+          "}\n";
+        const serverState =
+          "export async function POST(request: Request) {\n" +
+          "  const body = await request.json();\n" +
+          "  const u = await db.user.findUnique({ where: { id: sess.userId } });\n" +
+          "  if (u.role === 'admin') grantAdmin();\n" +
+          "  return Response.json({ ok: true });\n" +
+          "}\n";
+        const ord = of(scanAuthz, [mkf("app/api/n/route.ts", ordField)]);
+        return !ord.some((f) => f.id === "AUTHZ-002") // precision: no client-decision finding for ordinary fields
+          && ord.some((f) => f.id === "AUTHZ-001")    // correct separate behavior: mutating handler + unmuted write
+          && of(scanAuthz, [mkf("app/api/s/route.ts", serverState)]).length === 0;
+      })());
+    check("U27.7 AUTHZ-002: destructured (`const { role } = await request.json(); if (role === 'admin')`) and one-hop aliased (`const auth = body; if (auth.role)`) decision forms both fire HIGH at exact lines",
+      (() => {
+        const destr =
+          "export async function POST(request: Request) {\n" +
+          "  const { role } = await request.json();\n" +
+          "  if (role === 'admin') promoteUser();\n" +
+          "  return Response.json({ ok: true });\n" +
+          "}\n";
+        const alias =
+          "export async function POST(request: Request) {\n" +
+          "  const body = await request.json();\n" +
+          "  const auth = body;\n" +
+          "  if (auth.role) { promoteUser(); }\n" +
+          "  return Response.json({ ok: true });\n" +
+          "}\n";
+        const a = of(scanAuthz, [mkf("app/api/dr/route.ts", destr)]);
+        const b = of(scanAuthz, [mkf("app/api/al/route.ts", alias)]);
+        return a.length === 1 && a[0].id === "AUTHZ-002" && a[0].line === 3
+          && b.length === 1 && b[0].id === "AUTHZ-002" && b[0].line === 4;
+      })());
+
+    // reported fixture (4): request JSON → outbound fetch (SSRF), 3 forms
+    const tFixDirect =
+      "export async function POST(request: Request) {\n" +
+      "  const body = await request.json();\n" +
+      "  const response = await fetch(body.url);\n" +
+      "  return Response.json({ ok: true });\n" +
+      "}\n";
+    const tFixAlias =
+      "export async function POST(request: Request) {\n" +
+      "  const body = await request.json();\n" +
+      "  const target = body.url;\n" +
+      "  await fetch(target);\n" +
+      "}\n";
+    const tFixDestruct =
+      "export async function POST(request: Request) {\n" +
+      "  const { url } = await request.json();\n" +
+      "  await fetch(url);\n" +
+      "}\n";
+    check("U27.8 TAINT-001: request JSON reaching an outbound fetch — direct `fetch(body.url)`, alias `target = body.url; fetch(target)` and destructured (`const { url } = await request.json(); fetch(url)`) all detected MEDIUM at exact absolute lines",
+      (() => {
+        const a = of(scanTaint, [mkf("app/api/f/route.ts", tFixDirect)]);
+        const b = of(scanTaint, [mkf("app/api/f2/route.ts", tFixAlias)]);
+        const c = of(scanTaint, [mkf("app/api/f3/route.ts", tFixDestruct)]);
+        return a.length === 1 && a[0].id === "TAINT-001" && a[0].severity === "medium" && a[0].line === 3
+          && b.length === 1 && b[0].id === "TAINT-001" && b[0].line === 4
+          && c.length === 1 && c[0].id === "TAINT-001" && c[0].line === 3;
+      })());
+    check("U27.9 TAINT precision: static fetch URL stays SILENT; body value reaching no sink stays SILENT; allowlisted destination demotes to the LOW review note (never medium, never silent)",
+      (() => {
+        const staticUrl =
+          "export async function POST(request: Request) {\n" +
+          "  const body = await request.json();\n" +
+          "  const response = await fetch(\"https://api.example.com/hook\");\n" +
+          "  return Response.json({ ok: true });\n" +
+          "}\n";
+        const noSink =
+          "export async function POST(request: Request) {\n" +
+          "  const body = await request.json();\n" +
+          "  await db.event.create({ data: { ref: body.eventId } });\n" +
+          "  return Response.json({ received: body.displayName });\n" +
+          "}\n";
+        const allowlisted =
+          "export async function POST(request: Request) {\n" +
+          "  const body = await request.json();\n" +
+          "  const t = body.url;\n" +
+          "  if (!ALLOWED.includes(new URL(t).host)) return Response.json({ error: \"no\" }, { status: 400 });\n" +
+          "  const r = await fetch(t);\n" +
+          "}\n";
+        const a = of(scanTaint, [mkf("app/api/sf/route.ts", staticUrl)]);
+        const b = of(scanTaint, [mkf("app/api/ns/route.ts", noSink)]);
+        const c = of(scanTaint, [mkf("app/api/alw/route.ts", allowlisted)]);
+        return a.length === 0 && b.length === 0
+          && c.length === 1 && c[0].id === "TAINT-001" && c[0].severity === "low" && c[0].confidence === "low";
+      })());
+    check("U27.10 TAINT bounded honesty: the URL appears 'validated' only by a shape the scanner cannot reason about (substring contains over a string) → the finding stays VISIBLE and conservative (MEDIUM needs_confirmation — never silently dropped, no weaker claim than the evidence supports)",
+      (() => {
+        const unproven =
+          "export async function POST(request: Request) {\n" +
+          "  const body = await request.json();\n" +
+          "  if (String(body.url).includes('.example.com')) return Response.json({ error: 'no' }, { status: 400 });\n" +
+          "  const r = await fetch(body.url);\n" +
+          "}\n";
+        const fs = of(scanTaint, [mkf("app/api/uv/route.ts", unproven)]);
+        return fs.length === 1 && fs[0].id === "TAINT-001" && fs[0].severity === "medium" && fs[0].needs_confirmation === true;
+      })());
+
+    // ——— E: the four reported fixtures end-to-end through the REAL engine ———
+    // (reproduction-first contract: the same tree scanned on the pre-fix engine
+    // produced ZERO of these findings — only unrelated RES-003 notes existed)
+    {
+      const { mkdtempSync: mkTS, writeFileSync: wf, mkdirSync: mkd, rmSync: rmD } = await import("node:fs");
+      const { join: jn } = await import("node:path");
+      const { tmpdir: tdir } = await import("node:os");
+      const dir = mkTS(jn(tdir(), "u27-e-"));
+      mkd(jn(dir, "app", "api"), { recursive: true });
+      wf(jn(dir, "package.json"), JSON.stringify({ name: "u27e", dependencies: {} }));
+      wf(jn(dir, "app", "api", "dele.ts"), destr);
+      wf(jn(dir, "app", "api", "arrow.ts"), arrowDestr);
+      wf(jn(dir, "app", "api", "promote.ts"), promote);
+      wf(jn(dir, "app", "api", "fetcher.ts"), tFixDirect);
+      // precision in the SAME tree: safe siblings must stay silent
+      wf(jn(dir, "app", "api", "safe.ts"),
+        "export const GET = async (request: Request) => {\n" +
+        "  const body = await request.json();\n" +
+        "  const response = await fetch(\"https://api.example.com/static\");\n" +
+        "  if (body.displayName) { log(body.displayName); }\n" +
+        "  await db.event.create({ data: { ref: body.eventId } });\n" +
+        "  return Response.json({ received: body.displayName });\n" +
+        "};\n");
+      const res = await (await import(d("dist/engine.js"))).scan(dir);
+      const by = (id) => res.findings.filter((f) => f.id === id);
+      const authz1 = by("AUTHZ-001");
+      const authz2 = by("AUTHZ-002");
+      const t001 = by("TAINT-001");
+      const safeExtras = res.findings.filter((f) => /safe\.ts$/.test(f.file) && /^(AUTHZ|TAINT)/.test(f.id));
+      check("U27.11 E: REAL engine scan of the four reported fixtures detects their four findings at EXACT absolute lines (AUTHZ-001 x2 @1, AUTHZ-002 @4, TAINT-001 @3) and every authz finding keeps needs_confirmation",
+        authz1.length === 2
+        && authz1.every((f) => /(?:dele|arrow)\.ts$/.test(f.file) && f.line === 1 && f.needs_confirmation === true && f.severity === "medium")
+        && authz2.length === 1 && /promote\.ts$/.test(authz2[0].file) && authz2[0].line === 4 && authz2[0].severity === "high"
+        && t001.length >= 1 && t001.some((f) => /fetcher\.ts$/.test(f.file) && f.line === 3 && f.severity === "medium")
+        && safeExtras.length === 0,
+        JSON.stringify({
+          authz1: authz1.map((f) => `${f.file}:${f.line}`),
+          authz2: authz2.map((f) => `${f.file}:${f.line}`),
+          t001: t001.map((f) => `${f.file}:${f.line}`),
+          safeExtras: safeExtras.map((f) => `${f.file}:${f.line}`),
+        }));
+      rmD(dir, { recursive: true, force: true });
+    }
+  }
 }
 
 // ---------- report ----------

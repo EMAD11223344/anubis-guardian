@@ -17,7 +17,7 @@ import { collectAssignments, propagateTaint } from "./flow.js";
  */
 
 const SOURCE_EXPR =
-  /req(?:uest)?\.(query|body|params|headers|cookies|nextUrl\.searchParams)|searchParams\.get|cookies\(\)\.get|headers\(\)\.get|url\.searchParams|getCookie|\.query\[|\.params\[|\.body\[/;
+  /req(?:uest)?\.(query|body|params|headers|cookies|nextUrl\.searchParams)|searchParams\.get|cookies\(\)\.get|headers\(\)\.get|url\.searchParams|getCookie|\.query\[|\.params\[|\.body\[|req(?:uest)?\s*\.\s*json\s*\(\s*\)/;
 
 const SINK_RULES: Array<{
   id: string;
@@ -118,6 +118,19 @@ function taintedVars(lines: string[]): Set<string> {
   for (const line of lines) {
     for (const m of line.matchAll(/@(?:Param|Query|Body|Headers)\s*\(\s*['"]?[\w.-]*['"]?\s*\)\s+([A-Za-z_$][\w$]*)/g)) {
       if (!/^\s*(?:\/\/|\*|\/\*)/.test(line)) tainted.add(m[1]);
+    }
+  }
+  // v1.5.2 — destructured request JSON: `const { url } = await request.json()`
+  // binds each field directly; collectAssignments does not see `{…}` targets,
+  // so the fields are seeded here and the existing bounded fixpoint
+  // (propagateTaint) carries the flow onward (`const t = url; fetch(t)`).
+  for (const line of lines) {
+    if (/^\s*(?:\/\/|\*|\/\*)/.test(line)) continue;
+    const m = /(?:const|let|var)\s*\{([^}]+)\}\s*=\s*\(?\s*(?:await\s+)?req(?:uest)?\s*\.\s*json\s*\([^)]*\)/.exec(line);
+    if (!m) continue;
+    for (const part of m[1].split(",")) {
+      const id = /^([A-Za-z_$][\w$]*)/.exec(part.split(":").pop()?.trim() ?? "")?.[1];
+      if (id) tainted.add(id);
     }
   }
   return tainted;
