@@ -200,20 +200,24 @@ export function scanTenant(ctx: ScanContext): RuleResult {
       const line = lines[i];
       if (/^\s*(?:\/\/|\*|\/\*)/.test(line)) continue;
 
-      // TEN-002 — by-ID mutation of a tenant entity with a request-sourced id
-      // and no tenant/ownership condition anywhere in the statement window
+      // TEN-002 — by-ID access (mutation OR read) of a tenant entity with a
+      // request-sourced id and no tenant/ownership condition anywhere in the
+      // statement window. v1.5: by-ID READS (findUnique already covered,
+      // findFirst added) are the classic tenant-IDOR read — same review
+      // prompt, title distinguishes read vs mutation.
       for (const [table, ent] of entities) {
         const model = ent.table;
-        const prismaById = new RegExp(`\\b\\w+\\.${model}\\.(?:update|delete|findUnique|upsert)\\s*\\(`, "i").test(line);
+        const prismaById = new RegExp(`\\b\\w+\\.${model}\\.(?:update|delete|findUnique|findFirst|upsert)\\s*\\(`, "i").test(line);
         const stmtSql = new RegExp(`\\b(?:UPDATE|DELETE\\s+FROM)\\s+["'\`]*(?:[a-zA-Z_][\\w]*\\.)?["'\`]*${table}["'\`]*\\b`, "i").test(line);
         if (!prismaById && !stmtSql) continue;
         const stmt = lines.slice(Math.max(0, i - 1), Math.min(lines.length, i + 6)).join("\n");
         const hasOwnership = /(?:where\s*:\s*\{[^}]{0,240}(?:AND|\.\.\.|tenant|org|workspace|company|userId)|\btenant\b|\borg[_-]?id\b|\bworkspace[_-]?id\b|\buser[_-]?id\b\s*=|\bAND\s+(?:user|org|tenant|workspace|company)[_-]?id\b)/i.test(stmt);
         const reqSourced = /(?:req(?:uest)?|params|query|body)/i.test(stmt);
         if (!hasOwnership && prismaById && reqSourced && /where\s*:\s*\{\s*\{?\s*(?:id|_\w+)\s*:/.test(stmt)) {
+          const opKind = /findFirst/i.test(line) ? "read" : "mutation";
           findings.push({
             id: "TEN-002", severity: "medium", confidence: "medium",
-            title: `By-ID mutation of tenant entity "${model}" keyed only on request input — cross-tenant IDOR risk (review)`,
+            title: `By-ID ${opKind} of tenant entity "${model}" keyed only on request input — cross-tenant IDOR risk (review)`,
             file: f.rel, line: i + 1,
             evidence: {
               type: "tenant_byid_mutation",

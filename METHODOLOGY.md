@@ -116,20 +116,30 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
 
 - Static analysis sees patterns, not runtime truth — the authz matrix and taint
   canaries generate tests for **you** to run on staging; they do not confirm exploits.
-- **File-size caps (v1.4)**: files ≤512 KB are analyzed in full; larger text files
-  up to **4 MB** are analyzed in **overlapping line-boundary windows** (16-line
-  overlap, synthetic scope-break at each seam) with exact absolute line numbers,
-  disclosed in `meta.files_windowed`; files **above 4 MB stay oversize-skipped**
-  and are counted in `meta.files_skipped.oversize`. Window-adjacent caveat: a
-  variable chain whose assignment sits before a seam and whose sink lies after
-  it (beyond the overlap) cannot resolve — a conservative non-detection, never
-  a false positive. The scanner itself stays linear on adversarial inputs
-  (U20.34 budget gate + U22.1 battery gate).
-- **Capability packs are review prompts, not verdicts (v1.4)**: AUTHZ/TEN/LEAK/
-  RES/UPLOAD findings that depend on invisible layers carry `needs_confirmation`
-  plus a note naming exactly what the static check cannot see ( middleware,
-  APP_GUARD/RLS, runtime values, serving behavior, helper-hidden limits). The
-  full honesty entries live in `classes_not_covered` in every report.
+- **File-size caps (v1.4, progress-guaranteed in v1.5)**: files ≤512 KB are
+  analyzed in full; larger text files up to **4 MB** are analyzed in
+  **overlapping line-boundary windows** (16-line overlap, synthetic scope-break
+  at each seam) with exact absolute line numbers, disclosed in
+  `meta.files_windowed`; files **above 4 MB stay oversize-skipped** and are
+  counted in `meta.files_skipped.oversize`. v1.5 closes the large-line gap: the
+  window advance always makes forward progress — a line longer than the window
+  budget becomes its own window and the following content is still scanned
+  (the v1.4 loop dropped it silently) (U25.1/U25.2 find secrets at exact absolute
+  lines after giant lines and in the last line of an all-giant-lines file).
+  Window-adjacent caveat: a variable chain whose assignment sits before a seam
+  and whose sink lies after it (beyond the overlap) cannot resolve — a
+  conservative non-detection, never a false positive. The scanner itself stays
+  linear on adversarial inputs (U20.34 budget gate + U22.1 battery gate; the
+  100 KB→3 MB stress run confirms sublinear behavior on the worst cases).
+- **Capability packs are review prompts, not verdicts (v1.4/1.5)**: AUTHZ/TEN/
+  LEAK/RES/UPLOAD findings that depend on invisible layers carry
+  `needs_confirmation` plus a note naming exactly what the static check cannot
+  see (middleware, APP_GUARD/RLS, runtime values, serving behavior, shared
+  clients/wrappers). The full honesty entries live in `classes_not_covered`
+  in every report. v1.5 adds: LEAK-003 whole-object response review (scoped to
+  chase-resolvable wide-query shapes — nested/derived objects remain
+  invisible), RES-003 call-site timeout evidence (shared clients invisible),
+  and TEN-002 by-ID reads.
 - Codebase Mode covers the frameworks with observed signal (Next.js, Supabase,
   NestJS + generic Node). Other stacks get the generic layers only — the coverage
   registry in every report states what ran.

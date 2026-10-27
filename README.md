@@ -2,266 +2,199 @@
 
 # ⚱ Anubis Guardian
 
-**Deterministic security auditor for AI-built (vibe-coded) projects**
-**ماسح أمني حتمي للمشاريع المبنية بالذكاء الاصطناعي**
-
-**Works on any stack. Supabase/Next.js is the batteries-included case.**
-
-<img src="docs/assets/hero.jpg" alt="Anubis Guardian — deterministic security auditor for AI-built projects: offline static-only scanner with score 100/A" width="100%">
+**Deterministic security auditor for JavaScript/TypeScript projects — especially those built with AI coding agents**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.4.0-8b5cf6.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-1.5.0-8b5cf6.svg)](package.json)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-blue.svg)](package.json)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](tsconfig.json)
-[![Tests](https://img.shields.io/badge/regression%20gates-12%20suites-brightgreen.svg)](#-tests-regression-gates)
+[![npm](https://img.shields.io/badge/npm-install%20--global-cb3837.svg)](https://www.npmjs.com/package/anubis-guardian)
 
-**Codebase audit (offline) · URL audit (consent-gated) · Secrets · SAST · Taint · Dependencies (OSV) · CI/supply-chain · SARIF · Supabase RLS · Next.js · NestJS**
-
-> 🛡️ **Real-time AI guard, not just another scanner.** Existing tools audit *after* the damage ships. Anubis Guardian can sit in the loop **at write time**: a pinned PreToolUse hook + skill block service-role keys, RLS-killing SQL, and secrets **before they enter your codebase** — detection, prevention, and repair guidance in one tool.
-
-[English](#-why-anubis-guardian) · [العربية](#-العربية-quick-guide)
+**Offline static analysis · Consent-gated URL mode · Secrets · SAST · Taint · Dependencies · CI/supply-chain · SARIF · Authorization review prompts**
 
 </div>
 
 ---
 
-## 🔍 Why Anubis Guardian
+## What is it?
 
-AI coding agents (Claude Code, Cursor, Bolt, Lovable, Windsurf…) ship full-stack apps in days — but with a **consistent, repeating pattern of security mistakes**: service keys shipped to the client, database passwords in request headers, missing Row-Level Security, JWTs in `localStorage`, `.env` files pushed to GitHub, unpinned CI actions.
+Anubis Guardian scans your codebase for real security defects — hardcoded secrets, dynamic SQL, unsafe framework configuration, missing authorization evidence, tenant-isolation hints, data-exposure risks, and more — and produces a **deterministic, reproducible report** with masking, scoring, and generated (never-executed) test scaffolds.
 
-Existing scanners (Semgrep, Trivy, Gitleaks) are powerful but generic — they were not designed for this failure pattern. **Anubis Guardian** is a deterministic, static-only security scanner built for AI-generated code — universal coverage on any stack, with batteries-included host-aware playbooks for the **Supabase / Next.js / NestJS** stack, and:
+It is built around the failure patterns of AI-generated ("vibe-coded") applications — service keys shipped to the client, `Math.random()` tokens, unpinned CI actions, client-visible credentials — but it is a **general tool for any ES/TS codebase**, with optional deep playbooks for a few popular frameworks.
 
-- **Hard honesty contracts** — secrets are masked (first-4 chars + SHA-256) in *every* output, including the optional AI-review prompt; no CRITICAL without independent confirmation
-- **Byte-identical determinism** — same code + same tool version ⇒ identical `findings.json` / `fix-prompt.md`; for URL mode, one saved capture replays with zero network and identical results
-- **No execution of scanned code** — file reads and git plumbing only; generated tests land in a *quarantine* folder that **you** run
-- **Prevention, not just detection** — an optional pinned agent hook blocks service-role keys and RLS-killing SQL *at write time*
-- **Data-driven rules** — priorities come from a study of 100 public AI-built projects (top patterns: unpinned CI actions 22% · `Math.random` tokens 11% · `dangerouslySetInnerHTML` 7% · committed `.env` 3%) — see [studies/RESULTS.md](studies/step0-pattern-study/RESULTS.md)
+**Who it is for:** solo developers, teams adopting AI coding agents, and CI pipelines that want a fast, deterministic, offline security gate. It does not replace human security review; it gives that review a prioritized, honest starting point.
 
-## 🧭 What's stack-specific vs universal
+> 🛡️ **Different from after-the-fact scanners:** beyond detection, an optional pinned agent hook (`init-hook`) blocks service-role keys, RLS-killing SQL, and secret literals **at write time**, before they enter your codebase.
 
-| | Coverage |
+## Works everywhere — any database, any ORM
+
+The core rules run on **plain JavaScript/TypeScript with no framework assumptions**. Any database and any ORM is fully supported by the universal layers:
+
+| Your stack | What still fires |
 |---|---|
-| **Stack-specific** *(the differentiator — deep host-aware playbooks)* | **Supabase** — missing RLS, `USING (true)`, service-role exposure, Storage/Edge/policies, live L3 anon RLS probe (`SUPA-001..003`, `SUPA-R01..R08`) · **Next.js** — client/server boundary, public env, cookies, middleware-matcher gaps, CSRF heuristic (`NEXT-002`, `AUTH-001`) · **NestJS** — controller guards, CORS, helmet, throttler, Socket.IO gateways (`NEST-001..004`) |
-| **Application-security capability packs** *(v1.4 — framework-agnostic, review-prompts with invisible-layer notes)* | **RBAC/authorization** (`AUTHZ-001/002`: mutating handler without an authorization call in its own body · client-decided authorization) · **multi-tenant isolation hints** (`TEN-001/002`, fires only where the repo declares tenant entities) · **data leakage** (`LEAK-001/002`: credential fields in responses · PII in logs) · **resource exhaustion** (`RES-001/002`: request-built regexes via bounded flow · pagination-less reads in handlers) · **upload security** (`UPLOAD-001..003`: request-derived writes into served dirs · limit-less upload parsers · guard-less archive extraction) |
-| **Universal** *(works on any JS/TS project, any framework, any host)* | secrets + masking (`SEED`/`ENV`/`FILE`/`LOGS`/`HDR-001`) · git-history leaks · taint (`TAINT-001..006` SSRF / open redirect / path traversal / command injection / XSS / **dynamic code execution** — `eval`/`new Function`/`vm.runIn*` of request-tainted values) · JWT auth (`JWT-001/002` + **JWT-003** hardcoded signing/session secrets — rotate-first) · crypto (`CRYPTO-001`) · dependencies (`DEP-001..005`: CVEs incl. **transitive packages resolved from the lockfile**, malicious, typosquat, slopsquat; advisory-snapshot staleness flagged when >90 days) · dynamic-SQL analysis (`SAST-001` first-argument interpolation/concat across SQL sinks) · mass assignment / webhooks / exposed docs · Docker + CI/supply-chain (`DOCKER-001..003`, `CI-001..004`) · agent-environment audit (`AGENT-001..004`) · URL Mode headers/secrets (L1–L2) |
+| **Prisma / Drizzle / TypeORM / knex / pg / mysql2 / mongoose / plain SQL** | `SAST-001` dynamic-SQL analysis · `TAINT-003` path traversal · `SEED-001` seeder credentials · `LEAK-003` whole-object response exposure · `TEN-001/002` tenant isolation hints · committed `.env` secrets |
+| **Express / Fastify / Koa / plain Node HTTP** | `TAINT-001..006` (SSRF, redirect, traversal, injection, XSS, code exec) · `JWT-003` hardcoded secrets · `RES-001..003` resource-exhaustion review · `WEBHOOK-001` · `LOGS-001` |
+| **Any CI + Docker** | `CI-001..004` unpinned actions / script injection / permissions · `DOCKER-001..003` root image / `:latest` / ARG secrets |
+| **Any git hosting** | git-history secret recovery · committed-then-deleted env files · sensitive-file inventory |
 
-## 🧪 What It Checks
+**Optional battery-included playbooks** (not requirements) add host-aware depth when the repo uses them:
 
-<img src="docs/assets/modes.jpg" alt="Anubis Guardian Mode 1 (Codebase: secrets, git history, dependencies, SAST, framework playbooks) and Mode 2 (URL: passive, discovery, Supabase live anon probe) with the 100/A score" width="100%">
-
-### Mode 1 — Codebase (offline, static)
-
-| Layer | Checks |
+| Framework | Extra depth |
 |---|---|
-| Secrets | key patterns for major providers · **SUPA-001** service_role by JWT value-decode + client reachability (import-graph, transitive) · **HDR-001** DB creds in HTTP headers (receiver-first + cross-root linkage) · **SEED-001** seeder credentials · committed `.env` · **LOGS-001** secrets in logs |
-| History & files | git-history secrets (`git log -p`) · committed-then-deleted env files · `.gitignore` audit · sensitive-file inventory (dumps, backups, `.npmrc`, service accounts, `tfstate`, SSH keys) |
-| Dependencies | **DEP-001** CVEs vs a bundled OSV.dev snapshot · **DEP-002** known-malicious · **DEP-003** typosquat (≤2 edits) · **DEP-004** unresolved + no lockfile · **DEP-005** slopsquat (`--online`) |
-| SAST + crypto + taint | **SAST-001** dynamic SQL — first-argument interpolation/concat across `$queryRawUnsafe`, `knex.raw`, `pool/client/db.query`, `sequelize.query` (tagged templates + `$1`/`?` placeholders stay silent; HIGH when request-traced) · unsafe HTML (`SAST-002`, sanitizer-aware) · dynamic code execution (`SAST-003` non-literal `eval`/`new Function`/`vm.runIn*`) · weak hashing · **CRYPTO-001** `Math.random` tokens · **TAINT-001..006** SSRF / open redirect (`redirect()`, `permanentRedirect`, `NextResponse.redirect`) / path traversal / command injection / reflected XSS / dynamic code execution (single-file scope, capped MEDIUM, canary tests generated — never executed) |
-| Framework playbooks | **Supabase**: missing RLS, `USING (true)`, views, SECURITY DEFINER, policy scoping, storage, `verify_jwt`, dashboard drift via schema export · **Next.js**: public env secrets, localStorage tokens, cookie flags, unguarded mutating routes, middleware-matcher gaps, CSRF heuristic · **NestJS**: unguarded controllers (APP_GUARD-aware), CORS, helmet, throttler, Socket.IO gateways |
-| Rule packs II | **MASS-001** mass assignment · **WEBHOOK-001** unverified webhooks · **JWT-001/002** decode-based auth / `algorithms:"none"` · **JWT-003** hardcoded signing/session secrets (rotate-first, placeholder defaults still flagged) · **SEED-001** default/b hardcoded creds in seeds, seeders, fixtures, factories (`seeds/`, `prisma/seed-*`, `scripts/*seed*`, create/init-admin) · **HDR-001** DB credentials sent client→server via headers (value-flow receivers: `connectionString`/`password`/`url`/`host`/`user`/`uri` on Pool/Client/mongoose.connect — any header name) · **SWAGGER-001** exposed docs · **PRISMA-001** multi-tenancy hint |
-| CI / supply chain | **CI-001..004** (SHA pinning, `pull_request_target`, script injection, permissions) · **DOCKER-001..003** (root, `:latest`, ARG secrets) |
-| Agent environment | **AGENT-001..004** — unpinned MCP servers, secrets in agent configs, permission wildcards/bypass, unpinned hooks running remote code |
-| Optional extras | **AI review** (`--ai-review`): LLM proposes, an independent deterministic verifier disposes—hallucinated snippets are rejected; AI findings cap at HIGH · **`test-authz`**: authorization matrix + failing-by-expectation Supertest suite, never executed · **`init-hook`**: pinned PreToolUse guard hook - **value-based R1-R5** (decoded service_role JWTs, RLS-kill + drop-policy-without-recreate SQL, secret-shaped env values incl. redirect/heredoc fallback, client-env assignments, live secret literals into client code; comments stripped; public-by-design names pass; covers Write/Edit/MultiEdit/NotebookEdit/Bash heredoc·redirect·tee·`sed -i` best effort; escape hatches `ANUBIS_GUARD=block|warn|off` and `anubis-allow: <reason>`; fail-open on malformed input) · **rules-lock**: SHA-256 pinning of community rule packs — tampered rules are refused before scanning |
+| **Supabase** | missing Row-Level Security, `USING (true)` policies, service-role exposure, Storage/Edge/policies — `SUPA-001..003`, `SUPA-R01..R08` |
+| **Next.js** | client/server boundary, public env leaks, cookie flags, middleware gaps, CSRF heuristic — `NEXT-002`, `AUTH-001` |
+| **NestJS** | unguarded controllers (global-`APP_GUARD`-aware), CORS, helmet, throttler, Socket.IO gateways — `NEST-001..004` |
 
-### Mode 2 — URL (live deployed site, by URL)
+If none of these apply to your project, the scanner simply runs the universal layers and reports that in the coverage manifest.
 
-| Level | Checks | Ownership gate |
-|---|---|---|
-| **L1 — passive** (default, free) | TLS protocol + cert validity · security headers (CSP/HSTS/clickjacking/nosniff/referrer) · cookie flags · **secrets shipped in public JS bundles** · server/X-Powered-By disclosure · internal endpoints in bundles · source-map references | none — browser-equivalent requests only |
-| **L2 — discovery** | exposed `.env` / `.git` / SQL dumps / backups · directory listing · TRACE (XST) + risky `Allow` methods · exposed Swagger/GraphiQL · source maps shipping sources · auth/admin surface | **verified** — DNS TXT `anubis-guardian-challenge=<nonce>` or `/.well-known/anubis-guardian/<nonce>` (self-attestation is local-only and labeled) |
-| **L3 — verified-only** | L2 + **Supabase live anon probe** (`GET /rest/v1/<table>?limit=1` with the anon key from the public JS — live proof whether RLS holds) + **restricted differential access check** (`--active-tests`: GET-only, ≤24 endpoints, your two identities, values never stored) | **verified** — never the flag alone |
+## Six capability groups (v1.4 + v1.5)
 
-Every URL report carries a **scan authorization record** (URL, timestamp, level, ownership method), hard rate limits (default 250 ms between requests, per-level caps 40/120/150), and `robots.txt` awareness. Since the SSRF guard, `scan-url` never dials private/loopback/link-local/cloud-metadata ranges by default — every DNS result is canonicalized and range-checked, then the connection pins the resolved IP (rebinding-proof); redirects are re-validated per hop (cap 10), https→http demotion and non-http(s) schemes refused. Local/staging targets need `--allow-private` (CLI only — ignored when `ANUBIS_SERVICE=1`). **Cloud metadata endpoints (169.254.169.254, 169.254.170.2, fd00:ec2::254) are refused unconditionally — the flag never covers them.**
+Framework-agnostic **review prompts** — because static analysis cannot see middleware, database RLS, or runtime values, findings that depend on an invisible layer carry `needs_confirmation` and explicitly name what could not be inspected:
 
-> ⚠️ **The legal gate:** scanning systems you do not own is illegal in most jurisdictions. L2+ on a public domain requires a *verified* ownership nonce — `--i-own-this-domain` is a checkbox, not proof, and is only honored for localhost/private ranges.
+| Group | Rules | What fires (and severity) | Honest boundary |
+|---|---|---|---|
+| **A. RBAC / authorization** | `AUTHZ-001/002` | mutating request handler with a privileged operation and no authorization call in its **own handler body** (MEDIUM, review) · authorization decided from client input like `req.body.isAdmin` (HIGH) | middleware, global guards, and DB RLS are invisible — a guard elsewhere is assumed, never claimed |
+| **B. Multi-tenant isolation** | `TEN-001/002` | by-ID mutation **or read** of a declared tenant entity keyed only on request input (MEDIUM review) · unscoped tenant-table SQL | fires **only** where the repo declares tenant entities (schema.prisma / SQL migrations); enforcement layers invisible |
+| **C. Data leakage** | `LEAK-001..003` | credential-shaped fields in responses (MEDIUM review) · PII in logs (LOW) · **whole-object serialization of a wide query result** — escalates to MEDIUM when the queried model declares credential columns (v1.5) | runtime values unobservable (hash vs live secret); nested/derived shapes beyond one chase hop remain invisible |
+| **D. Resource exhaustion** | `RES-001..003` | regex built from request input (HIGH direct / MEDIUM flow-traced) · pagination-less reads in handlers (MEDIUM review) · **outbound requests without visible timeout/cancellation** in handlers (LOW note, v1.5) | shared clients/wrappers may apply limits invisibly; unbounded loops over request arrays remain undetected |
+| **E. Large-file coverage** | windowed scanning | files >512 KB analyzed in overlapping line-boundary windows to 4 MB; giant single lines never stall the window advance (v1.5) — every supported byte is analyzed, lines >4 MB disclosed | assignment→sink chains that cross a window seam beyond the overlap stay non-detections (never false positives) |
+| **F. Upload security** | `UPLOAD-001..003` | request-derived writes into served directories (HIGH) · limit-less upload parsers (MEDIUM review) · guard-less archive extraction (MEDIUM review) | serving-layer behavior (content-type, delivery) is invisible |
 
-## 📦 Install & Run
+## Installation
+
+```bash
+npm install -g anubis-guardian
+```
+
+Or use it in a project:
+
+```bash
+npm install --save-dev anubis-guardian
+npx anubis-guardian scan . --format json
+```
+
+From source (for development):
 
 ```bash
 git clone https://github.com/EMAD11223344/anubis-guardian.git
 cd anubis-guardian
 npm install && npm run build
-
-# scan any project — offline, no configuration needed
-node dist/cli.js scan ./path/to/your-project
+node dist/cli.js scan ./path/to/project
 ```
-
-Other stacks work the same way — no Supabase or Next.js required:
-
-```bash
-# Prisma + Express (plain Postgres)
-node dist/cli.js scan ./my-api
-# universal rules fire as-is: SEED-001 hardcoded seeder creds · SQL string-concat
-# · committed .env · FILE/LOGS secret patterns · DEP-001 CVEs · typosquat
-
-# Drizzle + Fastify (MySQL anywhere)
-node dist/cli.js scan ./crm
-# universal rules fire as-is: TAINT-001 SSRF · JWT-001 decode-based auth
-# · CI-001 unpinned actions · CRYPTO-001 Math.random tokens
-```
-
-Optional — global command:
-
-```bash
-npm link        # then simply:  anubis-guardian scan ./my-project
-```
-
-> The npm registry package (`anubis-guardian`) ships with a ready publish workflow (provenance + SBOM + checksums in [`.github/workflows/release.yml`](.github/workflows/release.yml)). Until the first publish happens, install from source as above.
 
 **Requirements:** Node ≥ 18. Only runtime dependency: `commander`.
 
-## ⌨️ Commands
+## Getting started
 
-| Command | Purpose |
+```bash
+# codebase audit — offline, no configuration needed
+anubis-guardian scan .
+
+# JSON / SARIF / HTML / compact outputs
+anubis-guardian scan . --format json -o findings.json
+anubis-guardian scan . --sarif results.sarif            # GitHub Security tab
+anubis-guardian scan . --html report.html
+anubis-guardian scan . --compact out.txt                # token-saving summary for agents
+
+# CI gate
+anubis-guardian scan . --fail-on critical               # exit 1 on CRITICAL
+
+# frontend + backend in one run (cross-root data-flow linkage)
+anubis-guardian scan ./web ./api
+
+# monorepos
+anubis-guardian scan . --workspaces
+```
+
+### URL mode (consent-gated)
+
+For a **deployed site you own** — passive-first, with a verified ownership gate before any active check:
+
+```bash
+anubis-guardian scan-url https://example.com            # L1 passive (browser-equivalent)
+anubis-guardian ownership https://example.com           # generate a verification nonce
+anubis-guardian scan-url https://example.com --level 2 --ownership-token <nonce>
+```
+
+L1 is always passive (headers, cookies, secrets in public bundles). L2 discovery and L3 probing require verified ownership — a DNS TXT record or `/.well-known` file — and private targets additionally need `--allow-private`. Cloud metadata endpoints are refused unconditionally. **Scanning systems you do not own is illegal; the tool enforces the gate rather than relying on your promise.**
+
+## Output formats & exit codes
+
+Full output contract: `terminal` (default) · `json` · `md` · `sarif` · `html` · `compact`, plus `--fix-prompt fix.md` (a deterministic repair prompt for any AI agent) and `--inventory inventory.json` (static attack-surface map).
+
+| Exit | Meaning |
 |---|---|
-| `scan <paths...>` | Codebase audit — one or more roots (multi-root finds sender↔receiver flows across frontend/backend); `--workspaces` for monorepos |
-| `scan-url <url>` | URL audit — L1 passive / L2 discovery / L3 verified active probing |
-| `ownership <url>` | Generate a domain-ownership nonce + instructions (`--check <nonce>` to verify) |
-| `test-authz <path>` | Authorization matrix + generated test suite (quarantine — never executed by the tool) |
-| `init-hook` | Install the pinned agent guard hook (PreToolUse) |
-| `init-ci` | Generate a hardened GitHub Actions workflow (SHA-pinned, SARIF upload, `--fail-on critical`) |
-| `rules-lock <dir>` | Pin a rules directory with SHA-256 → `rules-lock.json`; `scan` verifies it (tamper ⇒ exit 2) |
-| `init-zap <url>` | Generate an OWASP ZAP baseline config for **your own** staging target — the engine embeds no DAST by design |
-| `update-advisories` | Refresh the local OSV.dev HIGH/CRITICAL advisory snapshot |
+| `0` | scan completed; findings (if any) below the gate |
+| `1` | gate threshold breached (`--fail-on` / `--fail-on-cve`) |
+| `2` | fail-closed: no trustworthy report (bad path, unknown options, size cap, unreachable URL target, external-tool failure) |
 
-### `scan` — most useful flags
+No partial reports: a fail-closed run writes nothing and prints no score.
 
-```bash
-node dist/cli.js scan ./my-project --format json -o findings.json
-node dist/cli.js scan ./frontend ./backend          # cross-root linkage
-node dist/cli.js scan . --workspaces                # monorepo portfolio
-node dist/cli.js scan ./my-project --fail-on critical   # CI gate (exit 1)
-node dist/cli.js scan ./my-project --sarif out.sarif        # GitHub Security tab
-node dist/cli.js scan ./my-project --fix-prompt fix.md      # deterministic fix prompt for any AI agent
-node dist/cli.js scan ./my-project --html report.html
-node dist/cli.js scan ./my-project --compact out.txt        # token-saving summary for agents
-node dist/cli.js scan ./my-project --schema dump.sql        # Supabase dashboard-drift check
-node dist/cli.js scan ./my-project --rules-dir .anubis/rules [--allow-community-rules]
-node dist/cli.js scan ./my-project --exclude "**/generated/**" --exclude "**/*.min.js"   # skip files (repo-relative POSIX glob, repeatable)
-node dist/cli.js scan ./my-project --max-files 50000         # fail-closed size cap (exit 2 — no partial reports, determinism-safe)
-node dist/cli.js scan ./my-project --tools gitleaks,osv-scanner,semgrep   # opt-in adapters
-node dist/cli.js scan ./my-project --online          # slopsquat registry check (flagged in meta)
-node dist/cli.js scan ./my-project --ai-review       # optional AI review (verifier-gated)
-node dist/cli.js scan ./my-project --quarantine ./anubis-quarantine   # taint canary tests
-```
-
-`--ai-review` requires `ANUBIS_AI_API_KEY` (OpenAI-compatible endpoint configurable via `ANUBIS_AI_BASE_URL` / `ANUBIS_AI_MODEL`). All network-touching flags are opt-in and labeled in the report's `meta`.
-
-### `scan-url` — levels & flags
-
-```bash
-node dist/cli.js scan-url https://example.com                 # L1 passive — free, no ownership needed
-node dist/cli.js ownership https://example.com                # prints nonce + DNS TXT / .well-known instructions
-node dist/cli.js ownership https://example.com --check <nonce>
-node dist/cli.js scan-url https://example.com --level 2 --ownership-token <nonce>   # L2 (verified)
-node dist/cli.js scan-url http://127.0.0.1:3000 --level 2 --i-own-this-domain --allow-private   # local/staging (labeled; guard needs the flag for private ranges)
-node dist/cli.js scan-url https://example.com --level 3 --ownership-token <nonce>   # L3 probe (verified)
-
-# v1.0 — restricted differential access check (L3 only, GET-only, your own site):
-node dist/cli.js scan-url https://example.com --level 3 --ownership-token <nonce> \
-  --active-tests --identity-a "X-Test-Role: admin" --identity-b "X-Test-Role: restricted"
-
-# evidence & reproducibility
-node dist/cli.js scan-url https://example.com --capture capture.json        # save raw capture
-node dist/cli.js scan-url https://example.com --from-capture capture.json   # re-analyze offline (byte-identical)
-```
-
-Pacing/caps: `--delay-ms` (default 250), `--max-requests` (per-level caps 40/120/150), `--max-assets`, `--timeout-ms`.
-
-**Output contract (both modes):** `terminal` (default) · `json` · `md` · `sarif` · `html` · `compact` — plus `--fix-prompt fix.md` and `--inventory inventory.json` for codebase scans.
-
-**Exit codes (both modes):**
-
-| Code | Meaning | Examples |
-|---|---|---|
-| `0` | scan completed; findings (if any) are below the gate | clean scan; findings without `--fail-on` |
-| `1` | gate threshold breached | `--fail-on critical` + CRITICAL findings; `--fail-on-cve` + advisory |
-| `2` | fail-closed — no report you can trust was produced | scan of a nonexistent path, an empty directory, unknown `--format`/`--fail-on`/`--tools`; `--max-files` exceeded; **unreachable `scan-url` target (grade `N/A`, score `null`)**; external-tool failure with `--tools` |
-
-No partial reports: a fail-closed run never writes output or prints a score. A failed fetch can never produce grade A. `scan <path> --allow-empty` explicitly opts a zero-file directory in (exit 0, honest empty report).
-
-## 🧮 The Score
+## Scoring, severity, confidence — and what "incomplete" means honestly
 
 ```
 score = 100 − (25 × CRITICAL + 10 × HIGH + 4 × MEDIUM + 1 × LOW)      grades A–F
 ```
 
-- **Root-cause caps** — the first finding of a root cause deducts fully; repeats add +10%, capped at 2× per group
-- Low-confidence and INFO findings never deduct; AI claims rejected by the verifier are logged, never scored
-- `score_breakdown` in the JSON report shows exactly what deducted and why
+- A **CRITICAL** requires independent confirmation (e.g. reachability analysis proving a service key is client-imported); everything merely suspicious is MEDIUM/HIGH + `needs_confirmation`
+- Root-cause caps: repeated findings of the same root cause deduct at most 2× the first
+- `needs_confirmation: true` = *review prompt, not verdict* — the finding names the invisible layer (middleware, RLS, runtime values) that must be checked by a human
+- Repeated **identical** findings deduplicate by fingerprint; `score_breakdown` in the JSON explains every deduction
+- The report's coverage manifest lists what ran, and `classes_not_covered` states what the tool does **not** attempt — an A grade means nothing was found by the executed checks, never that the code is secure
 
-## 🚦 CI Integration
+## AI-agent integration
+
+The repo ships [`skill/SKILL.md`](skill/SKILL.md) (Agent Skills format) that teaches Claude Code / Cursor / opencode to run the scan, read findings honestly, and propose **suggested diffs only** — applying nothing without approval. The optional `init-hook` guard hook additionally blocks secrets and RLS-killing SQL **at write time**. See [docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md).
+
+## CI/CD
+
+`anubis-guardian init-ci` generates a hardened GitHub Actions workflow (SHA-pinned actions, SARIF upload, `--fail-on critical`):
 
 ```yaml
-# .github/workflows/anubis-guardian.yml — generated by: anubis-guardian init-ci
-- run: node dist/cli.js scan . --fail-on critical --sarif results.sarif
+- run: npx anubis-guardian scan . --fail-on critical --sarif results.sarif
 - uses: github/codeql-action/upload-sarif@<pinned-sha>
   with: { sarif_file: results.sarif }
 ```
 
-## 🤖 For AI Coding Agents
+More flags: `--exclude` globs, `--max-files` (fail-closed size cap), `--schema dump.sql` (Supabase dashboard-drift check), `--tools gitleaks,osv-scanner,semgrep` (opt-in adapters), `--online` (slopsquat registry check), `--quarantine` (generated authorization/canary test suites — written, **never executed** by the tool), `test-authz`, `rules-lock`, `init-zap`.
 
-The repo ships [`skill/SKILL.md`](skill/SKILL.md) in the Agent Skills format:
-
-```bash
-cp skill/SKILL.md ~/.claude/skills/anubis-guardian/SKILL.md   # Claude Code
-```
-
-or commit it and reference it from `CLAUDE.md` / `AGENTS.md`. It teaches the agent to run the scan, read findings honestly (including `needs_confirmation`), point the human at quarantine tests, and propose **suggested diffs only — applying nothing without explicit human approval**.
-
-> Wiring recipes for Claude Code / Cursor / opencode / AGENTS.md, the 30-second audit loop, and the exit-code contract: **[docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md)**
-
-## ✅ Tests (regression gates)
-
-```bash
-npm test   # build + reachability + honeypot + clean + sarif + acceptance v02/v03 + mode2 + v04 + v10
-```
-
-| Suite | What it proves |
-|---|---|
-| `verify-reachability` | client→lib import-graph resolution (direct, depth-2, NodeNext `.js`→`.ts`); service_role in a client-imported lib escalates to CRITICAL |
-| `honeypot` | **49 planted seeds** across 2 roots (secrets, RLS, CI, Docker, taint, agent risks) — all detected, masking intact |
-| `clean` | per-rule clean-case corpus scores **100/A** with zero false positives |
-| `sarif` | SARIF 2.1.0 structure, masking, no timestamps (deterministic) |
-| `acceptance-v02 / v03` | SHA-pinned init-ci, byte-identical determinism, workspaces, org rules; AI verifier accepts grounded / rejects hallucinated claims; hook blocking on the wire |
-| `mode2` | URL Mode planted-hole server — L2/V3 checks, robots honored, decoys not flagged, secrets masked |
-| `acceptance-v04` | L1 passivity proven from the request log; ownership gate refusals; from-capture byte-identical with zero network |
-| `acceptance-v10` | rules-lock tamper refusal; init-zap gates; differential IDOR safety (GET-only, values never stored); npm pack install→first-report smoke; SBOM; release workflow |
-
-## 📚 Documentation
+## Documentation
 
 | Document | Contents |
 |---|---|
-| [METHODOLOGY.md](METHODOLOGY.md) | determinism contract, scoring, FP control, URL levels, limitations |
+| [METHODOLOGY.md](METHODOLOGY.md) | determinism contract, scoring, false-positive control, known limitations |
 | [BENCHMARKS.md](BENCHMARKS.md) | measured results only — honeypot recall, clean corpus, wall-time scale |
 | [CONTRIBUTING-RULES.md](CONTRIBUTING-RULES.md) | how to contribute rule packs (clean cases mandatory, CRITICAL gating) |
-| [docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md) | AI-agent wiring: Claude Code skill + hook, Cursor/opencode/AGENTS.md recipes, CI gate |
-| [Anubis-Guardian-OWNER-TESTING-GUIDE.md](Anubis-Guardian-OWNER-TESTING-GUIDE.md) | owner quick-start & verification checklist (EN/AR) |
-| [studies/RESULTS.md](studies/step0-pattern-study/RESULTS.md) | the Step 0 pattern-frequency study (100 projects, 3,403 files) |
-| [PLAN.en.md](PLAN.en.md) · [PLAN.ar.md](PLAN.ar.md) | full design plan (English · Arabic) |
-| [docs/site](docs/site/index.html) | GitHub-Pages-ready landing page |
+| [docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md) | AI-agent wiring recipes and the exit-code contract |
+| [studies/RESULTS.md](studies/step0-pattern-study/RESULTS.md) | the pattern-frequency study (100 AI-built projects) that seeded the rules |
+| [docs/site](docs/site/index.html) | GitHub Pages landing page |
 
-## 🛡 Guarantees
+## Contributing
 
-- **No execution of scanned code** — file reads + git plumbing only; generated tests are written, never run
-- **Masking everywhere** — full secret values never written to any output or artifact
-- **Determinism by default** — byte-identical reports; every non-deterministic layer (`--online`, `--ai-review`, `--tools`) is opt-in and flagged in `meta`
-- **No CRITICAL without independent confirmation** — unconfirmed hints are HIGH/MEDIUM + `needs_confirmation`; AI findings cap at HIGH
-- **Consent-gated URL scanning** — L1 passive only by default; L2+ refuses unverified public domains *before any request*
-- **Rotate-first remediation** — every secret finding ships provider rotation steps
-- **Prevention included** — the guard hook blocks the classic mistakes at write time
+Contributions are welcome — bug reports, new universal rules, new framework playbooks, clean-case fixtures. Rule contributions follow a strict evidence format (every detection ships with its false-positive control); see [CONTRIBUTING-RULES.md](CONTRIBUTING-RULES.md). General issues and pull requests go through the normal GitHub flow.
 
-**Known limitations** (by design): taint-lite is single-file scope · no AST-level analysis (regex/structured heuristics; SQL-sink values are tracked through a bounded same-function chase — max 4 hops, cycle-safe, one imported-local-helper level; no call-graph or cross-function dataflow — see METHODOLOGY §8) · JS/TS only for codebase mode (use the Semgrep adapter for other languages) · no DAST engine (delegated to the generated ZAP config) — full list in [METHODOLOGY.md](METHODOLOGY.md).
+## Security vulnerabilities in this tool
 
-## 🗺 Roadmap
+Found a security issue in Anubis Guardian itself (not in your scanned code)? Report it privately via [GitHub Security Advisories](https://github.com/EMAD11223344/anubis-guardian/security/advisories/new) rather than a public issue. Scanned-code findings are not tool vulnerabilities — run the scanner on your own repo and read the report.
+
+## Known limitations (stated up front)
+
+- **By design:** regex/structured heuristics rather than a full AST engine; SQL-sink values are tracked through a bounded same-function chase (≤4 hops, cycle-safe, one imported-local-helper level) — **no call-graph, no cross-function dataflow**
+- **Single file scope for taint-lite**, capped at MEDIUM, with generated canary tests you run yourself
+- **Authorization/tenant/isolation findings are evidence, not proof** — invisible middleware, RLS, or runtime values always win
+- **JS/TS only for codebase mode** (non-JS languages: use the supplied Semgrep adapter)
+- **Large files:** >512 KB analyzed in windows to 4 MB (exact absolute line numbers); above 4 MB disclosed as skipped; window-seam dataflow chains beyond the overlap stay non-detections
+- **No DAST engine** — URL mode is consent-gated, bounded, and passive-first; deep dynamic testing belongs to your own tooling (a ZAP baseline config can be generated)
+- Full list with rationale: [METHODOLOGY.md §8](METHODOLOGY.md)
+
+## Roadmap
 
 | Stage | Status |
 |---|---|
-| v1.0 — both modes + rules-lock + restricted access check + init-zap + release engineering | ✅ **shipped** |
-| First npm registry publish (workflow ready — provenance + SBOM + checksums) | 🔜 owner action |
-| Field validation on real projects + measured third-party benchmarks | 🔜 next |
+| v1.4 — six capability groups + adversarial ReDoS battery + windowed large-file scanning | ✅ shipped |
+| v1.5 — window-progress guarantee, whole-object LEAK-003, RES-003 timeouts, TEN-002 reads, SSRF severity accuracy | ✅ shipped |
+| Bounded interprocedural parameter-flow analysis + measured third-party benchmarks | 🔜 next |
 
-## 📄 License
+## License
 
 MIT — see [LICENSE](LICENSE).
 
@@ -269,17 +202,14 @@ MIT — see [LICENSE](LICENSE).
 
 ## العربية (Quick Guide)
 
-**أنوبس جارديان** — ماسح أمني حتمي (Deterministic) للمشاريع المبنية بواسطة أدوات الذكاء الاصطناعي (vibe coding). ثابت وغير متصل بالإنترنت، لا يُنفّذ الكود المفحوص، ويقنّع الأسرار في كل المخرجات.
+**أنوبس جارديان** — ماسح أمني حتمي (Deterministic) للمشاريع المكتوبة بجافاسكربت/تايبسكربت، سريع التركيز على مشاريع الذكاء الاصطناعي (vibe coding). ثابت وغير متصل بالإنترنت، لا يُنفّذ الكود المفحوص، ويقنّع الأسرار في كل المخرجات.
+
+**يعمل مع أي قاعدة بيانات وأي إطار عمل** (Prisma / Drizzle / TypeORM / Express / Fastify...) — وملحقات Supabase وNext.js وNestJS اختيارية لإضافة عمق إضافي عند استخدامها فقط.
 
 ```bash
-git clone https://github.com/EMAD11223344/anubis-guardian.git
-cd anubis-guardian && npm install && npm run build
+npm install -g anubis-guardian
 
-node dist/cli.js scan ./my-project                  # فحص الكود — بدون إنترنت
-node dist/cli.js scan-url https://example.com       # فحص موقع منشور — L1 سلبي
-node dist/cli.js ownership https://example.com      # إثبات الملكية للـ L2+
+anubis-guardian scan ./my-project                   # فحص الكود — بدون إنترنت
+anubis-guardian scan-url https://example.com        # فحص موقع منشور — L1 سلبي
+anubis-guardian ownership https://example.com       # إثبات الملكية للـ L2+
 ```
-
-**الأوامر:** `scan` · `scan-url` · `ownership` · `test-authz` · `init-hook` · `init-ci` · `rules-lock` · `init-zap` · `update-advisories`
-**درجة الأمان:** 100 − (25×حرج + 10×عالي + 4×متوسط + 1×منخفض)
-الخريطة الكاملة بالعربية: [PLAN.ar.md](PLAN.ar.md) · دليل التحقق: [Anubis-Guardian-OWNER-TESTING-GUIDE.md](Anubis-Guardian-OWNER-TESTING-GUIDE.md)

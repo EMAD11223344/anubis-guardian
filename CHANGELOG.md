@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.5.0] — 2026-10-27
+
+Quality + honest-coverage release on top of the v1.4 capability round. Every reported concern was **re-verified against the current code before acting**; several turned out already-fixed or not reproducible. Units 319 → **326**; all 13 gates green; no new runtime dependencies; masking, determinism, no-exec contracts unchanged.
+
+### Fixed — confirmed defects
+
+- **Windowed large-file scanning could silently stop at a giant line** (`src/walk.ts`): when a file contained a line longer than the per-window budget (≤512 KB), the window advance broke (`next ≤ start`) and **every following line was never scanned** — findings after a giant line went silently unnoticed. The v1.5 loop guarantees forward progress: a window whose body is ≤ the overlap size advances the full window; byte math bounds the window count (≤ ~16 per 4 MB file). Regression gates **U25.1/U25.2**: secrets after one giant line and after the last of an all-giant-lines file are found at their exact absolute lines.
+- **SSRF hostname validation was only recognized in the extracted-variable form** (`src/rules/taint.ts`): `if (!ALLOWED.includes(new URL(t).host)) return …` — the inline form — missed the demotion and stayed at MEDIUM instead of the LOW review note that variable-shaped allowlists already got. Inline `new URL(x).host === …` and `h === u.host` shapes now demote too (U25.3/U25.4; unguarded fetches stay MEDIUM).
+- **Trailing comments could silence RES-003** by the same statement window (`grabbed "no timeout"` text matched `\btimeout\b`) — the call statement strips line comments before the timeout-shape test.
+
+### Added — coverage (capability-pack strengthening v1.5)
+
+- **LEAK-003 — whole-object serialization of a wide query result** (`src/rules/leakpack.ts`): `res.json(user)` / `NextResponse.json(payload)` where the argument resolves (bounded chase ≤4 hops) to an un-projected query (`prisma.users.findUnique`, `.from().select()`, `SELECT *`). LOW review note by default; escalates to **MEDIUM when the queried model's own declaration (schema.prisma / SQL migration) declares credential-shaped columns**. `select:` / `omit:` / `pick()` / spread-strip shapes stay silent. This closes the previously documented "whole-object flows are not tracked" gap for the chase-resolvable core (nested/derived shapes remain documented limits; U25.7).
+- **RES-003 — outbound requests without visible timeout/cancellation** (`src/rules/dospack.ts`): `fetch`/`axios`/`http.request`/`got` inside a request handler with no `signal` / `AbortSignal` / `timeout` shape in the **same call statement** (per-call paren-bounded, adjacent calls never cross-silence) → LOW + `needs_confirmation` (a shared client/wrapper may apply timeouts at an invisible layer; U25.5).
+- **TEN-002 now covers by-ID READS** (`findUnique` was covered; `findFirst` added) — the classic tenant-IDOR read on a declared tenant entity keyed only by request input; title distinguishes read vs mutation; tenant-scoped reads stay silent (U25.6).
+- **LEAK-001/TAINT-005 sink lists now recognize the plain `Response.json(…)` API** (Next.js App Router's default) — previously only `res.json` / `NextResponse.json` matched, so BOTH the field-level credential check and the new whole-object check missed the most common App-Router sink.
+
+### Fixed — verification verdicts on earlier reports (not code)
+
+- **"JWT-002 produces duplicate findings for one secret"** — not reproducible: three literal/alias re-uses of one secret produced **one** finding, one fingerprint, one root cause (the engine's fingerprint dedupe covers it).
+- **"SQL tokenizer invents a `public.IF` table name"** — not reproducible: `IF(…)` function calls, `CREATE TABLE IF NOT EXISTS`, and schema-qualified names parse correctly; the declared table set stayed exact (probed with adversarial migration SQL).
+- **SAST-003 benign eval-adjacent shapes** (`JSON.parse('…')`, `fn.call(null, "static")`, `new Function("return 42")`) and **LOGS benign logging** (`console.log("count", 42)`, `logger.info("health ok")`) — clean, no corrections needed.
+- Re-run of the **48-case adversarial battery** against the current build: 4 sub-millisecond-base `SUPERLINEAR` flags disproven as noise by a dedicated 100 KB→3 MB stress test (~10× time for 30× input, worst 52 ms@3MB) — the linear guarantee holds through the 4 MB single-line worst case.
+
+### Changed — documentation
+
+- **`AUDIT-REPORT.md` and the owner-specific testing guide removed** from the repository (internal audit history / owner-personal instructions do not belong in the public release; no code references existed). README rewritten as a professional open-source project front page: any-database/any-ORM framing, npm install, honest capability boundaries, contributing/security-reporting channels.
+- METHODOLOGY §8 updated for the window-progress guarantee, LEAK-003/RES-003 contracts, and the narrowed classes-not-covered entries (`src/coverage.ts`).
+
+### Tests
+
+- Units **319 → 326** (U25.1–U25.7). Full `npm test` green (exit 0): units 326, reachability 7, honeypot all seeds (masking intact), clean 100/A, capability acceptance 14, phase-1 25, phase-2 16, SARIF, acceptance v0.2 / v0.3 / v0.4 (47) / v1.0 (45).
+
 ## [1.4.0] — 2026-10-27
 
 Capability + perf/verification release. Two workstreams ship together: **(1)** the flow/ReDoS hardening round started post-v1.3.0 (bounded multi-hop value chase, adversarial battery that *reversed* an earlier "ReDoS not reproduced" conclusion), and **(2)** six new capability groups (A–F) plus large-file windowed scanning and a test-authz attribution fix. Unit count 289 → 319; every gate green; no new runtime dependencies; masking, determinism and no-exec contracts unchanged. **`v1.3.0` on npm includes none of the sections below** (all three commits post-date the v1.3.0 tag).

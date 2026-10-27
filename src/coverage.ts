@@ -37,9 +37,9 @@ export const CHECKS: CheckDef[] = [
   { id: "SWAGGER-001", layer: "L5 rule packs II (v0.3)", applicable: () => true },
   { id: "AGENT-001..004", layer: "L5 agent-environment checks (v0.3, ECC-inspired)", applicable: () => true },
   { id: "AUTHZ-001/002", layer: "L5 capability A — RBAC/authz pack (v1.4)", applicable: () => true },
-  { id: "TEN-001/002", layer: "L5 capability B — multi-tenant isolation pack (v1.4, tenant-entity gated)", applicable: () => true },
-  { id: "LEAK-001/002", layer: "L5 capability C — data-leakage pack (v1.4)", applicable: () => true },
-  { id: "RES-001/002", layer: "L5 capability D — resource-exhaustion pack (v1.4)", applicable: () => true },
+  { id: "TEN-001/002", layer: "L5 capability B — multi-tenant isolation pack (v1.4/1.5: by-ID mutations AND reads)", applicable: () => true },
+  { id: "LEAK-001..003", layer: "L5 capability C — data-leakage pack (v1.4/1.5: whole-object query-result flows)", applicable: () => true },
+  { id: "RES-001..003", layer: "L5 capability D — resource-exhaustion pack (v1.4/1.5: outbound timeout absence)", applicable: () => true },
   { id: "UPLOAD-001..003", layer: "L5 capability F — upload-security pack (v1.4)", applicable: () => true },
   { id: "DEP-001..005", layer: "L3 dependency audit", applicable: () => true },
   { id: "CI-001..004", layer: "L5 ci/supply-chain pack (Step 0: 22% of sample)", applicable: () => true },
@@ -68,10 +68,10 @@ export const CLASSES_COVERED = [
   "agent guard hook (init-hook — PreToolUse prevention of service_role-in-client, RLS-killing SQL, secrets into .env)",
   "RBAC/authz review pack (AUTHZ-001 missing-evidence tier + AUTHZ-002 client-decided authorization, handler-body scoped, v1.4)",
   "multi-tenant isolation hints (TEN-001/002 — fires only where the repo declares tenant entities; every finding names the invisible enforcement layers it cannot see, v1.4)",
-  "data-leakage review pack (LEAK-001 credential fields in responses, LEAK-002 PII in logs — masked/cleanup shapes stay silent, v1.4)",
-  "resource-exhaustion review pack (RES-001 request-built regexes via bounded flow, RES-002 pagination-less collection reads in handlers, v1.4)",
+  "data-leakage review pack (LEAK-001 credential fields in responses, LEAK-002 PII in logs, LEAK-003 whole-object query-result serialization — masked/cleanup/projection shapes stay silent, v1.4/1.5)",
+  "resource-exhaustion review pack (RES-001 request-built regexes via bounded flow, RES-002 pagination-less collection reads in handlers, RES-003 outbound requests without visible timeout/cancellation in handlers, v1.4/1.5)",
   "upload-security pack (UPLOAD-001 request-derived writes into served dirs, UPLOAD-002 limit-less upload parsers, UPLOAD-003 guard-less archive extraction, v1.4)",
-  "large-file windowed scanning (files >512KB analyzed in line-boundary windows to 4MB with per-window overlap + meta.files_partial disclosure, v1.4)",
+  "large-file windowed scanning (files >512KB analyzed in line-boundary windows to 4MB with overlap; v1.5 adds a mandatory-progress guarantee for giant-line files — every supported byte is covered or the window disclosed via meta.files_windowed)",
 ];
 
 export const CLASSES_NOT_COVERED = [
@@ -85,7 +85,7 @@ export const CLASSES_NOT_COVERED = [
   "non-JS/TS languages (non-goal — use the Semgrep adapter)",
   "§A honesty: policy-level RBAC (role/permission MODELS) and middleware/RLS enforcement are invisible — AUTHZ gives call-shape evidence only, never a confirmed enforcement gap",
   "§B honesty: tenant isolation enforcement (RLS policies, ORM global scopes, service-layer guards) is invisible — TEN findings are review prompts gated on repo-declared tenant entities only",
-  "§C honesty: runtime VALUES are unobservable — LEAK cannot distinguish a real secret from a hash/expiring token, and whole-object response flows are not tracked (per-field objects only)",
-  "§D honesty: fetch timeout / AbortController absence and unbounded loops over request arrays are NOT detected; scanner self-resilience is validated separately (adversarial battery gates)",
+  "§C honesty: runtime VALUES are unobservable — LEAK cannot distinguish a real secret from a hash/expiring token. Whole-object flows are tracked only when the response argument resolves through a bounded chase to a wide-query shape (LEAK-003, v1.5): re-shaped/nested objects and non-identifier arguments remain invisible",
+  "§D honesty: unbounded loops over request-controlled arrays are NOT detected; RES-003 timeout evidence is call-site only (shared clients/wrappers are invisible). Scanner self-resilience is validated separately (adversarial battery gates)",
   "§F honesty: serving-layer behavior (content-type/delivery of stored uploads) and helpers hiding archive/limit configuration are invisible — UPLOAD findings are review prompts",
 ];

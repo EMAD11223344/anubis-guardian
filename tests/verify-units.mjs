@@ -1416,6 +1416,107 @@ const vc = await import(d("dist/rules/valueclass.js"));
     JSON.stringify(nestRows.map((r) => `${r.file}:${r.method}=${r.guard}`)));
 }
 
+// ---------- U25: v1.5 quality round — window progress, allowlist demotion, ----------
+// RES-003 timeouts, TEN-002 by-ID reads, LEAK-003 whole-object serialization.
+{
+  const badge = (files) => ({ stack: { frameworks: {}, detected: [] }, rel: (x) => x, trackedFiles: new Set(), gitAvailable: false, files });
+  const kf = (rel, content) => ({ abs: `/p/${rel}`, rel, content, lines: content.split("\n") });
+  const kid = (mod, files) => mod(badge(files)).findings.map((f) => `${f.id}/${f.severity}`);
+
+  // ---- A. window-progress guarantee (walk.ts v1.5 fix) ----
+  // pre-fix behavior: the loop BROKE after a >window-budget line, silently
+  // dropping every following line's findings. Now every supported byte is
+  // covered; absolute line numbers prove the finds sit after the giant lines.
+  const { walkWithStats: wwst } = await import(d("dist/walk.js"));
+  const { mkdtempSync: mkTS, writeFileSync: wf, mkdirSync: mkd, rmSync: rmD } = await import("node:fs");
+  const { join: jn } = await import("node:path");
+  const { tmpdir: tdir } = await import("node:os");
+  const wdir = mkTS(jn(tdir(), "u25-win-"));
+  mkd(jn(wdir, "app"), { recursive: true });
+  wf(jn(wdir, "package.json"), JSON.stringify({ name: "u25", dependencies: {} }));
+  wf(jn(wdir, "app", "aftergiant.ts"),
+    "// header\n" +
+    "x".repeat(600 * 1024) + "\n" +
+    "export function ping() { return 1; }\n" +
+    'const AUTH_SECRET = "dev-super-secret-after-line-two";\n' +
+    "y".repeat(700 * 1024) + "\n" +
+    'const SESSION_SECRET = "second-secret-after-giant-line-2";\n');
+  wf(jn(wdir, "app", "allgiant.ts"),
+    "a".repeat(520 * 1024) + "\n" +
+    "b".repeat(530 * 1024) + "\n" +
+    "c".repeat(540 * 1024) + "\n" +
+    'const AUTH_SECRET_KEY = "lowest-secret-of-all-giant-file";\n');
+  const wres = await (await import(d("dist/engine.js"))).scan(wdir);
+  const jsecs = wres.findings.filter((f) => f.id === "JWT-003");
+  const winInfo = wwst(wdir).windowed;
+  check("U25.1 E winfix: secrets AFTER a >512KB line are found at their ABSOLUTE lines (was: loop broke, tail silently unscanned)",
+    jsecs.some((f) => f.file.endsWith("aftergiant.ts") && f.line === 4)
+    && jsecs.some((f) => f.file.endsWith("aftergiant.ts") && f.line === 6),
+    JSON.stringify(jsecs.map((f) => `${f.file}:${f.line}`)));
+  check("U25.2 E winfix: a file whose EVERY line is giant is fully covered — the LAST line's secret is found (4 windows)",
+    jsecs.some((f) => f.file.endsWith("allgiant.ts") && f.line === 4)
+    && winInfo.find((w) => w.file.endsWith("allgiant.ts"))?.windows === 4,
+    JSON.stringify({ win: winInfo.map((w) => `${w.file}:${w.windows}`), secs: jsecs.map((f) => `${f.file}:${f.line}`) }));
+  rmD(wdir, { recursive: true, force: true });
+
+  // ---- B. TAINT-001 hostname-validation severity accuracy (v1.5) ----
+  {
+    const { scanTaint } = await import(d("dist/rules/taint.js"));
+    const mkreq = (body) => "export async function GET(req: Request) {\n  const t = new URL(req.url).searchParams.get(\"t\") ?? \"\";\n" + body + "}\n";
+    check("U25.3 taint: inline `ALLOWED.includes(new URL(t).host)` demotes SSRF to the LOW review note (never MEDIUM)",
+      kid(scanTaint, [kf("app/api/f/route.ts", mkreq("  if (!ALLOWED.includes(new URL(t).host)) return new Response(\"no\", { status: 400 });\n  const r = await fetch(t);\n"))]).includes("TAINT-001/low"),
+      JSON.stringify(kid(scanTaint, [kf("app/api/f/route.ts", mkreq("  if (!ALLOWED.includes(new URL(t).host)) return new Response(\"no\", { status: 400 });\n  const r = await fetch(t);\n"))])));
+    check("U25.4 taint: `h === u.host` comparison shape also demotes; an UNGUARDED fetch stays MEDIUM",
+      kid(scanTaint, [kf("app/api/g/route.ts", mkreq("  if (h === u.host) return new Response(\"no\");\n  const r = await fetch(t);\n"))]).includes("TAINT-001/low")
+      && kid(scanTaint, [kf("app/api/hdg/route.ts", mkreq("  const r = await fetch(t);\n"))]).includes("TAINT-001/medium"),
+      JSON.stringify([
+        kid(scanTaint, [kf("app/api/g/route.ts", mkreq("  if (h === u.host) return new Response(\"no\");\n  const r = await fetch(t);\n"))]),
+        kid(scanTaint, [kf("app/api/hdg/route.ts", mkreq("  const r = await fetch(t);\n"))]),
+      ]));
+  }
+
+  // ---- C. RES-003 outbound timeouts (v1.5) ----
+  {
+    const { scanDos } = await import(d("dist/rules/dospack.js"));
+    check("U25.5 D: fetch WITHOUT timeout inside a handler → RES-003 LOW needs_confirmation; with AbortSignal.timeout → SILENT; with axios `timeout: 5000` → SILENT; outside handlers → SILENT",
+      kid(scanDos, [kf("app/api/fx/route.ts", "export async function GET() {\n  const r = await fetch(\"https://slow/hang\");\n  return Response.json(r.status);\n}\n")]).includes("RES-003/low")
+      && scanDos(badge([kf("app/api/fx/route.ts", "export async function GET() {\n  const r = await fetch(url, { signal: AbortSignal.timeout(3000) });\n}\n")])).findings.filter((f) => f.id === "RES-003").length === 0
+      && scanDos(badge([kf("app/api/fx/route.ts", "export async function GET() {\n  const r = await axios.get(url, { timeout: 5000 });\n}\n")])).findings.filter((f) => f.id === "RES-003").length === 0
+      && scanDos(badge([kf("jobs/sync.ts", "await fetch(\"https://slow/hang\");\n")])).findings.filter((f) => f.id === "RES-003").length === 0);
+  }
+
+  // ---- D. TEN-002 by-ID reads (v1.5) ----
+  {
+    const { scanTenant } = await import(d("dist/rules/authzpack.js"));
+    const schema = kf("prisma/migrations/0001_t.sql", "CREATE TABLE invoice (id serial, tenant_id int, total numeric);\n");
+    const readF = kf("app/api/inv/route.ts", "export async function GET(req: Request) {\n  const inv = await prisma.invoice.findFirst({ where: { id: req.params.id } });\n  return Response.json(inv);\n}\n");
+    const readClean = kf("app/api/inv/route.ts", "export async function GET(req: Request) {\n  const inv = await prisma.invoice.findFirst({ where: { id: req.params.id, tenantId: session.tenantId } });\n  return Response.json(inv);\n}\n");
+    check("U25.6 B: by-ID READ of a tenant entity (findFirst) → TEN-002 medium (title says 'read'); tenant-scoped read → SILENT; no declarations → SILENT",
+      kid(scanTenant, [schema, readF]).includes("TEN-002/medium")
+      && scanTenant(badge([schema, readClean])).findings.length === 0
+      && scanTenant(badge([readF])).findings.length === 0,
+      JSON.stringify(kid(scanTenant, [schema, readF])));
+  }
+
+  // ---- E. LEAK-003 whole-object query-result serialization (v1.5) ----
+  {
+    const { scanLeak } = await import(d("dist/rules/leakpack.js"));
+    const credSchema = kf("prisma/schema.prisma", "model User {\n  id Int @id\n  password String\n  refreshToken String?\n}\nmodel Document {\n  id Int @id\n  title String\n}\n");
+    const credRoute = kf("app/api/users/route.ts", "import { prisma } from \"@/db\";\nexport async function GET(req: Request) {\n  const user = await prisma.user.findUnique({ where: { id: req.params.id } });\n  return Response.json(user);\n}\n");
+    const docRoute = kf("app/api/docs/route.ts", "import { prisma } from \"@/db\";\nexport async function GET() {\n  const rows = await prisma.document.findMany();\n  return Response.json(rows);\n}\n");
+    const projRoute = kf("app/api/proj/route.ts", "import { prisma } from \"@/db\";\nexport async function GET() {\n  const sel = await prisma.user.findMany({ select: { id: true, name: true } });\n  return Response.json(sel);\n}\n");
+    const stripRoute = kf("app/api/strip/route.ts", "export async function GET() {\n  const u = await prisma.user.findUnique({ where: { id: 1 } });\n  const { password, ...safe } = u;\n  return Response.json(safe);\n}\n");
+    const cred = scanLeak(badge([credSchema, credRoute])).findings.find((f) => f.id === "LEAK-003");
+    const doc = scanLeak(badge([credSchema, docRoute])).findings.find((f) => f.id === "LEAK-003");
+    check("U25.7 C: `Response.json(user)` resolving to a WIDE prisma query → LEAK-003; MEDIUM when schema declares credential columns; LOW otherwise; select-projection and spread-strip stay SILENT",
+      cred?.severity === "medium" && cred?.needs_confirmation === true
+      && doc?.severity === "low"
+      && scanLeak(badge([credSchema, projRoute])).findings.filter((f) => f.id === "LEAK-003").length === 0
+      && scanLeak(badge([credSchema, stripRoute])).findings.filter((f) => f.id === "LEAK-003").length === 0,
+      JSON.stringify({ cred: cred?.severity, doc: doc?.severity }));
+  }
+}
+
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);
 if (FAILS.length) {

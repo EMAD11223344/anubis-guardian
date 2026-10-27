@@ -65,9 +65,16 @@ function windowedScans(abs: string, rel: string, content: string): ScannedFile[]
     const winLines = [...pads, ...body];
     const winContent = (pads.length ? pads.join("\n") + "\n" : "") + body.join("\n");
     out.push({ abs, rel, content: winContent, lines: winLines });
+    // v1.5 progress guarantee: the previous code BROKE when `end - OVERLAP <= start`,
+    // which is exactly the giant-line case — after one line longer than the window
+    // budget the loop silently stopped, leaving every following line (and its
+    // findings) unscanned. Now a window whose body is ≤ the overlap size (e.g. one
+    // >512KB line) advances the FULL window: forward progress is mandatory, no
+    // content is skipped. Overlap re-inclusion still applies whenever the body is
+    // large enough to stride normally, so seam-spanning template joins still
+    // resolve. Byte math bounds the window count ≤ ~16 for any 4MB file.
     const next = end - WINDOW_OVERLAP_LINES;
-    if (next <= start) break;
-    start = next;
+    start = next > start ? next : end;
   }
   return out;
 }

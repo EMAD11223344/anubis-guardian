@@ -36,7 +36,10 @@ const SINK_RULES: Array<{
     // validation — `["app.example"].includes(u.hostname)` / `u.hostname === …`
     // counts, not just ALLOWED_-named variables.
     // v1.4: sanitizeUrl/safeUrl/cleanUrl/isValidUrl helpers count as URL validators too.
-    sanitizer: /allowlist|allowList|whitelist|allowed[_-]?hosts?|trusted[_-]?hosts?|isAllowed|validateUrl|assertUrl|sanitizeUrl|safeUrl|cleanUrl|isValidUrl|ALLOWED_[A-Z_]+|hostname\s*(?:===|!==)|includes\s*\(\s*[A-Za-z_$][\w$.]*\.?hostname/,
+    // v1.5: inline URL-host validation shapes count (the v1.4 list only caught
+    // the extracted-into-a-variable form) — `ALLOWED.includes(new URL(t).host)`,
+    // `new URL(t).host === …`, `h === u.host` all demote to the LOW review note.
+    sanitizer: /allowlist|allowList|whitelist|allowed[_-]?hosts?|trusted[_-]?hosts?|isAllowed|validateUrl|assertUrl|sanitizeUrl|safeUrl|cleanUrl|isValidUrl|ALLOWED_[A-Z_]+|hostname\s*(?:===|!==)|includes\s*\(\s*[A-Za-z_$][\w$.]*\.?hostname|\.includes\s*\(\s*(?:new\s+URL\s*\([^)]{0,100}\)|[A-Za-z_$][\w$.]*)\s*\.\s*\.?host\b|new\s+URL\s*\([^)]{0,100}\)\s*\.\s*\.?host(?:name)?\s*(?:===|!==)|(?:===|!==)\s*[A-Za-z_$][\w$.]*\.?\s*\.?host\b|\.host\b\s*(?:===|!==)/,
     owasp: "A10",
     fix: "Validate the destination against a host allowlist (scheme + exact host) before any outbound request; block private/link-local ranges (169.254.x, 127.x, 10.x, 172.16-31.x, 192.168.x) and metadata endpoints.",
     note: "classic vibe-coding SSRF: 'fetch anything by URL' helpers — internal services/metadata IPs become reachable",

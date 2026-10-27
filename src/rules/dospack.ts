@@ -18,10 +18,16 @@ import { handlerBlocks } from "./authzpack.js";
  *    (`prisma.<model>.findMany()` with no `take`/`cursor`) inside a request
  *    handler — result size is attacker-influenced; note-level because
  *    pagination may exist at an invisible layer.
+ *  - RES-003 (v1.5, low + needs_confirmation): outbound requests issued inside
+ *    a request handler with NO visible timeout/cancellation (`signal`,
+ *    `AbortSignal`, `timeout`). Without one, a stalled upstream keeps the
+ *    request (and its server resources) alive indefinitely — slowloris-
+ *    adjacent resource retention. Note-level because a shared client/wrapper
+ *    may configure timeouts at an invisible layer.
  *
- * Documented limitation: missing `AbortController` timeouts on outbound
- * fetches and unbounded loops over request arrays are NOT yet detectable
- * without heavier flow analysis — named in classes_not_covered.
+ * Remaining documented limitation: unbounded loops over request-controlled
+ * arrays are NOT yet detectable without heavier flow analysis — named in
+ * classes_not_covered.
  */
 
 /** request-derived source shapes (same family as taint.ts SOURCE_EXPR) */
@@ -45,6 +51,7 @@ export function scanDos(ctx: ScanContext): RuleResult {
 
     const assigns = collectAssignments(f.lines);
     const tainted = propagateTaint(f.lines, assigns, (rhs) => REQ_SOURCE.test(rhs));
+    const hBlocks = handlerBlocks(f); // hoisted once per file (v1.5 — was per line)
 
     for (let i = 0; i < f.lines.length; i++) {
       const line = f.lines[i];
@@ -104,13 +111,10 @@ export function scanDos(ctx: ScanContext): RuleResult {
         }
       }
 
-      // ---- RES-002: unbounded collection read (no args / no take) inside a handler ----
+      // handler containment is shared by RES-002/RES-003
+      const handlerBlock = hBlocks.find((b) => i >= b.line0 && i <= b.bodyEnd0) ?? null;
       if (PRISMA_FIND_MANY.test(line) || UNBOUNDED_FIND.test(line)) {
-        const blocks = handlerBlocks(f);
-        const insideHandler = blocks.some(
-          (b) => i >= b.line0 && i <= b.bodyEnd0
-        );
-        if (!insideHandler) continue; // unbounded reads outside request context are not per-request DoS
+        if (!handlerBlock) continue; // unbounded reads outside request context are not per-request DoS
         // ±2-line window: a take/cursor/limit arg in the same call silences
         const window = f.lines.slice(Math.max(0, i - 2), Math.min(f.lines.length, i + 3)).join("\n");
         if (/\b(?:take|cursor|limit|first|LIMIT)\b/i.test(window)) continue;
@@ -132,6 +136,42 @@ export function scanDos(ctx: ScanContext): RuleResult {
           needs_confirmation: true,
           verified: true,
         });
+      }
+
+      // ---- RES-003 (v1.5): outbound request in a handler with no visible
+      // timeout/cancellation. A stalled upstream then holds the request (and
+      // its connection/socket/memory) open indefinitely. LOW review note —
+      // a shared client/axios default or fetch wrapper may set timeouts at
+      // an invisible layer (CONFIDENCE: this is missing-evidence, not proof).
+      if (handlerBlock && /\b(?:await\s+)?fetch\s*\(|\baxios(?:\.\w+)?\s*\(|\bhttps?\.\s*(?:get|request)\s*\(|\bgot\s*\(/.test(line)) {
+        // per-CALL statement: extend only while the call's own parens stay open
+        // (an options object below belongs to THIS call; a different, adjacent
+        // call on the next line must not silence this one — v1.5 probe fix)
+        let stmt = line;
+        let depth = (line.match(/\(/g) ?? []).length - (line.match(/\)/g) ?? []).length;
+        for (let j = i + 1; j < f.lines.length && j - i < 8 && depth > 0; j++) {
+          stmt += "\n" + f.lines[j];
+          depth += (f.lines[j].match(/\(/g) ?? []).length - (f.lines[j].match(/\)/g) ?? []).length;
+        }
+        if (!/\b(?:signal|AbortSignal|AbortController|timeout|setTimeout)\b/.test(stmt.replace(/\s+\/\/.*$/gm, ""))) {
+          findings.push({
+            id: "RES-003", severity: "low", confidence: "low",
+            title: "Outbound request inside a request handler with no visible timeout or cancellation — stalled upstream retains resources (review)",
+            file: f.rel, line: i + 1,
+            evidence: {
+              type: "outbound_no_timeout",
+              masked: line.trim().slice(0, 120),
+              note: "no signal/AbortSignal/timeout shape found in this statement window; a shared client (axios instance, fetch wrapper) may configure timeouts at an invisible layer — confirm before treating as a gap",
+            },
+            owasp: "A04",
+            fix: "Give every outbound call a deadline: fetch(url, { signal: AbortSignal.timeout(ms) }) or axios timeout, so a hung upstream cannot pin connections open.",
+            fix_mode: "suggested-diff",
+            root: `${f.rel}:${i + 1}`,
+            root_cause: rootCause("RES-003", `${f.rel}:${i + 1}`),
+            needs_confirmation: true,
+            verified: true,
+          });
+        }
       }
     }
   }

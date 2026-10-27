@@ -1,6 +1,7 @@
 import type { ScanContext, RuleResult } from "../types.js";
 import { rootCause } from "../util.js";
 import { classifyFile } from "./context.js";
+import { collectAssignments, resolveVarFlow } from "./flow.js";
 
 /**
  * Capability §C — data leakage / data-exfiltration risks (v1.4).
@@ -16,13 +17,20 @@ import { classifyFile } from "./context.js";
  * Both stay silent on documented-clean shapes (`password: undefined`,
  * `delete user.password`, masked/unset statements) and never claim a
  * confirmed exfiltration — static analysis cannot observe the runtime value.
- * Whole-object flows (`res.json(user)` where `user` carries a password from a
- * wide SELECT) are NOT detectable reliably here and stay documented as a
- * known limitation (classes_not_covered).
+ *
+ * v1.5 — LEAK-003 covers the previously documented whole-object gap:
+ * `res.json(user)` where `user` resolves (bounded chase, ≤4 hops) to a WIDE
+ * query result (`prisma.user.findUnique`, supabase `.from().select()`,
+ * `SELECT *`). LOW review note by default (most returns are public content);
+ * escalates to MEDIUM when the queried model's own declaration (schema.prisma
+ * model / SQL migration columns) declares a credential-shaped column.
+ * Projection/strip shapes (`select:`, `omit:`, `pick()`, spread-strip,
+ * `delete`) silence. Runtime values stay unobservable — every finding names
+ * that invisible layer.
  */
 
-/** client-facing response sinks */
-const RESPONSE_SINK = /(?:\b(?:res(?:ponse)?|reply)\s*\.\s*(?:json|send|sendStatus)\s*\(|NextResponse\s*\.\s*json\s*\(|\.status\s*\(\s*\d{3}\s*\)\s*\.\s*json\s*\(|JSON\s*\.\s*stringify\s*\()/;
+/** client-facing response sinks (v1.5: plain `Response.json` API included) */
+const RESPONSE_SINK = /(?:\b(?:[Rr]es(?:ponse)?|reply)\s*\.\s*(?:json|send|sendStatus)\s*\(|NextResponse\s*\.\s*json\s*\(|\.status\s*\(\s*\d{3}\s*\)\s*\.\s*json\s*\(|JSON\s*\.\s*stringify\s*\()/;
 
 /** credential-shaped object keys serialized into a response */
 const CREDENTIAL_KEY =
@@ -35,8 +43,42 @@ const CLEANUP_SHAPE = /delete\s+\w+\.(?:password|passwd|secret|token)|\[?(?:pass
 const PII_LOG_SINK = /\bconsole\s*\.\s*(?:log|warn|error|debug|info)\s*\(/;
 const PII_SHAPE = /\b(?:email|phone|ssn|social[_-]?security|date[_-]?of[_-]?birth|dateOfBirth|medical|health|full[_-]?name|fullName|address)\b/i;
 
+// ---- LEAK-003 (v1.5) — whole-object serialization of a wide query result ----
+/** bare-identifier whole-object response sink: `res.json(user)`, `Response.json(rows)`, `NextResponse.json(payload)` */
+const WHOLE_SINK =
+  /(?:\b(?:[Rr]es(?:ponse)?|reply)\s*\.\s*(?:json|send)\s*\(|NextResponse\s*\.\s*json\s*\()\s*([A-Za-z_$][\w$]*)\s*[\),]/;
+
+/** shapes whose value came from an UN-PROJECTED (wide) query — the response may carry fields nobody selected away */
+const WIDE_QUERY_SHAPE =
+  /\bprisma\s*\.\s*\w+\.\s*\w+\s*\(|\b(?:findFirst|findUnique|findMany|findOne|findAll)\s*\(|\.from\s*\([^)]*\)\s*\.\s*(?:select|match)\s*\(|SELECT\s+\*|\.collection\s*\([^)]*\)\s*\.\s*(?:find|aggregate)/i;
+
+/** documented-clean shapes: an explicit projection/strip sits in the flow */
+const PROJECTION_SHAPE = /\bselect\s*:|\bomit\s*:|\bpick\s*\(|\.\.\.rest\b|delete\s+\w+\.\w+|\.\.\.\w+,?\s*password/;
+
+/** credential-shaped fields declared for a model in schema.prisma / SQL migrations */
+const CRED_COLUMN = /\b[A-Za-z_]*[Pp]assword[A-Za-z_]*\b|\b[A-Za-z_]*secret[A-Za-z_]*\b|\b[A-Za-z_]*[Tt]oken\b|\bapi[_-]?[Kk]ey\b/i;
+
 export function scanLeak(ctx: ScanContext): RuleResult {
   const findings: RuleResult["findings"] = [];
+
+  // v1.5: per-model credential-column index (schema.prisma + SQL migrations) —
+  // turns the LEAK-003 whole-object note into a targeted MEDIUM when the
+  // serialized model ITSELF declares a credential-shaped column.
+  const credModels = new Set<string>();
+  for (const sf of ctx.files) {
+    if (/\.prisma$/.test(sf.rel)) {
+      for (const m of sf.content.matchAll(/^\s*model\s+([A-Za-z_][\w]*)\s*\{([\s\S]*?)^\}/gm)) {
+        if (CRED_COLUMN.test(m[2])) credModels.add(m[1].toLowerCase());
+      }
+    }
+    if (/\.sql$/.test(sf.rel)) {
+      const stmts = sf.content.split(/;\s*(?:\n|$)/);
+      for (const stmt of stmts) {
+        const create = /create\s+table\s+(?:if\s+not\s+exists\s+)?["'`]*(?:[a-zA-Z_][\w]*\.)?["'`]*([a-zA-Z_][\w]*)["'`]*/i.exec(stmt);
+        if (create && CRED_COLUMN.test(stmt)) credModels.add(create[1].toLowerCase());
+      }
+    }
+  }
 
   for (const f of ctx.files) {
     if (!/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(f.rel)) continue;
@@ -93,6 +135,54 @@ export function scanLeak(ctx: ScanContext): RuleResult {
           needs_confirmation: true,
           verified: true,
         });
+        continue;
+      }
+
+      // LEAK-003 (v1.5) — whole-object serialization of a wide query result:
+      // the response argument is a bare identifier that resolves (bounded
+      // chase) to an un-projected query. LOW review note; MEDIUM when the
+      // queried model's declaration carries credential-shaped columns.
+      const whole = WHOLE_SINK.exec(line);
+      if (whole) {
+        const ident = whole[1];
+        const assigns = collectAssignments(f.lines);
+        const flow = resolveVarFlow(f.lines, assigns, ident, i);
+        const chainVals = flow ? [flow.value, ...flow.chain] : [];
+        const wide = chainVals.find((v) => WIDE_QUERY_SHAPE.test(v));
+        if (wide) {
+          const joined = [wide, ...chainVals, line].join("\n");
+          if (!PROJECTION_SHAPE.test(joined)) {
+            const model =
+              /\bprisma\s*\.\s*([A-Za-z_$][\w$]*)\s*\.\s*\w+\s*\(/.exec(joined)?.[1]
+              ?? /\.from\s*\(\s*["'`](\w+)/.exec(joined)?.[1]
+              ?? /\b(?:from|table|model)\s*["'`]?([A-Za-z_][\w]{2,30})["'`]?\s*\)?/.exec(joined)?.[1]
+              ?? "";
+            const credModel = model && credModels.has(model.toLowerCase());
+            const modelNote = credModel
+              ? `the queried model "${model}" declares credential-shaped columns (schema evidence) — this response may expose one of them`
+              : model
+                ? `the queried model "${model}" shows no credential-shaped column in its declaration — likely public content, keeping the LOW review note`
+                : "the queried model's declaration was not located in the scanned file set — severity stays LOW";
+            findings.push({
+              id: "LEAK-003", severity: credModel ? "medium" : "low", confidence: "low",
+              title: `Whole query result serialized into a client-facing response${credModel && model ? ` (model "${model}" declares credential columns)` : " (review)"}`,
+              file: f.rel, line: i + 1,
+              evidence: {
+                type: "leak_whole_object_response",
+                masked: line.trim().slice(0, 120),
+                note: `static analysis cannot observe which fields the runtime object carries; ${modelNote} — RLS/middleware stripping is an invisible layer, confirm with a real response`,
+              },
+              owasp: "A02",
+              fix: "Respond with an explicit field projection (select/pick of safe columns) rather than the whole query row; strip server-only fields at the boundary.",
+              fix_mode: "suggested-diff",
+              root: `${f.rel}:${i + 1}`,
+              root_cause: rootCause("LEAK-003", `${f.rel}:${i + 1}`),
+              needs_confirmation: true,
+              verified: true,
+            });
+          }
+          continue;
+        }
       }
     }
   }
