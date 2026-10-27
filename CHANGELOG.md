@@ -43,6 +43,10 @@ Capability + perf/verification release. Two workstreams ship together: **(1)** t
 - New **`capab:verify`** acceptance harness chained into `npm test` after `clean:verify` (`tests/capab/`): a synthetic fixture tree scanned by the real CLI; the verifier asserts each capability rule fires on its positive and stays silent on its clean counterpart — **14/14**.
 - Full `npm test` green (exit 0): build, units 319, reachability 7, honeypot all seeds (masking intact), clean 100/A, capability acceptance 14, phase-1 25, phase-2 16, SARIF, acceptance v0.2 / v0.3 / v0.4 (47) / v1.0 (45).
 
+### Changed — SQL-sink alias contract (behavior flip from 1.3.0)
+
+- **Chained aliases are now followed**: `const r = build(req.query.x); const q = r; pool.query(q)` fired in 1.3 only when the sink's argument was the request-built var itself; v1.4's flow layer resolves bounded chains (**≤4 hops**, cycle-safe, no half-verdicts). **U18.8g flipped** from "chain stays silent" to "chain resolves HIGH", and the new edge gates (U18.8g-v2 cap, U18.8g-v3 cycle, U18.8g-v4 method-wrapped intermediates) lock the bounds. The cross-function boundary is unchanged (U18.8f still silent). METHODOLOGY §8 and the README limitation list were updated to the new contract.
+
 ### Fixed — false negatives (detections that were silent and now fire)
 
 - **JWT-003 — fallback secret literals** (`src/rules/jwtsecrets.ts`): `||`/`??` fallbacks on credential-named identifiers are analyzed (case-insensitive `SECRETISH_NAME`), plus cookie-session `keys: ["…"]` arrays, `signingKey(s)`/`JWT_secret` object properties, and the jose `setSigningKey(` / `.sign(` method-call form (context-gated).

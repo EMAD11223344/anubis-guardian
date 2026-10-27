@@ -135,15 +135,20 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
   registry in every report states what ran.
 - URL Mode is a black box: no server internals, no subdomain takeover, no DNS
   level attacks, no business-logic flaws beyond the restricted differential check.
-- **SQL-sink alias propagation (v1.3, single-hop)**: SAST-001 now resolves a
-  sink's bare-identifier first argument to its nearest preceding same-function
-  string assignment and runs the same dynamic-SQL analysis on that value
-  (`const q = "…" + req.query.x; pool.query(q)` → HIGH). Scope stays one hop,
-  same function only: no multi-hop chains (q = r is not followed) and no
-  cross-function dataflow; tagged `$queryRaw` templates and `$1`-placeholder
-  forms stay silent (U18.8a–U18.8h). Sinks themselves are unchanged, and the
-  same limitation class remains for values assembled through more than one
-  variable or across function boundaries.
+- **Dynamic-SQL value tracking (v1.4 — bounded multi-hop chase)**: SAST-001
+  resolves a sink's bare-identifier argument through its value chain
+  (`const q = "…" + req.query.x; pool.query(q)` → HIGH). The v1.3 single-hop
+  aliasing was replaced by a **bounded chase in `src/rules/flow.ts`**: chained
+  aliases ARE followed up to **4 hops** (U18.8g flipped to the new contract),
+  method-wrapped intermediates (`const b = a.trim()`) still resolve the origin
+  (U18.8g-v4), cycles never fire (U18.8g-v3), and a chain deeper than the bound
+  yields **no verdict at all** — never a half-resolved guess (U18.8g-v2). Scope
+  remains same-function; one extra hop exists for imported local SQL helpers
+  (the helper's source is read, never executed; npm package specs are never
+  followed). Tagged `$queryRaw` templates and `$1`-placeholder forms stay
+  silent (U18.8c–U18.8e); sinks themselves are unchanged. This is bounded
+  propagation within a function (plus one explicit import level), **not** a
+  call-graph, an AST engine, or cross-function dataflow.
 - **External adapter severities are explicit, not guessed**: `osv-scanner` findings
   map CRITICAL→critical · HIGH→high · MODERATE/MEDIUM→medium · LOW→low; a missing
   or unrecognized OSV severity lands at MEDIUM with `needs_confirmation` and the
