@@ -158,11 +158,22 @@ export interface TenantEntity { table: string; declFile: string; }
 export function tenantEntities(ctx: ScanContext): Map<string, TenantEntity> {
   const out = new Map<string, TenantEntity>();
   for (const f of ctx.files) {
-    // prisma schema models
-    const model = /^\s*model\s+([A-Za-z_][\w]*)\s*\{([\s\S]*?)^\}/m.exec(f.content);
-    if (model && /schema\.prisma$/.test(f.rel) && TENANT_COL.test(model[2])) {
-      out.set(model[1].toLowerCase(), { table: model[1], declFile: f.rel });
-      continue;
+    // prisma schema models — v1.5.1: the model regex is only meaningful for
+    // schema.prisma files, so it is gated behind the rel check first. Running
+    // it on every scanned file made the pack quadratic on windowed large
+    // files: `^\s*model` backtracked across the window's (start-1)-row empty
+    // pad run at EVERY row start — O(pad rows²) ≈ minutes on a 4MB file with
+    // many short lines (profiled: 111.7s of a 116s full scan; U26.4).
+    // `^[\t ]*model` instead of `^\s*model` removes the cross-empty-run
+    // backtracking entirely; the match SET is provably identical (any
+    // newline-crossing \s* match reaching "model" lands model at a row start
+    // that carries its own `^` anchor), so detection is unchanged.
+    if (/schema\.prisma$/.test(f.rel)) {
+      const model = /^[\t ]*model\s+([A-Za-z_][\w]*)\s*\{([\s\S]*?)^\}/m.exec(f.content);
+      if (model && TENANT_COL.test(model[2])) {
+        out.set(model[1].toLowerCase(), { table: model[1], declFile: f.rel });
+        continue;
+      }
     }
     // SQL migrations: CREATE TABLE / ALTER TABLE … ADD COLUMN with a tenant column in the SAME statement
     if (/\.sql$/.test(f.rel)) {
@@ -191,6 +202,18 @@ export function scanTenant(ctx: ScanContext): RuleResult {
   const entities = tenantEntities(ctx);
   if (!entities.size) return { findings }; // no tenant model declared → pack stays silent (not applicable)
 
+  // v1.5.1: the two per-entity access regexes are compiled ONCE per entity
+  // (previously once per line × per entity — for a windowed many-row file
+  // that was up to rows × entities × 2 RegExp compilations in the hot loop).
+  // Pattern strings are byte-identical, so detection is unchanged.
+  const perEntity = Array.from(entities, ([table, ent]) => ({
+    table,
+    model: ent.table,
+    declFile: ent.declFile,
+    prismaByIdRe: new RegExp(`\\b\\w+\\.${ent.table}\\.(?:update|delete|findUnique|findFirst|upsert)\\s*\\(`, "i"),
+    stmtSqlRe: new RegExp(`\\b(?:UPDATE|DELETE\\s+FROM)\\s+["'\`]*(?:[a-zA-Z_][\\w]*\\.)?["'\`]*${table}["'\`]*\\b`, "i"),
+  }));
+
   for (const f of ctx.files) {
     if (!/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(f.rel)) continue;
     if (/(?:^|\/)(?:tests?|__tests__|specs?|fixtures?|mocks?)\/|\.test\.|\.spec\./i.test(f.rel)) continue;
@@ -205,10 +228,11 @@ export function scanTenant(ctx: ScanContext): RuleResult {
       // statement window. v1.5: by-ID READS (findUnique already covered,
       // findFirst added) are the classic tenant-IDOR read — same review
       // prompt, title distinguishes read vs mutation.
-      for (const [table, ent] of entities) {
-        const model = ent.table;
-        const prismaById = new RegExp(`\\b\\w+\\.${model}\\.(?:update|delete|findUnique|findFirst|upsert)\\s*\\(`, "i").test(line);
-        const stmtSql = new RegExp(`\\b(?:UPDATE|DELETE\\s+FROM)\\s+["'\`]*(?:[a-zA-Z_][\\w]*\\.)?["'\`]*${table}["'\`]*\\b`, "i").test(line);
+      for (const ent of perEntity) {
+        const table = ent.table;
+        const model = ent.model;
+        const prismaById = ent.prismaByIdRe.test(line);
+        const stmtSql = ent.stmtSqlRe.test(line);
         if (!prismaById && !stmtSql) continue;
         const stmt = lines.slice(Math.max(0, i - 1), Math.min(lines.length, i + 6)).join("\n");
         const hasOwnership = /(?:where\s*:\s*\{[^}]{0,240}(?:AND|\.\.\.|tenant|org|workspace|company|userId)|\btenant\b|\borg[_-]?id\b|\bworkspace[_-]?id\b|\buser[_-]?id\b\s*=|\bAND\s+(?:user|org|tenant|workspace|company)[_-]?id\b)/i.test(stmt);

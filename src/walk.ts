@@ -58,12 +58,22 @@ function windowedScans(abs: string, rel: string, content: string): ScannedFile[]
       end++;
     }
     if (end === start) end = start + 1; // single line > 512KB — one-line window
-    // pads: (start-1) empty rows + one synthetic `}` scope-break at the seam
-    const pads: string[] = [];
-    for (let k = 0; k < start; k++) pads.push(k === start - 1 ? "}" : "");
-    const body = lines.slice(start, end);
-    const winLines = [...pads, ...body];
-    const winContent = (pads.length ? pads.join("\n") + "\n" : "") + body.join("\n");
+    // v1.5.1: the pad block — (start-1) empty rows + one synthetic `}` seam row —
+    // is materialized with a native fill + exactly ONE body copy instead of the
+    // v1.5 build (per-window pads[] push loop + two spread copies + a
+    // start-element join). For a many-line 4MB file the Σ pad rows ≈ 4 × line
+    // count, so the repeated per-window rebuild was O(pads × windows) of pure
+    // allocation churn before the first rule ever ran. winLines keeps the exact
+    // same contract: index i == absolute line i, last pad row is "}".
+    const bodyLen = end - start;
+    const winLines: string[] = new Array(start + bodyLen);
+    if (start > 0) {
+      winLines.fill("", 0, start - 1); // shared "" — every empty row is the same string
+      winLines[start - 1] = "}";       // synthetic scope-break at the seam
+    }
+    for (let k = 0; k < bodyLen; k++) winLines[start + k] = lines[start + k];
+    const winContent = (start > 0 ? "\n".repeat(start - 1) + "}\n" : "") +
+      lines.slice(start, end).join("\n");
     out.push({ abs, rel, content: winContent, lines: winLines });
     // v1.5 progress guarantee: the previous code BROKE when `end - OVERLAP <= start`,
     // which is exactly the giant-line case — after one line longer than the window

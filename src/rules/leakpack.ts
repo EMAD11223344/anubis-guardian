@@ -67,7 +67,7 @@ export function scanLeak(ctx: ScanContext): RuleResult {
   const credModels = new Set<string>();
   for (const sf of ctx.files) {
     if (/\.prisma$/.test(sf.rel)) {
-      for (const m of sf.content.matchAll(/^\s*model\s+([A-Za-z_][\w]*)\s*\{([\s\S]*?)^\}/gm)) {
+      for (const m of sf.content.matchAll(/^[\t ]*model\s+([A-Za-z_][\w]*)\s*\{([\s\S]*?)^\}/gm)) {
         if (CRED_COLUMN.test(m[2])) credModels.add(m[1].toLowerCase());
       }
     }

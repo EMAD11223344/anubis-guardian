@@ -1517,6 +1517,200 @@ const vc = await import(d("dist/rules/valueclass.js"));
   }
 }
 
+// ---------- U26: v1.5.1 — windowed-construction efficiency + behavior identity ----------
+// The v1.5 window build materialized each window's (start)-row pad block as a
+// push-loop + two spread copies + a start-element join, so a many-line 4MB file
+// (Σ pad rows ≈ 4 × line count) paid that construction cost per window before
+// any rule ran. v1.5.1 builds the pad block with native fill + ONE body copy and
+// the content prefix as "\n".repeat. U26.1/U26.2 prove the OUTPUT IS IDENTICAL
+// to the v1.5 algorithm (reference oracle replicated below); U26.3/U26.4 prove
+// the deep-line correctness survives (fill/repeat paths) and bound the cost.
+{
+  const { windowedRef } = (() => {
+    // reference (v1.5 algorithm) — kept verbatim from the pre-optimization code
+    const MAX = 512 * 1024;
+    const OVERLAP = 16;
+    const ref = (content) => {
+      const lines = content.split(/\r?\n/);
+      const out = [];
+      let start = 0;
+      while (start < lines.length && out.length < 64) {
+        let end = start;
+        let bytes = 0;
+        while (end < lines.length) {
+          const w = Buffer.byteLength(lines[end], "utf8") + 1;
+          if (end > start && bytes + w > MAX) break;
+          bytes += w;
+          end++;
+        }
+        if (end === start) end = start + 1;
+        const pads = [];
+        for (let k = 0; k < start; k++) pads.push(k === start - 1 ? "}" : "");
+        const body = lines.slice(start, end);
+        const winLines = [...pads, ...body];
+        const winContent = (pads.length ? pads.join("\n") + "\n" : "") + body.join("\n");
+        out.push({ content: winContent, lines: winLines });
+        const next = end - OVERLAP;
+        start = next > start ? next : end;
+      }
+      return out;
+    };
+    return { windowedRef: ref };
+  })();
+
+  // reproducible mixed-shape content: short lines, blank runs, CRLF-ish lanes,
+  // a >512KB giant line mid-file, and a trailing secret after the giant line
+  const mixed = Array.from({ length: 900 }, (_, k) =>
+    (k % 7 === 0 ? "" : `const v${k} = ${k} * ${k + 1};`)
+  ).join("\n")
+    + "\n" + "Z".repeat(600 * 1024) + "\n"
+    + Array.from({ length: 900 }, (_, k) => `const w${k} = "${k}";`)
+      .join("\n")
+    + "\n" + 'const AUTH_SECRET_MIX = "u26-mixed-tail-secret";\n';
+
+  // --- oracle identity: new windowedScans == v1.5 reference, on the mixed file
+  // and on a many-short-line file (fixes must be behavior-preserving) ---
+  {
+    const { mkdtempSync: mkTS, writeFileSync: wf, rmSync: rmD } = await import("node:fs");
+    const { join: jn } = await import("node:path");
+    const { tmpdir: tdir } = await import("node:os");
+    const { walkWithStats: wwst } = await import(d("dist/walk.js"));
+
+    const short = ("x\n".repeat(300 * 1024)) + 'const AUTH_SECRET_SHORT = "u26-short-tail";\n';
+    for (const [name, content] of [["mixed.ts", mixed], ["short.ts", short]]) {
+      const tdir2 = mkTS(jn(tdir(), "u26-oracle-"));
+      wf(jn(tdir2, name), content);
+      const win = wwst(tdir2).files;
+      const ref = windowedRef(content);
+      const same = win.length === ref.length
+        && win.every((w, k) => w.lines.length === ref[k].lines.length
+          && w.lines.every((l, j) => l === ref[k].lines[j])
+          && w.content === ref[k].content);
+      check(`U26.1 walk windows are BYTE-IDENTICAL to the v1.5 algorithm (${name})`,
+        same,
+        JSON.stringify({ impl: win.length, ref: ref.length, firstDiff: win.findIndex((w, k) => !ref[k] || w.content !== ref[k].content) }));
+      rmD(tdir2, { recursive: true, force: true });
+    }
+  }
+
+  // --- deep absolute line correctness across MANY SHORT lines: a secret on a
+  // high absolute line (past a window seam) is found at its EXACT line number ---
+  {
+    const { mkdtempSync: mkTS, writeFileSync: wf, mkdirSync: mkd, rmSync: rmD } = await import("node:fs");
+    const { join: jn } = await import("node:path");
+    const { tmpdir: tdir } = await import("node:os");
+    const deep = mkTS(jn(tdir(), "u26-deep-"));
+    mkd(jn(deep, "app"), { recursive: true });
+    wf(jn(deep, "package.json"), JSON.stringify({ name: "u26", dependencies: {} }));
+    // ~700k one-char lines (>512KB → windowed), secret on line 630,001
+    // ~700k one-char lines (>512KB → windowed), secret on line 645121
+    // (name must END with SECRET/_SECRET/KEY/_KEY to match JWT-003's CONST_SECRET)
+    const secretLine = 630 * 1024; // 0-based row 645120 → absolute line 645121
+    const pre = "x\n".repeat(secretLine);
+    const mid = 'const AUTH_SECRET = "u26-deep-absolute-line-secret";\n';
+    const post = "y\n".repeat(80 * 1024);
+    wf(jn(deep, "app", "deep.ts"), pre + mid + post);
+    const res = await (await import(d("dist/engine.js"))).scan(deep);
+    const j = res.findings.filter((f) => f.id === "JWT-003" && f.file.includes("deep.ts"));
+    check("U26.2 E: secret on absolute line 645121 inside a ~727k-short-line file is found at that EXACT line (fill/repeat pad paths, seam crossing)",
+      j.length >= 1 && j[0].line === secretLine + 1,
+      JSON.stringify(j.map((f) => f.line)));
+    rmD(deep, { recursive: true, force: true });
+  }
+
+  // --- construction-cost budget (generous, CI-stable): the 4MB many-short-line
+  // walk must stay far inside the returned-file budget — replacing a per-window
+  // push/spread/join rebuild with fill+copy must not regress correctness or
+  // blow up time/memory. U25.1/U25.2 remain the giant-line correctness gates.
+  {
+    const { mkdtempSync: mkTS, writeFileSync: wf, mkdirSync: mkd, rmSync: rmD } = await import("node:fs");
+    const { join: jn } = await import("node:path");
+    const { tmpdir: tdir } = await import("node:os");
+    const { walkWithStats: wwst } = await import(d("dist/walk.js"));
+    const { performance: perf } = await import("node:perf_hooks");
+    const big = mkTS(jn(tdir(), "u26-perf-"));
+    mkd(jn(big, "app"), { recursive: true });
+    // ~4MB − margin of single-char rows (~4.1M lines) + one secret tail line
+    const blob = "x\n".repeat(2 * 1024 * 1024 - 32);
+    wf(jn(big, "app", "big.ts"), blob + 'const AUTH_SECRET_PERF = "u26-perf-tail";\n');
+    if (global.gc) global.gc();
+    const h0 = process.memoryUsage().heapUsed;
+    const t0 = perf.now();
+    const stats = wwst(big);
+    const ms = perf.now() - t0;
+    const heapMB = Math.round((process.memoryUsage().heapUsed - h0) / 1048576);
+    const win = stats.windowed.find((w) => w.file.includes("big.ts"));
+    const winLines = stats.files.filter((f) => f.rel.includes("big.ts"));
+    const coveredRows = winLines.reduce((a, f) => a + f.lines.length, 0);
+    check("U26.3 E perf: window-walking a ~4MB many-short-line file stays inside the construction budget (<10s, <600MB heap) and still covers the tail line",
+      ms < 10_000 && heapMB < 600 && winRowsContainSecret(winLines),
+      JSON.stringify({ ms: Math.round(ms), heapMB, windows: win?.windows, coveredRows }));
+    function winRowsContainSecret(fs) {
+      return fs.some((f) => f.lines.includes('const AUTH_SECRET_PERF = "u26-perf-tail";'));
+    }
+    rmD(big, { recursive: true, force: true });
+  }
+
+  // --- U26.4: scanTenant amplification regression (profiled 2026-10-27) ---
+  // The pre-fix tenantEntities ran the prisma model regex (`^\s*model`) on
+  // EVERY scanned file BEFORE the rel check, so on windowed content the `^\s*`
+  // backtracked across the window's (start-1)-row empty pad run at every row
+  // start → O(pad rows²): 111.7s of a 116s full scan on a 1MB fixture. The fix
+  // gates the regex behind the schema.prisma rel check (output-identical — the
+  // result was discarded otherwise) and anchors locally with `^[\t ]*model`,
+  // removing cross-empty-run backtracking. Gate A proves the pathological
+  // windowed file now scans bounded AND keeps the pack silent without a
+  // tenant schema; Gate B proves TEN-002 detection is INTACT with a real
+  // schema.prisma declaring a tenant column (U21.5/U25.6 keep their own gates).
+  {
+    const { mkdtempSync: mkTS, writeFileSync: wf, mkdirSync: mkd, rmSync: rmD } = await import("node:fs");
+    const { join: jn } = await import("node:path");
+    const { tmpdir: tdir } = await import("node:os");
+    const { performance: perf } = await import("node:perf_hooks");
+    const { scanTenant: st } = await import(d("dist/rules/authzpack.js"));
+
+    // Gate A — windowed many-empty-line file, NO prisma/sql anywhere:
+    // must stay silent and complete inside a generous scan-phase budget.
+    const a = mkTS(jn(tdir(), "u26-ten-a-"));
+    mkd(jn(a, "app"), { recursive: true });
+    wf(jn(a, "package.json"), JSON.stringify({ name: "u26a", dependencies: {} }));
+    // >512KB of ONE-BYTE rows → windowed; window 2+ carries a ~250k-row empty pad run
+    wf(jn(a, "app", "rows.ts"), "x\n".repeat(300 * 1024) + 'const AUTH_SECRET_ROWS = "u26-ten-a";\n');
+    const walkA = (await import(d("dist/walk.js"))).walkWithStats(a);
+    const ctxA = { rootDir: a, rel: (x) => x, files: walkA.files, stack: { frameworks: {}, detected: [] }, trackedFiles: new Set(), gitAvailable: false };
+    const tA = perf.now();
+    const resA = st(ctxA);
+    const msA = perf.now() - tA;
+    check("U26.4 E perf: scanTenant on a windowed many-short-line file (250k-row pad runs) completes <6s and stays SILENT with no tenant schema",
+      msA < 6_000 && resA.findings.length === 0,
+      JSON.stringify({ ms: Math.round(msA), findings: resA.findings.length }));
+    rmD(a, { recursive: true, force: true });
+
+    // Gate B — detection intact: real schema.prisma (normal size) with a
+    // tenant column + a deep prisma by-ID access inside a PADDED WINDOW of a
+    // windowed file → TEN-002 at its EXACT absolute line.
+    const b = mkTS(jn(tdir(), "u26-ten-b-"));
+    mkd(jn(b, "app"), { recursive: true });
+    wf(jn(b, "package.json"), JSON.stringify({ name: "u26b", dependencies: {}, devDependencies: { prisma: "1.0.0" } }));
+    wf(jn(b, "app", "schema.prisma"), 'model WorkspaceDoc {\n  id    String @id\n  orgId String\n}\n');
+    // ~600KB of one-byte rows (windowed), the TEN-relevant call on a deep absolute line
+    const tenLine = 500 * 1024; // 0-based row for the call → absolute line 512001
+    wf(jn(b, "app", "tencall.ts"),
+      "x\n".repeat(tenLine)
+      + 'export async function GET(req) { const d = await prisma.workspaceDoc.findUnique({ where: { id: req.params.id } }); return Response.json(d); }\n');
+    const walkB = (await import(d("dist/walk.js"))).walkWithStats(b);
+    const ctxB = { rootDir: b, rel: (x) => x, files: walkB.files, stack: { frameworks: {}, detected: [] }, trackedFiles: new Set(), gitAvailable: false };
+    const tB = perf.now();
+    const resB = st(ctxB);
+    const msB = perf.now() - tB;
+    const ten = resB.findings.filter((f) => f.id === "TEN-002" && f.line === tenLine + 1);
+    check("U26.4 E: TEN-002 still fires for prisma workspaceDoc.findUnique({where:{id: req.params.id}}) at its EXACT absolute line inside a windowed file, bounded (<6s) — overlapping windows may report the same line twice at raw-rule level; engine dedupe merges them",
+      ten.length >= 1 && msB < 6_000,
+      JSON.stringify({ ms: Math.round(msB), ten: ten.map((x) => ({ line: x.line, file: x.file })) }));
+    rmD(b, { recursive: true, force: true });
+  }
+}
+
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);
 if (FAILS.length) {

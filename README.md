@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/hero.svg" alt="Anubis Guardian — deterministic security auditor for AI-built projects: offline static-only scanner" width="100%">
+
 # ⚱ Anubis Guardian
 
 **Deterministic security auditor for JavaScript/TypeScript projects — especially those built with AI coding agents**
@@ -27,7 +29,7 @@ It is built around the failure patterns of AI-generated ("vibe-coded") applicati
 
 ## Works everywhere — any database, any ORM
 
-The core rules run on **plain JavaScript/TypeScript with no framework assumptions**. Any database and any ORM is fully supported by the universal layers:
+The core rules run on **plain JavaScript/TypeScript with no framework assumptions** at the call site. Whatever database or ORM you use — the rules recognize the **common query patterns** your code actually writes: raw SQL strings built by hand or by a query builder, Prisma / Drizzle / TypeORM-style client calls, chained `.from(...)` builders, and committed `.env` files:
 
 | Your stack | What still fires |
 |---|---|
@@ -35,6 +37,8 @@ The core rules run on **plain JavaScript/TypeScript with no framework assumption
 | **Express / Fastify / Koa / plain Node HTTP** | `TAINT-001..006` (SSRF, redirect, traversal, injection, XSS, code exec) · `JWT-003` hardcoded secrets · `RES-001..003` resource-exhaustion review · `WEBHOOK-001` · `LOGS-001` |
 | **Any CI + Docker** | `CI-001..004` unpinned actions / script injection / permissions · `DOCKER-001..003` root image / `:latest` / ARG secrets |
 | **Any git hosting** | git-history secret recovery · committed-then-deleted env files · sensitive-file inventory |
+
+**What "recognizes common patterns" means — and doesn't:** the universal layers match well-known shapes (string-concatenated SQL, `findMany`/`findFirst` calls, `fetch` sinks, migration files). They are not an exhaustive SQL/ORM parser: an exotic query style, a query builder assembled through several abstractions, or a database accessed behind a home-grown proxy layer can be missed. What the scan did and did not reach is disclosed in the report's coverage manifest — treat the result as evidence about executed checks, not as a statement that your database layer is fully covered.
 
 **Optional battery-included playbooks** (not requirements) add host-aware depth when the repo uses them:
 
@@ -116,6 +120,10 @@ anubis-guardian scan-url https://example.com --level 2 --ownership-token <nonce>
 ```
 
 L1 is always passive (headers, cookies, secrets in public bundles). L2 discovery and L3 probing require verified ownership — a DNS TXT record or `/.well-known` file — and private targets additionally need `--allow-private`. Cloud metadata endpoints are refused unconditionally. **Scanning systems you do not own is illegal; the tool enforces the gate rather than relying on your promise.**
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/modes.svg" alt="Anubis Guardian modes — Mode 1: offline codebase audit (secrets and history, SAST/taint-lite, dependencies, six capability groups, optional framework playbooks); Mode 2: consent-gated URL audit (L1 passive, L2 discovery, L3 probe — verified ownership required)" width="100%">
+</p>
 
 ## Output formats & exit codes
 
@@ -204,7 +212,7 @@ MIT — see [LICENSE](LICENSE).
 
 **أنوبس جارديان** — ماسح أمني حتمي (Deterministic) للمشاريع المكتوبة بجافاسكربت/تايبسكربت، سريع التركيز على مشاريع الذكاء الاصطناعي (vibe coding). ثابت وغير متصل بالإنترنت، لا يُنفّذ الكود المفحوص، ويقنّع الأسرار في كل المخرجات.
 
-**يعمل مع أي قاعدة بيانات وأي إطار عمل** (Prisma / Drizzle / TypeORM / Express / Fastify...) — وملحقات Supabase وNext.js وNestJS اختيارية لإضافة عمق إضافي عند استخدامها فقط.
+**يعمل مع أي قاعدة بيانات وأي إطار عمل** (Prisma / Drizzle / TypeORM / Express / Fastify...) — القواعد تتعرّف على أنماط الاستعلام الشائعة (SQL مُبنى يدويًا، استدعاءات ORM المعروفة)؛ والملحقات الخاصة بـ Supabase وNext.js وNestJS اختيارية لإضافة عمق إضافي عند استخدامها فقط.
 
 ```bash
 npm install -g anubis-guardian
