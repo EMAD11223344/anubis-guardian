@@ -562,7 +562,25 @@ program
     }
   });
 
+// v1.3-audit: parser errors REJECT instead of process.exit(1) — commander's
+// exitOverride() only covers the command it is attached to, so it is rolled
+// over the whole command tree (unknown options error on the leaf command).
+{
+  const stack = [program];
+  while (stack.length) {
+    const c = stack.pop();
+    if (!c) break;
+    c.exitOverride();
+    for (const sub of c.commands ?? []) stack.push(sub);
+  }
+}
 program.parseAsync(process.argv).catch((e) => {
+  // documented contract (docs/AGENT-INTEGRATION.md, SKILL.md): exit 2 = refusal /
+  // usage error — read stderr, do not retry blind. Unknown options and bad
+  // argv are usage errors; commander's default was exit 1 (the --fail-on gate
+  // code), which told CI "findings found" instead of "fix the invocation".
+  // help/version requests exit 0 — that is not an error.
+  if (typeof (e as { code?: string } | undefined)?.code === "string" && /^(commander\.)?(help|version)/.test((e as { code?: string }).code!)) process.exit(0);
   console.error(e instanceof Error ? e.message : String(e));
   process.exit(2);
 });

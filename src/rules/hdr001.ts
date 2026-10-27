@@ -21,6 +21,7 @@ const RECEIVER_RES = [
   /\breq(?:uest)?\.headers(?:\[["'`]([^"'`]+)["'`\]]|\.get\(\s*["'`]([^"'`]+)["'`]\s*\))/gi,
   /\bheaders\(\)\.get\(\s*["'`]([^"'`]+)["'`]\s*\)/gi, // Next.js server helper
   /\breq\.header\(\s*["'`]([^"'`]+)["'`]\s*\)/gi,      // Express helper
+  /\breq\.get\(\s*["'`]([^"'`]+)["'`]\s*\)/gi,          // Express req.get("x…") (v1.3 audit)
 ];
 
 /** v1.2 (T12): DB-connection construction sinks whose PROPERTIES get header values */
@@ -62,9 +63,11 @@ function buildReceiverMatcher(lines: string[]): (text: string) => string | null 
   const patterns = [
     /req(?:uest)?\.headers(?:\[\s*["'`]([^"'`]+)["'`]\s*\]|\.get\s*\(\s*["'`]([^"'`]+)["'`]\s*\))/,
     /\breq(?:uest)?\.header\s*\(\s*["'`]([^"`\s]+)["'`\s]*\)/,
+    /\breq(?:uest)?\.get\s*\(\s*["'`]([^"`\s]+)["'`\s]*\)/,
     /headers\s*\(\s*\)\s*\.\s*get\s*\(\s*["'`]([^"`\s]+)["'`\s]*\)/,
     new RegExp(aliasAlt + '["\'`]([^"\'`]+)["\'`]'),
   ];
+  const bareHeadersRe = /\breq(?:uest)?\.headers\b/;
   return (text: string): string | null => {
     for (const p of patterns) {
       const m = p.exec(text);
@@ -75,6 +78,11 @@ function buildReceiverMatcher(lines: string[]): (text: string) => string | null 
         if (typeof m[g] === "string" && m[g]) return m[g];
       }
     }
+    // §3.5 (h1): bare `req.headers` — destructuring (`const { xPgPass } =
+    // req.headers`), spreads and direct pass-throughs carry no header NAME.
+    // The line still counts as a header READ so the destructure branch binds
+    // the destructured locals; the evidence names the receiver itself.
+    if (bareHeadersRe.test(text)) return "(req.headers)";
     return null;
   };
 }
@@ -94,11 +102,26 @@ export function scanHdr001(ctx: ScanContext): RuleResult {
     const headerVars = new Map<string, string>(); // varName → header name
     for (const line of f.lines) {
       if (!hasHeaderRead(line)) continue;
+      const headerName = hasHeaderRead(line) ?? "(unknown header)";
       for (const m of line.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=/g)) {
-        if (!headerVars.has(m[1])) headerVars.set(m[1], hasHeaderRead(line) ?? "(unknown header)");
+        if (!headerVars.has(m[1])) headerVars.set(m[1], headerName);
       }
       for (const m of line.matchAll(/([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?[A-Za-z_$.]/g)) {
-        if (!headerVars.has(m[1])) headerVars.set(m[1], hasHeaderRead(line) ?? "(unknown header)");
+        if (!headerVars.has(m[1])) headerVars.set(m[1], headerName);
+      }
+      // v1.3-audit (§3.5): destructured header reads also bind header values —
+      //   `const { xPgSecret } = req.headers` / `const { "x-dsn": dsn } = req.headers`
+      //   / `const { someName = req.get("x-pg-secret") }`-style aliasing (object pattern)
+      if (/=\s*(?:await\s+)?req(?:uest)?\.headers\b/.test(line)) {
+        const brace = line.match(/\{([^}]*)\}/);
+        if (brace) {
+          for (const part of brace[1].split(",")) {
+            const pm = part.match(/["']?([A-Za-z_$][\w$]*)["']?\s*(?::\s*(["']?[A-Za-z_$][\w$]*["']?))?/);
+            if (!pm) continue;
+            const localName = (pm[2]?.replace(/["']/g, "") ?? pm[1]).trim();
+            if (localName && !headerVars.has(localName)) headerVars.set(localName, headerName);
+          }
+        }
       }
     }
 

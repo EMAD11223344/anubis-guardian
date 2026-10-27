@@ -48,11 +48,18 @@ export function scanPacks2(ctx: ScanContext): RuleResult {
       const args = line.slice(line.search(LOG_CALL));
       if (MASK_SIGNAL.test(line)) continue; // masked before logging — clean case
       const literalSecret = JWT_LITERAL.test(line) || LONG_SECRET.test(line);
-      const varLeak =
-        SECRETISH_VAR.test(args) &&
+      // v1.3-audit (§5.1): the VAR branch must see the secret-shaped value flowing
+      // as a VARIABLE, not just the words "api key" inside a fixed diagnostic
+      // message ("database password was not configured" was a 24×/app FP class).
+      // String literals are stripped first; only a real identifier token then
+      // carries the verdict. Interpolated literals ("… ${token} …" / "…" + token)
+      // keep their identifier after stripping and fire.
+      const argsWithoutLiterals = args.replace(/["'`](?:[^"'`\\]|\\.)*["'`]/g, " ");
+      const identSecretish = [...argsWithoutLiterals.matchAll(/[A-Za-z_$][\w$]*/g)]
+        .some((t) => /secret|password|passwd|api[_-]?key|apikey|service[_-]?role|private[_-]?key|credential|access[_-]?token|refresh[_-]?token|session[_-]?token|\btokens?\b/.test(t[0])) &&
         !/\.(length|size|count|exists|expired|valid)\b/.test(args) &&
         !/typeof|Boolean\(|!!/.test(args);
-      if (!literalSecret && !varLeak) continue; // clean case: ids, counts, non-secret context
+      if (!literalSecret && !identSecretish) continue; // clean case: ids, counts, non-secret context
       if (literalSecret) {
         findings.push({
           id: "LOGS-001",
@@ -311,7 +318,11 @@ export function scanPacks2(ctx: ScanContext): RuleResult {
         }
         // decode for display/debug only → clean case, silent
       }
-      if (/jwt\.verify\s*\(|\.verify\s*\(\s*(token|jwt|accessToken)/.test(line) || /jwt\.verify\s*\(/.test(f.lines.slice(Math.max(0, i - 3), i + 1).join("\n"))) {
+      if (/jwt\.verify\s*\(|\.verify\s*\(\s*(token|jwt|accessToken)/.test(line)) {
+        // v1.3-audit (§5.2): the verify CALL LINE is the one verdict — the old
+        // code ALSO rewarded this scan for the 3 FOLLOWING lines (multi-line
+        // options object), producing one JWT-002 per option line from a single
+        // call site. Options within ±3 lines of the call line are evaluated here.
         const verifyWindow = f.lines.slice(Math.max(0, i - 3), i + 4).join("\n");
         if (/algorithms\s*:\s*\[[^\]]*["'`]none["'`]/i.test(verifyWindow) || /algorithms\s*:\s*["'`]none["'`]/i.test(verifyWindow)) {
           findings.push({

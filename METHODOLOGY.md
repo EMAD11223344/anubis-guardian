@@ -202,7 +202,15 @@ carries a deliberate trade-off, stated here.
 
 - TAINT-006 owns request-tainted `eval` / `new Function` / `vm.runIn*` /
   `setTimeout(<ident>)`; SAST-003 also fires MEDIUM + `needs_confirmation` for
-  any non-literal argument **without** a trace to request data.
+  any non-literal argument **without** a trace to request data. Bare
+  `Function(...)` invocation (without `new`) is covered by both, with a
+  property-call guard; literal-only calls (`Function('return 1')()`) never fire.
+- **Test-path demotion (not exclusion):** in test/demo-script paths (`tests/`,
+  `specs/`, `*.test.*`, `fixtures/`, `mocks/` — segment-scoped so `latest.ts`
+  cannot match) SAST-003 findings are demoted to LOW/low/needs-confirmation
+  review notes; they stay visible but do not deduct. A real eval-shaped sink in
+  a non-test path keeps the full verdict. Excluding whole rule classes by path
+  is deliberately not done.
 - **De-duplication policy:** request-traced eval is reported once, by TAINT-006
   (the taint layer has the data-flow evidence); SAST-003 defers. Literal
   `eval('1+1')`, and `eval` inside comments or strings, never fire. Argument
@@ -254,7 +262,7 @@ directory — the class must spell both names. Placeholder passwords and
 - **FP calibration:** the snapshot only grades what OSV says — patched releases
   of the same package (the clean comparator in the T14 gates) never fire.
 
-### 9.7 Guard hook — value-based detection (R1–R4)
+### 9.7 Guard hook — value-based detection (R1–R5)
 
 - **Decoded role beats substring:** every JWT-shaped stress (3 base64url
   segments) is decoded; only decoded `role === "service_role"` decides R1, in
@@ -282,6 +290,16 @@ directory — the class must spell both names. Placeholder passwords and
   hatches: `ANUBIS_GUARD=block|warn|off` and the inline marker
   `anubis-allow: <reason of 8+ chars>` (echoed to stderr; shorter reasons still
   block — the gate exists to record intent, not to be slipped past).
+- **R5 — live secret literals into client-reachable code:** a value matching
+  live-provider key shapes (`sk_live_…`, `ghp_…`, `AKIA…`) written into a
+  client context is blocked. `sk_test_`/publishable keys stay allowed, and
+  name-only `NEXT_PUBLIC_*` references stay allowed (the documented law: only
+  secret-shaped VALUES ship secrets).
+- **R3-redirect fallback:** a quoted secret-shaped literal (≥12 chars) written
+  into `.env` via `echo … > .env` or heredoc **without a `KEY=` line** is
+  blocked; segments containing `/` or `=` (paths, flags, existing assignments)
+  are excluded. The ≥20-char credential-name gate for explicit `KEY=VALUE`
+  writes is unchanged and documented as a deliberate tradeoff.
 - **Version wiring:** the hook header, `settings.json` entry, and AGENTS.md
   snippet derive from the real package version — no stale `v0.3.0` labels.
 

@@ -27,8 +27,13 @@ export function scanNestjs(ctx: ScanContext): RuleResult {
   const findings: RuleResult["findings"] = [];
   if (!ctx.stack.frameworks.nestjs) return { findings };
 
-  // global APP_GUARD (class-based or string provider) anywhere in the codebase
+  // global APP_GUARD (class-based or string provider) anywhere in the CODEBASE —
+  // v1.3-audit (§5.4): CODE files only. The old all-files scan let a PROSE
+  // mention ("we configure a global APP_GUARD with useClass…") in a README/GUIDE
+  // silence NEST-001 for every endpoint of the project; a real backend carries
+  // the provider in a .ts/.js module.
   const globalGuard = ctx.files.some((f) =>
+    /\.(?:ts|js|mjs|cjs)$/.test(f.rel) && !/(^|\/)(?:(?:[A-Za-z0-9_-]+\.)?spec|test)\.(?:ts|js)$/.test(f.rel) &&
     /APP_GUARD/.test(f.content) && /useClass|useExisting|useFactory|ThrottlerGuard|AuthGuard|JwtAuthGuard/.test(f.content)
   );
 

@@ -952,6 +952,186 @@ const vc = await import(d("dist/rules/valueclass.js"));
     HOOK_SCRIPT.includes('catch { process.exit(0); }') && HOOK_SCRIPT.includes("if (!content.trim()) process.exit(0);"));
 }
 
+// ---------- U20: independent-review round 2 (v1.3.0 audit fixes, 2026-10) ----------
+{
+  const sctx = (content, rel = "app/api/x.ts") => ({ rootDir: "/p", files: [{ abs: `/p/${rel}`, rel, content, lines: content.split("\n") }], stack: { frameworks: {} } });
+
+  // ---- JWT-003 hardcoded-secret edges (j1/j2/j4/j6/j7 probes) ----
+  const { scanJwtSecrets } = await import(d("dist/rules/jwtsecrets.js"));
+  const jwtFind = (c, rel = "app/api/k.ts") => scanJwtSecrets(sctx(c, rel)).findings;
+  check("U20.1 JWT-003: credential-named const || 'literal' fallback fires HIGH",
+    jwtFind('const JWT_SECRET = process.env.JWT_SECRET || "dev-fallback-secret-123";\nexport const t = jwt.sign({ a: 1 }, JWT_SECRET);\n')
+      .some((f) => f.id === "JWT-003" && f.severity === "high" && /fallback/i.test(f.title)));
+  check("U20.2 JWT-003: lowercase const secret = env ?? 'literal' fires HIGH",
+    jwtFind('const secret = process.env.SIGNING_KEY ?? "supersecret-1234";\n')
+      .some((f) => f.id === "JWT-003" && f.severity === "high"));
+  check("U20.3 JWT-003: cookieSession keys:[\"literal\"] fires HIGH (±session context)",
+    jwtFind('import cookieSession from "cookie-session";\napp.use(cookieSession({ name: "app", keys: ["keyboard-cat-99"] }));\n')
+      .some((f) => f.id === "JWT-003" && f.severity === "high"));
+  check("U20.4 JWT-003: jose new SignJWT().setSigningKey('literal') fires HIGH",
+    jwtFind('import { SignJWT } from "jose";\nexport const t = new SignJWT(d).setSigningKey("opaque-signing-key-42").sign();\n')
+      .some((f) => f.id === "JWT-003" && f.severity === "high"));
+  check("U20.5 JWT-003 clean: secret from env / configService stays SILENT",
+    jwtFind('export const cfg = JwtModule.register({ secret: process.env.JWT_SECRET });\nconfigService.get("auth.secret");\n').length === 0);
+
+  // ---- SAST-001 receiver generalization (s1/s2/s3/s4 probes) ----
+  const { scanSast } = await import(d("dist/rules/sast.js"));
+  const sastFind = (c, rel = "app/api/s.ts") => scanSast(sctx(c, rel)).findings;
+  const sastIds = (c, rel = "app/api/s.ts") => sastFind(c, rel).map((f) => f.id);
+  check("U20.6 SAST-001: TypeORM myDataSource.query('…'+req.body.x) fires HIGH",
+    sastFind('return myDataSource.query("SELECT * FROM users WHERE name = \'" + req.body.name + "\'");\n')
+      .some((f) => f.id === "SAST-001" && f.severity === "high"));
+  check("U20.7 SAST-001: arbitrary-receiver em.query(`…${req.params.id}`) fires HIGH",
+    sastFind('await em.query(`DELETE FROM doc WHERE id=${req.params.id}`);\n')
+      .some((f) => f.id === "SAST-001" && f.severity === "high"));
+  check("U20.8 SAST-001: mysql conn.execute alias of dynamic SQL fires HIGH",
+    sastFind('const sql = "SELECT * FROM t WHERE x = \'" + req.query.x + "\'";\nreturn conn.execute(sql);\n')
+      .some((f) => f.id === "SAST-001" && f.severity === "high"));
+  check("U20.9 SAST-001 clean: drizzle tagged db.execute(sql`…${id}`) stays SILENT (parameterized by design)",
+    sastIds('return db.execute(sql`select * from orders where id = ${orderId}`);\n').length === 0);
+  check("U20.10 SAST-001: non-SQL receivers (xstate .execute(state…)) stay SILENT",
+    sastIds("actor.execute(state, { to: 'idle' });\n").length === 0);
+
+  // ---- TAINT-006 / SAST-003 bare Function( (c1/c5) ----
+  const { scanTaint } = await import(d("dist/rules/taint.js"));
+  const taintFind = (c, rel = "app/api/c.ts") => scanTaint(sctx(c, rel)).findings;
+  check("U20.11 TAINT-006: bare Function('return ' + req.body.expr)() fires MEDIUM/needconf",
+    taintFind('const f = Function("return " + req.body.expr);\nreturn f();\n')
+      .some((f) => f.id === "TAINT-006" && f.severity === "medium" && f.needs_confirmation === true));
+  check("U20.12 TAINT-006/SAST-003 clean: literal Function('return 1')() stays SILENT",
+    scanTaint(sctx('return Function("return 41 + 1")();\n')).findings.length === 0
+      && scanSast(sctx('export function ok() { return Function("return 41 + 1")(); }\n')).findings.length === 0);
+
+  // ---- TAINT-004 execFile/spawn argv (c3/c4) ----
+  check("U20.13 TAINT-004: execFile('convert', [req.query.path]) fires MEDIUM/needconf",
+    taintFind('import { execFile } from "child_process";\nreturn execFile("convert", [req.query.path, "/out.png"]);\n', "app/api/c.ts")
+      .some((f) => f.id === "TAINT-004" && f.severity === "medium" && f.needs_confirmation === true));
+  check("U20.14 TAINT-004: tainted var into exec() still covered (regression)",
+    taintFind('import { exec } from "child_process";\nconst cmd = req.body.cmd;\nreturn exec(cmd);\n', "app/api/c.ts")
+      .some((f) => f.id === "TAINT-004" && f.severity === "medium"));
+  check("U20.15 TAINT-004 clean: execFile('convert', [literal]) stays SILENT",
+    taintFind('return execFile("convert", ["in.png", "out.png"]);\n', "app/api/c.ts").length === 0);
+
+  // ---- HDR-001 header receiver edges (h1/h2) ----
+  const { scanHdr001 } = await import(d("dist/rules/hdr001.js"));
+  const hdrIds = (c, rel = "app/api/h.ts") => scanHdr001(sctx(c, rel)).findings;
+  check("U20.16 HDR-001: destructured const { xPgPass } = req.headers → Pool({password}) fires CRITICAL",
+    hdrIds('import { Pool } from "pg";\nconst { xPgPass } = req.headers;\nconst pool = new Pool({ password: xPgPass });\n')
+      .some((f) => f.id === "HDR-001" && f.severity === "critical"));
+  check("U20.17 HDR-001: req.get('x-pg-password') → Pool({password}) fires CRITICAL",
+    scanHdr001(sctx('import { Pool } from "pg";\nconst pass = req.get("x-pg-password");\nconst pool = new Pool({ password: pass });\n', "app/api/h.ts")).findings
+      .some((f) => f.id === "HDR-001" && f.severity === "critical"));
+
+  // ---- TAINT-001/002 first-argument verdicts (h3/h4/h6/h7/h8) ----
+  check("U20.18 TAINT-001 clean: fixed URL + header-baggage fetch stays SILENT (destination not user-controlled)",
+    scanTaint(sctx('const r = await fetch("https://relay.self-owned.com/api", { method: "POST", headers: { authorization: req.headers.authorization } });\n', "app/api/h.ts")).findings
+      .every((f) => f.id !== "TAINT-001" || f.severity === "low"));
+  check("U20.19 TAINT-001: fetch(req.query.url) still fires MEDIUM (regression)",
+    scanTaint(sctx('return fetch(req.query.url);\n', "app/api/h.ts")).findings
+      .some((f) => f.id === "TAINT-001" && f.severity === "medium"));
+  check("U20.20 TAINT-001: hostname-based host allowlist stays VISIBLE at LOW/low (no score noise)",
+    scanTaint(sctx('const u = new URL(req.query.next);\nif (!["app.self-owned.com"].includes(u.hostname)) return null;\nreturn fetch(u.toString());\n', "app/api/h.ts")).findings
+      .every((f) => f.id !== "TAINT-001" || (f.severity === "low" && f.confidence === "low")));
+  check("U20.21 TAINT-002: open redirect fires / startsWith-guarded stays SILENT (regressions)",
+    scanTaint(sctx('return NextResponse.redirect(req.query.to);\n', "app/api/h.ts")).findings
+      .some((f) => f.id === "TAINT-002" && f.severity === "medium")
+    && scanTaint(sctx('const to = req.query.to;\nif (!to.startsWith("/")) return null;\nreturn NextResponse.redirect(to);\n', "app/api/h.ts")).findings
+      .every((f) => f.id !== "TAINT-002"));
+
+  // ---- LOGS-001 literal-strip var branch (l1/l2) ----
+  const { scanPacks2 } = await import(d("dist/rules/packs2.js"));
+  const logsFind = (c) => scanPacks2(sctx(c, "app/api/log.ts")).findings.filter((f) => f.id === "LOGS-001");
+  check("U20.22 LOGS-001 clean: constant diagnostic mentioning 'password' stays SILENT",
+    logsFind('if (!cfg.db) console.warn("database password was not configured; continuing with defaults");\n').length === 0);
+  check("U20.23 LOGS-001: console.log('issued api token', token) fires MEDIUM",
+    logsFind('console.log("issued api token", token, "for user", id);\n')
+      .some((f) => f.id === "LOGS-001" && f.severity === "medium"));
+
+  // ---- JWT-002 one verdict per verify call (d1) ----
+  check("U20.24 JWT-002: multi-line jwt.verify → EXACTLY ONE finding (was one per option line)",
+    (() => {
+      const fs = scanPacks2(sctx('import jwt from "jsonwebtoken";\nexport function v(token) {\n  return jwt.verify(token, process.env.SECRET, {\n    ignoreExpiration: true,\n    clockTolerance: 0,\n  });\n}\n', "app/api/d.ts")).findings.filter((f) => f.id === "JWT-002");
+      return fs.length === 1;
+    })());
+
+  // ---- SUPA-R01 quoted identifiers / dynamic-DDL strings (q1/q2/q3/q4) ----
+  const { scanSupabase } = await import(d("dist/rules/supabase.js"));
+  const supaFind = (c) => scanSupabase(sctx(c, "supabase/migrations/0001.sql")).findings;
+  check("U20.25 SUPA-R01: quoted \"public\".\"profiles\" WITH RLS stays SILENT (no public.IF ghost)",
+    supaFind('CREATE TABLE IF NOT EXISTS "public"."profiles" (\n  id uuid primary key\n);\nALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;\n').length === 0);
+  check("U20.26 SUPA-R01: dynamic-DDL string ('CREATE TABLE IF NOT EXISTS ' || …) stays SILENT",
+    supaFind('DO $$ BEGIN\n  EXECUTE \'CREATE TABLE IF NOT EXISTS \' || \'public.events (id int)\';\nEND $$;\n').length === 0);
+  check("U20.27 SUPA-R01: sensitive table WITH IF NOT EXISTS and NO RLS still fires HIGH",
+    supaFind('CREATE TABLE IF NOT EXISTS public.user_settings (id int);\n')
+      .some((f) => f.id === "SUPA-R01" && f.severity === "high"));
+  check("U20.28 SUPA-R01 clean: public.vehicles with RLS + policy stays SILENT",
+    supaFind('CREATE TABLE IF NOT EXISTS public.vehicles (id int);\nALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;\n').length === 0);
+
+  // ---- NEST-001 global-guard source scoping (n1/n2/n3) ----
+  const { scanNestjs } = await import(d("dist/rules/nestjs.js"));
+  const nestCtx = (files) => ({ files, stack: { frameworks: { nestjs: true } } });
+  const nf = (ctx) => scanNestjs(ctx).findings.filter((f) => f.id === "NEST-001");
+  const ctrl = 'import { Controller, Get, Post } from "@nestjs/common";\n@Controller("admin")\nexport class AdminController {\n  @Get("stats")\n  stats() { return 1; }\n}\n';
+  const fobj = (rel, content) => ({ abs: `/p/${rel}`, rel, content, lines: content.split("\n") });
+  check("U20.29 NEST-001: unguarded controller in a real Nest project fires HIGH",
+    nf(nestCtx([fobj("src/admin.controller.ts", ctrl)])).some((f) => f.severity === "high"));
+  check("U20.30 NEST-001: APP_GUARD prose in a .md does NOT silence the rule (code files only)",
+    nf(nestCtx([fobj("src/admin.controller.ts", ctrl), fobj("docs/GUIDE.md", "# Guide\nWe configure a global APP_GUARD with useClass(JwtAuthGuard).\n")]))
+      .some((f) => f.severity === "high"));
+  check("U20.31 NEST-001: real APP_GUARD provider in a .ts module IS honored (silent)",
+    nf(nestCtx([fobj("src/admin.controller.ts", ctrl), fobj("src/app.module.ts", 'import { APP_GUARD } from "@nestjs/core";\nproviders: [{ provide: APP_GUARD, useClass: JwtAuthGuard }]\n')])).length === 0);
+
+  // ---- inventory route guard heuristic (comment-only mention ≠ a check) ----
+  const { buildInventory } = await import(d("dist/inventory.js"));
+  const invOf = (content) => buildInventory({
+    files: [fobj("app/api/x/route.ts", content)],
+    stack: { frameworks: { nestjs: false } },
+  });
+  check("U20.32 inventory: comment-only 'authentication' mention does NOT mark POST guarded",
+    invOf('// authentication handled by middleware elsewhere\nexport async function POST(req: Request) { return Response.json({ ok: true }); }\n')
+      .routes.every((r) => r.guard === null));
+  check("U20.33 inventory: real getSession check in the route marks it guarded",
+    invOf('export async function POST(req: Request) {\n  const session = await getSession({ req });\n  if (!session) return new Response("no", { status: 401 });\n  return Response.json({ ok: true });\n}\n')
+      .routes.every((r) => r.guard === "in-file"));
+
+  // ---- perf lock: adversarial single-line 512KB file, heaviest rules (§2.1) ----
+  check("U20.34 perf: 500KB single-line file across the heaviest rules completes well under budget (no ReDoS regressions)",
+    (() => {
+      const big = 'const z=1;\nconst w = "';
+      const chunk = 'fn_call(arg("x",token_1))[0]_chain(a|b).map(f) => {return pool.query(r)}; ';
+      let pad = "";
+      while (big.length + pad.length < 512 * 1024 - 2) pad += chunk;
+      const content = big + pad.slice(0, 512 * 1024 - big.length - 2) + '";\n';
+      const files = [{ abs: "/p/huge.ts", rel: "huge.ts", content, lines: content.split("\n") }];
+      const ctx = { files, stack: { frameworks: {} } };
+      const t0 = Date.now();
+      for (const fn of [scanSast, scanPacks2, scanHdr001, scanTaint, scanJwtSecrets]) fn(ctx);
+      const ms = Date.now() - t0;
+      return ms < 2000; // measured v1.3.0 baseline < 300 ms; 2 s budget = CI-safe
+    })());
+
+  // ---- CLI contract: unknown option exits 2 (docs/AGENT-INTEGRATION + SKILL) ----
+  await (async () => {
+    const { execFileSync } = await import("node:child_process");
+    let code = 0;
+    try {
+      execFileSync("node", [join(ROOT, "dist", "cli.js"), "scan", "--definitely-not-an-option", join(ROOT, "tests", "clean", "app")], { encoding: "utf8", stdio: "pipe" });
+    } catch (e) { code = e.status; }
+    check("U20.35 CLI: unknown option is a USAGE refusal → exit 2 (commander default was the --fail-on code 1)", code === 2);
+  })();
+
+  // ---- §5.1: SAST-003 in test-class paths → LOW review note (never excluded) ----
+  check("U20.36 SAST-003: interpolated eval in specs/proof.ts stays VISIBLE but LOW/low (demoted, not excluded)",
+    sastFind('const out = eval("validate(" + expr + ")");\n', "specs/proof.ts")
+      .some((f) => f.id === "SAST-003" && f.severity === "low" && f.confidence === "low" && f.needs_confirmation === true));
+  check("U20.37 SAST-003: same eval in a NON-test path keeps the full HIGH verdict",
+    sastFind('const out = eval("validate(" + expr + ")");\n', "scripts/tooling.ts")
+      .some((f) => f.id === "SAST-003" && f.severity === "high" && f.confidence === "medium"));
+  check("U20.38 SAST-003: path segment scoping — latest.ts is NOT a test path (no accidental demotion)",
+    sastFind('const out = eval("validate(" + expr + ")");\n', "src/latest.ts")
+      .some((f) => f.id === "SAST-003" && f.severity === "high"));
+}
+
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);
 if (FAILS.length) {

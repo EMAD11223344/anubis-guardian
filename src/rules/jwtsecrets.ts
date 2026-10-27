@@ -18,7 +18,11 @@ import { maskSecret, rootCause } from "../util.js";
  */
 
 const LITERAL_SECRET_OBJ =
-  /\b(?:(?:secretOrKey)|(?:secret))\s*:\s*["'`]([^"'`\n]{6,})["'`]/g;
+  /\b(?:(?:secretOrKey)|(?:secret)|(?:signingKey)|(?:signingKeys))\s*:\s*["'`]([^"'`\n]{6,})["'`]/g;
+
+/** cookie-session `keys: ["literal", …]` — the keys array IS the signing secret */
+const KEYS_ARRAY =
+  /\bkeys\s*:\s*\[\s*["'`]([^"`\n]{6,})["'`]/g;
 
 const HMAC_CALL =
   /\bjwt\.(?:sign|verify)\s*\(\s*[^,()]*,\s*["'`]([^"'`\n]{6,})["'`]/g;
@@ -29,7 +33,7 @@ const CONST_SECRET =
 
 /** context that makes a bare `secret:` property a SIGNING secret (±3 lines) */
 const SECRET_CONTEXT =
-  /\bsession\s*\(\s*[{(]|JwtModule\.register\s*\(|JwtStrategy\b|passport-jwt|express-session|cookie-session|supertokens|LoginSession|jwt\.sign|jwt\.verify/;
+  /\bsession\s*\(\s*[{(]|JwtModule\.register\s*\(|JwtStrategy\b|passport-jwt|express-session|cookie-session|cookieSession|supertokens|LoginSession|jose|SignJWT|jwt\.sign|jwt\.verify/;
 
 /** only these non-values are skipped for this rule (NOT the generic placeholder list) */
 const NON_VALUE_SKIP =
@@ -84,6 +88,51 @@ export function scanJwtSecrets(ctx: ScanContext): RuleResult {
           findings.push(mk(f.rel, i + 1, literal, `${f.rel}:${i + 1}`,
             `Signing secret hardcoded as module-level constant (${cm[1]})`,
             "hardcoded_jwt_secret", `${masked.sha256_prefix}:const`));
+        }
+      }
+
+      // ---- v1.3-audit (§3.2): const whose VALUE comes only from an
+      // `||`/`??` string-literal fallback — the fallback is the secret anyone
+      // holding the source can mint tokens with:
+      //   const JWT_SECRET = process.env.JWT_SECRET || "dev-fallback-secret"
+      // The declared name must be credential-ish (case-insensitive, unlike the
+      // strict-uppercased CONST_SECRET above) so plain config consts stay silent.
+      const fm = line.match(/(?:\b(?:const|let|var)\s+)([A-Za-z_$][\w$]*)\s*=\s*[^;\n]{0,120}?(?:\|\||\?\?)\s*["'`]([^"'`\n]{6,})["'`]/);
+      const SECRETISH_NAME = /(?:secret|signing|session|token|api[_-]?key|apikey|password|passwd|credential|private[_-]?key)/i;
+      if (fm && !cm && SECRETISH_NAME.test(fm[1])) { // non-fallback branch already covered above
+        const literal = fm[2];
+        if (!NON_VALUE_SKIP.test(literal)) {
+          findings.push(mk(f.rel, i + 1, literal, `${f.rel}:${i + 1}`,
+            `Signing secret hardcoded as a || / ?? fallback default (${fm[1]})`,
+            "hardcoded_jwt_secret"));
+        }
+      }
+
+      // ---- cookie-session / jose keys arrays: keys : [ 'literal', … ] ----
+      KEYS_ARRAY.lastIndex = 0;
+      while ((m = KEYS_ARRAY.exec(line)) !== null) {
+        const literal = m[1];
+        if (NON_VALUE_SKIP.test(literal)) continue;
+        const window = f.lines.slice(Math.max(0, i - 3), i + 4).join("\n");
+        if (!SECRET_CONTEXT.test(window)) continue;
+        findings.push(mk(f.rel, i + 1, literal, `${f.rel}:${i + 1}`,
+          "Session signing key hardcoded in the keys array",
+          "hardcoded_session_secret"));
+      }
+
+      // ---- v1.3-audit (j6): jose method-call keys — the literal inside
+      // setSigningKey( / single-arg sign( IS the signing key:
+      //   new SignJWT(payload).setSigningKey("literal").sign()
+      // Gated on the same SECRET_CONTEXT window so crypto-API .sign("alg",…)
+      // calls stay silent.
+      const JOSE_KEY = /\.(?:setSigningKey|sign)\s*\(\s*["'`]([^"'`\n]{6,})["'`]/;
+      const jm = line.match(JOSE_KEY);
+      if (jm && !NON_VALUE_SKIP.test(jm[1])) {
+        const window = f.lines.slice(Math.max(0, i - 3), i + 4).join("\n");
+        if (SECRET_CONTEXT.test(window)) {
+          findings.push(mk(f.rel, i + 1, jm[1], `${f.rel}:${i + 1}`,
+            "Signing key hardcoded in a jose setSigningKey/sign call",
+            "hardcoded_jwt_secret"));
         }
       }
     }

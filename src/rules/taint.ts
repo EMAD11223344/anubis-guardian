@@ -31,7 +31,10 @@ const SINK_RULES: Array<{
     id: "TAINT-001",
     title: "User-controlled value flows into an outbound request URL — SSRF (server can be pointed anywhere)",
     sink: /(?:\bfetch\s*\(|axios(?:\.\w+)?\s*\(|axios\.\w+\s*\(|https?\.(?:get|request)\s*\()/.source,
-    sanitizer: /allowlist|allowList|whitelist|allowed[_-]?hosts?|trusted[_-]?hosts?|isAllowed|validateUrl|assertUrl|ALLOWED_[A-Z_]+/,
+    // §3.6 verdict: a hostname-based origin allowlist IS a destination
+    // validation — `["app.example"].includes(u.hostname)` / `u.hostname === …`
+    // counts, not just ALLOWED_-named variables.
+    sanitizer: /allowlist|allowList|whitelist|allowed[_-]?hosts?|trusted[_-]?hosts?|isAllowed|validateUrl|assertUrl|ALLOWED_[A-Z_]+|hostname\s*(?:===|!==)|includes\s*\(\s*[A-Za-z_$][\w$.]*\.?hostname/,
     owasp: "A10",
     fix: "Validate the destination against a host allowlist (scheme + exact host) before any outbound request; block private/link-local ranges (169.254.x, 127.x, 10.x, 172.16-31.x, 192.168.x) and metadata endpoints.",
     note: "classic vibe-coding SSRF: 'fetch anything by URL' helpers — internal services/metadata IPs become reachable",
@@ -42,7 +45,8 @@ const SINK_RULES: Array<{
     // v1.2 (T13): sinks extended — next/navigation `redirect()`/`permanentRedirect()`
     // (bare call, no receiver dot), NextResponse.redirect and res.redirect.
     sink: /(?:\.(?:redirect|permanentRedirect)\s*\(|(?:^|[^.\w])(?:redirect|permanentRedirect)\s*\(|NextResponse\.redirect\s*\(|["'`]Location["'']\s*[,:]\s)/.source,
-    sanitizer: /startsWith\s*\(\s*["'`]|isSafeRedirect|validateRedirect|allowedRedirect|safeRedirect|sameOrigin|ALLOWED_[A-Z_]+|rejectIfAbsolute|isRelative/,
+    // §3.6: hostname/origin allowlists validate redirect targets too
+    sanitizer: /startsWith\s*\(\s*["'`]|isSafeRedirect|validateRedirect|allowedRedirect|safeRedirect|sameOrigin|ALLOWED_[A-Z_]+|rejectIfAbsolute|isRelative|hostname\s*(?:===|!==)|includes\s*\(\s*[A-Za-z_$][\w$.]*\.?hostname|\.origin\s*(?:===|!==)|includes\s*\(\s*[A-Za-z_$][\w$.]*\.?origin/,
     owasp: "A01",
     fix: "Only redirect to relative paths (reject absolute URLs and protocol-relative //host), or validate the target against an origin allowlist before redirecting. The recognized-safe guard is `value.startsWith(\"/\") && !value.startsWith(\"//\")` (or an origin allowlist).",
     note: "redirect(req.query.to) sends users anywhere — tokens/refs in the URL leak to attacker sites",
@@ -58,9 +62,15 @@ const SINK_RULES: Array<{
   },
   {
     id: "TAINT-004",
-    title: "User-controlled value flows into a shell command string — command injection",
-    sink: /(?:\bexec(?:Sync)?\s*\(|\bspawn(?:Sync)?\s*\([^)]*shell\s*:\s*true)/.source,
-    sanitizer: /execFile|validateInput|sanitizeInput|escapeShell|allowlist|ALLOWED_[A-Z_]+|shell\s*:\s*false/,
+    title: "User-controlled value flows into a process-spawning call — command/argument injection",
+    // v1.3 audit: adding execFile/spawn WITHOUT the shell:true gate — an untrusted
+    // value in argv of child_process.execFile/spawn is argument injection even
+    // with shell:false (e.g. `convert <input>` with an extra-hostile flag or a
+    // hostile pathname argv). Verdict stays MEDIUM + needs_confirmation.
+    sink: /(?:\bexec(?:Sync)?\s*\(|\bexecFile(?:Sync)?\s*\(|\bspawn(?:Sync)?\s*\()/.source,
+    // v1.3 audit: `execFile` REMOVED from the sanitizer list — it is now a SINK
+    // itself, so a bare mention inside the call would silence its own finding.
+    sanitizer: /validateInput|sanitizeInput|escapeShell|escapeArg|allowlist|ALLOWED_[A-Z_]+|shell\s*:\s*false\s*[,}]/,
     owasp: "A03",
     fix: "Never interpolate user input into shell strings — use execFile/spawn with an argv array (shell: false) and validate the input against an allowlist.",
     note: "exec(`convert ${req.query.file}`) — ';' or '$(...)' in the query executes as shell",
@@ -77,12 +87,13 @@ const SINK_RULES: Array<{
   {
     id: "TAINT-006",
     title: "User-controlled value flows into a code-evaluation sink — dynamic code execution",
-    // v1.2 (T9): eval / new Function / vm.runIn*Context / setTimeout(<string>).
+    // v1.2 (T9): eval / Function (bare + new) / vm.runIn*Context / setTimeout(<string>).
     // There is NO recognized sanitizer for "execute this string as code" — the
     // escape hatch is validation, not sanitization — so the sanitizer window is
     // deliberately never-matching and the finding stands (MEDIUM taint cap).
     // SAST-003 additionally catches eval(new-literal) WITHOUT taint at MEDIUM.
-    sink: /(?:\beval\s*\(|new\s+Function\s*\(|\bvm\.runIn(?:New|This)?Context\s*\(|setTimeout\s*\(\s*[A-Za-z_$][\w$]*)/.source,
+    // v1.3 audit: bare `Function(...)` invocation (no `new`) is the same class.
+    sink: /(?:\beval\s*\(|(?:new\s+|(?<![.\w$]))Function\s*\(|\bvm\.runIn(?:New|This)?Context\s*\(|setTimeout\s*\(\s*[A-Za-z_$][\w$]*)/.source,
     sanitizer: /$^/,
     owasp: "A03",
     fix: "Never pass request data to eval/new Function/vm. Replace with explicit parsing (JSON.parse), a safe expression evaluator, or allowlist-driven dispatch.",
@@ -114,6 +125,55 @@ function containsTaint(line: string, vars: Set<string>): boolean {
   return false;
 }
 
+/** balanced first call argument WITHIN one line ("" when never closed) */
+function balancedArg(line: string, openIdx: number): string {
+  let depth = 0;
+  for (let i = openIdx; i < line.length; i++) {
+    const c = line[i];
+    if (c === "(") depth++;
+    else if (c === ")") {
+      depth--;
+      if (depth === 0) return line.slice(openIdx + 1, i);
+    }
+  }
+  return "";
+}
+
+/**
+ * §3.5 (h3): the FIRST TOP-LEVEL call argument — quote/bracket-aware scan that
+ * stops at the call's closing paren or at a depth-1 comma (argument
+ * separator). `fetch("https://fixed.example/api", { headers: req.headers })`
+ * then yields only `"https://fixed.example/api"`, so unrelated header baggage
+ * in argument #2 no longer reports as SSRF. "" when not closed on this line.
+ */
+function balancedTopArg(line: string, openIdx: number): string {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = openIdx; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === "\\") i++; // escaped char inside the string
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "\"" || c === "'" || c === "`") {
+      quote = c;
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") {
+      depth++;
+      continue;
+    }
+    if (c === ")" || c === "]" || c === "}") {
+      depth--;
+      if (depth <= 0) return line.slice(openIdx + 1, i);
+      continue;
+    }
+    if (c === "," && depth === 1) return line.slice(openIdx + 1, i);
+  }
+  return "";
+}
+
 export function scanTaint(ctx: ScanContext): RuleResult {
   const findings: RuleResult["findings"] = [];
 
@@ -133,10 +193,24 @@ export function scanTaint(ctx: ScanContext): RuleResult {
         const sinkRe = new RegExp(rule.sink);
         const sinkMatch = sinkRe.exec(line);
         if (!sinkMatch) continue;
+        // v1.3-audit (§3.5/3.6): for URL/redirect-kind sinks the DANGEROUS input is
+        // the DESTINATION (argument #1), not any unrelated baggage in the tail of
+        // the line. `fetch("https://relay.internal.example/api", { headers:
+        // req.headers })` — fixed destination + request-header passthrough — was
+        // classified as SSRF by the whole-rest-of-line check. For TAINT-001/002
+        // the taint test runs on the FIRST TOP-LEVEL call argument (quote/
+        // bracket-aware), falling back to the rest-of-line span when the call is
+        // not closed on this line. Non-call sink forms (Location: header) keep
+        // the whole-span check.
+        let argSpan = line.slice(sinkMatch.index);
+        if (rule.id === "TAINT-001" || rule.id === "TAINT-002") {
+          const openIdx = /\(\s*$/.test(sinkMatch[0]) ? line.indexOf("(", sinkMatch.index) : -1;
+          const first = openIdx !== -1 ? balancedTopArg(line, openIdx) : "";
+          if (first) argSpan = first;
+        }
         // argument-level taint: only what comes AFTER the sink call counts.
         // (`if (!token) return NextResponse.redirect(new URL('/login', req.url))`
         //  is CLEAN — the redirect argument is a fixed string; token is a guard.)
-        const argSpan = line.slice(sinkMatch.index);
         if (!containsTaint(argSpan, vars)) continue;
         // sanitizer window: same line ±6 (call-site recognition — the sanitizer
         // may be an imported helper; that is the one-level-import allowance)

@@ -155,6 +155,11 @@ const HOOK_CASES = [
   ["BLOCK Bash tee writing service_role JWT into components/", 2, { tool_name: "Bash", tool_input: { command: `echo 'const k = "${SR}";' | tee src/components/L.tsx` } }],
   ["BLOCK Bash redirect (sed -i) placing service_role JWT into components/", 2, { tool_name: "Bash", tool_input: { command: `sed -i "s/PLACEHOLDER_TOKEN/${SR}/" app/components/Panel.tsx` } }],
   ["BLOCK Bash psql disable row level security", 2, { tool_name: "Bash", tool_input: { command: 'psql -c "alter table profiles disable row level security"' } }],
+  // v1.3-audit round-2 hook cases (echo/heredoc .env writes without KEY=VALUE, live literal into client code)
+  ["BLOCK Bash echo 'sk_live_…' > .env (R3-redir: quoted literal, no KEY= line)", 2, { tool_name: "Bash", tool_input: { command: `echo "sk_live_51H8xYzAbCdEfGhIjKlMnOp" > .env` } }],
+  ["BLOCK Bash heredoc writing a live-shaped .env value", 2, { tool_name: "Bash", tool_input: { command: `cat > .env <<'EOF'\nDATABASE_PASSWORD=c0rr3ct-horse-battery-staple-99\nEOF` } }],
+  ["BLOCK sk_live_ literal written into a client component (R5, no NEXT_PUBLIC_ prefix)", 2, { tool_name: "Write", tool_input: { file_path: "app/components/Config.tsx", content: `export const stripeKey = "sk_live_51H8xYzAbCdEfGhIjKlMnOp";\n` } }],
+  ["ALLOW sk_test_ literal in a client component (public test key)", 0, { tool_name: "Write", tool_input: { file_path: "app/components/Config.tsx", content: `export const pk = "sk_test_a1B2c3D4e5F6a1B2c3D4e5F6a1B2c3D4";\n` } }],
   ["BLOCK anubis-allow marker with TOO-SHORT reason (<8 chars)", 2, { tool_name: "Write", tool_input: { file_path: "app/components/AdminPanel.tsx", content: `const key = "${SR}"; // anubis-allow: fix` } }],
   // ---------------- MUST ALLOW ----------------
   ["ALLOW anubis-allow marker with an 8+ char reason", 0, { tool_name: "Write", tool_input: { file_path: "app/components/AdminPanel.tsx", content: `const key = "${SR}"; // anubis-allow: rotated and proxied server-side` } }],

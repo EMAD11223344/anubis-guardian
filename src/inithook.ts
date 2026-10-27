@@ -214,6 +214,7 @@ process.stdin.on("end", () => {
       blocks.push("service_role JWT (decoded role claim) referenced in client-reachable code (" + file + ") — browser bundles leak it; keep it server-side and expose what the client needs via an API route");
     }
     if (isEnvPath(file)) {
+      let envBlock = false;
       for (const e of envEntries(contentRaw)) {
         if (PUBLIC_NAME.test(e.key)) continue;                       // public-by-design names pass
         const verdict = valueVerdict(e.value);
@@ -225,10 +226,30 @@ process.stdin.on("end", () => {
         }
         if (verdict === "block") {
           blocks.push("secret-shaped value written into " + e.key + " (" + file + ") — prefer env injection; if committed, rotate immediately");
+          envBlock = true;
           continue;
         }
         if (CREDENTIAL_NAME.test(e.key) && e.value.trim().length >= 20 && !PLACEHOLDER.test(e.value)) {
           blocks.push("credential-named entry " + e.key + " with a live-looking value in " + file + " — prefer env injection; if committed, rotate immediately");
+          envBlock = true;
+        }
+      }
+      // R3-redir (v1.3-audit §4): echo "sk_live_…" > .env / heredoc fragments
+      // have NO KEY=VALUE lines for envEntries() and slipped past R3 entirely.
+      // Fall back to verdicting QUOTED string literals in the written content —
+      // paths/flags carry a "/" or "=" and are excluded from the opaque-random
+      // class, while prefix-shaped live secrets still trip valueVerdict.
+      if (!envBlock) {
+        const q = /["'\`]([^"'\`\\\\]{12,200})["'\`]/g;
+        let qm;
+        while ((qm = q.exec(contentRaw)) !== null) {
+          const v = qm[1].replace(/^["']+|["']+$/g, "");
+          if (!v || /[\\/]/.test(v) || v.endsWith("=") || /=\\S*\\s/.test(v) || /^-{1,2}[A-Za-z]/.test(v)) continue; // flags/paths/params
+          const verdict = valueVerdict(v);
+          if (verdict === "block") {
+            blocks.push("secret-shaped value written into " + file + " (bare string literal — no KEY=VALUE line) — prefer env injection; if committed, rotate immediately");
+            break;
+          }
         }
       }
     } else {
@@ -240,6 +261,19 @@ process.stdin.on("end", () => {
         const verdict = valueVerdict(am[3]);
         if (verdict === "block" || verdict === "context") {
           blocks.push(am[1] + " is assigned a secret-shaped value — everything with a client-env prefix ships to the browser bundle; move it server-side");
+        }
+      }
+      // R5 (v1.3-audit §4): a LIVE secret literal written into client-reachable
+      // code even WITHOUT a client-env name (not a service_role JWT — R1 covers
+      // those): sk_live_/ghp_/xox/AKIA/sb_secret_/glpat_/github_pat_ shapes.
+      // Public/placeholder forms are allowed by the same value rules.
+      if (clientReachable) {
+        const liveLit = /\\b((?:sk|rk)_live_[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{15,}|AKIA[0-9A-Z]{16}|glpat-[A-Za-z0-9_-]{20,}|sb_secret_[A-Za-z0-9_]{20,}|npm_[A-Za-z0-9_]{20,})/g;
+        let lit;
+        while ((lit = liveLit.exec(stripped)) !== null) {
+          if (PLACEHOLDER.test(lit[0])) continue;
+          blocks.push("live secret literal (" + lit[0].slice(0, 12) + "…) written into client-reachable code (" + file + ") — the browser bundle ships it; keep it server-only and rotate immediately");
+          break;
         }
       }
     }

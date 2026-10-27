@@ -7,8 +7,10 @@ import { rootCause } from "../util.js";
  * CRITICAL only with independent confirmation (schema export / live probe — v0.4).
  */
 
-const CREATE_TABLE = /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(public|auth|private)\.)?([a-zA-Z_][\w]*)/gi;
-const ENABLE_RLS = /\bALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?(?:(public|auth|private)\.)?([a-zA-Z_][\w]*)\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/gi;
+const CREATE_TABLE = /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(?!IF\b|NOT\b|EXISTS\b|ONLY\b)([a-zA-Z_][\w]*)"?/gi;
+const ENABLE_RLS = /\bALTER\s+TABLE\s+(?:ONLY\s+)?(?:IF\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(?!IF\b|NOT\b|EXISTS\b|ONLY\b)([a-zA-Z_][\w]*)"?\s+ENABLE\s+ROW\s+LEVEL\s+SECURITY/gi;
+
+
 const POLICY_TRUE = /\bCREATE\s+(?:OR\s+REPLACE\s+)?POLICY\s+"?([\w-]+)"?\s+ON\s+(?:(\w+)\.)?([\w]+)([\s\S]*?)(?:USING|WITH\s+CHECK)\s*\(\s*(true)\s*\)/gi;
 const CREATE_VIEW = /\bCREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+([\w.]+)([\s\S]*?);/gi;
 const SECURITY_DEFINER = /\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([\w.]+)\s*\(([^)]*)\)\s*([\s\S]*?);\s*$/gi;
@@ -148,7 +150,7 @@ export function scanSupabase(ctx: ScanContext): RuleResult {
   if (ctx.schemaDump) {
     const dumpTables = new Set<string>();
     let m: RegExpExecArray | null;
-    const dt = /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(\w+)\.)?([\w]+)/gi;
+    const dt = /\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(?!IF\b|NOT\b|EXISTS\b|ONLY\b)([a-zA-Z_][\w]*)"?/gi;
     while ((m = dt.exec(ctx.schemaDump)) !== null) dumpTables.add(`${(m[1] || "public").toLowerCase()}.${m[2]}`);
     for (const t of dumpTables) {
       if (tables.has(t)) continue;

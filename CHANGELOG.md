@@ -1,5 +1,52 @@
 # Changelog
 
+## [Unreleased] — v1.3.0 audit round (uncommitted)
+
+Security-audit round against a multi-agent report: every claimed issue was reproduced against real code before fixing. Result: **10 confirmed false-negatives fixed, 5 false-positive classes silenced, 1 severity-accuracy demotion, 1 CLI contract fix, 1 hook enforcement extension.** One reported issue (HDR-001 ReDoS) was *not* reproduced and is locked out by a performance gate instead. No new dependencies; masking, determinism, and read-only contracts unchanged. Version stays 1.3.0 — everything here ships under the next release.
+
+### Fixed — false negatives (detections that were silent and now fire)
+
+- **JWT-003 — fallback secret literals** (`src/rules/jwtsecrets.ts`): `||`/`??` fallbacks on credential-named identifiers are analyzed (case-insensitive `SECRETISH_NAME`), plus cookie-session `keys: ["…"]` arrays, `signingKey(s)`/`JWT_secret` object properties, and the jose `setSigningKey(` / `.sign(` method-call form (context-gated).
+  - Before: `const secret = process.env.JWT_SECRET || "dev-secret-123"` and `new SignJWT(p).setSigningKey("literal")` were **silent** (audit items j1/j2/j4/j6).
+  - After: **JWT-003 HIGH**; env/config-sourced values stay silent (U20.1–U20.5).
+- **SAST-001 — SQL sink receiver generalization** (`src/rules/sast.ts`): the dynamic-SQL sink set now covers any `.query(` / `.execute(` receiver with a receiver-content blacklist (`NON_SQL_RECV`: document/window/ctx/canvas/dom/el/elem/html/api/router/program), so TypeORM `manager.query(`, mysql2 `conn.execute(`, and arbitrary entity managers are covered; `seenSinks` content-offset dedupe prevents duplicate findings across overlapping sink regexes.
+  - Before: TypeORM/mysql/arbitrary-receiver dynamic SQL was **silent** (audit items s1/s2/s3); duplicate findings appeared when two sink regexes matched one line.
+  - After: **SAST-001 HIGH** on all three shapes; xstate `.execute(state…)` stays silent (U20.6–U20.8, U20.10).
+- **TAGGED_SAFE extends to drizzle `sql` tagged templates** — `sql\`…${id}\`` passed to `db.execute()` is parameterized by design and stays **silent** (was a false HIGH; audit item s4) (U20.9).
+- **TAINT-006 / SAST-003 — bare `Function(`**: dynamic-code-execution detection now covers `Function('return ' + req.body.expr)()` without `new`, with a `[^\w$.]` guard keeping property calls (`obj.Function(`) out.
+  - Before: bare-`Function` invocation was **silent** (audit item c1); After: **TAINT-006 MEDIUM (needs confirmation)**; literal `Function('return 1')()` stays silent (U20.11–U20.12).
+- **TAINT-004 — shell-exec sink set**: `execFile`/`spawn` argument arrays are now tainted sinks; `execFile` was removed from the rule's sanitizer list (it does not sanitize; audit items c3/c4).
+  - After: `execFile('convert', [req.query.path])` fires **MEDIUM**, literal argv stays silent, tainted `exec()` regression intact (U20.13–U20.15).
+- **HDR-001 — destructured/dotted header receivers** (`src/rules/hdr001.ts`): bare `req.headers` fallback binding (`const { xPgPass } = req.headers`) and `req.get("x-…")` receiver patterns now flow into sink arguments (header name evaluated once per line).
+  - Before: pass-the-header patterns were **silent** (audit items h1/h2); After: **HDR-001 CRITICAL** (U20.16–U20.17).
+- **LOGS-001 — message-literal stripping and identifier gate** (`src/rules/packs2.ts`): string literals are stripped before scanning, then a secretish identifier token is required — so `console.log("issued api token", token)` now fires while constant diagnostic messages mentioning "password" stay silent (audit items l1/l2) (U20.22–U20.23).
+- **JWT-002 — dedupe at source**: only the `jwt.verify(` call line is evaluated; the prior-3-lines re-trigger window is gone. Exactly **one finding per call site** (audit item d1) (U20.24).
+- **SUPA quoted identifiers + DDL keyword guard** (`src/rules/supabase.ts`): `CREATE TABLE`/`ENABLE_RLS`/inventory regexes handle quoted `"public"."x"` and guard against `IF|NOT|EXISTS|ONLY`, so `CREATE TABLE IF NOT EXISTS`-style dynamic-DDL strings no longer produce `"public".IF` ghost findings; sensitive tables without RLS still fire (audit items q1/q2/q3/q4) (U20.25–U20.28).
+- **NEST-001 / inventory guard-truth** (`src/rules/nestjs.ts`, `src/inventory.ts`): the globalGuard scan now reads **code files only** (`.ts/.js/.mjs/.cjs`, non-spec), so `APP_GUARD` prose in `.md`/docs can no longer silence the rule while a real provider module still does; route-guard detection replaced the bare-word `auth|guard|middleware` heuristic with `hasAuthzCheck()` (session/token/guard **call shapes**) plus method-level `@UseGuards` lookahead (audit items n1–n4) (U20.29–U20.33).
+
+### Fixed — false positives (noise silenced, findings never excluded)
+
+- **SSRF first-argument verdict** (`src/rules/taint.ts`): TAINT-001/002 now taint-check the **first top-level comma-terminated call argument** (quote/bracket-aware `balancedTopArg`, call-shaped sinks, rest-of-line fallback) — a fixed URL carrying header baggage no longer looks SSRF; `fetch(req.query.url)` still fires (audit item h3) (U20.18–U20.19).
+- **Hostname allowlist = review note, not HIGH**: TAINT sanitizers recognize `host === req.headers.hostname`, `includes(…hostname)`, and `.origin` comparisons; matching findings are **LOW/low review notes** that never deduct score (audit item h6) (U20.20).
+- **LOGS-001 constant-message FP** silenced (see counter-fix above — same mechanism, both directions).
+- **SAST-003 test-path demotion** (`src/rules/sast.ts`): interpolated `eval`/shell-exec in **test-class paths** (`tests/`, `specs/`, `*.test.*`, `fixtures/`, `mocks/` — segment-scoped so `latest.ts` never matches) is demoted to a **LOW/low needs-confirmation review note**, never excluded; non-test paths keep the full HIGH/MEDIUM verdict (audit item §5.1) (U20.36–U20.38).
+- **NEST-001 `.md` silencing FP** fixed (see counter-fix above).
+
+### Added
+
+- **Hook rule R5** (`src/inithook.ts`): a live secret literal (`sk_live_`, `ghp_`, `AKIA…`) written into client-reachable code is **BLOCKED** (exit 2). Name-only `NEXT_PUBLIC_*` references stay **ALLOWED** (documented law); `sk_test_` keys stay allowed.
+- **Hook R3-redirect fallback**: a quoted secret-shaped literal (≥12 chars) written into `.env` via `echo … > .env` / heredoc **without a `KEY=` line** is BLOCKED; paths and flag-looking segments (containing `/` or `=`) are excluded.
+- **4 hook acceptance cases** (`tests/acceptance-v03.mjs`): echo-redirect `.env` BLOCK, heredoc live-shaped value BLOCK, `sk_live_` into a client component BLOCK, `sk_test_` ALLOW — hook gate table is now **42/42** (was 38).
+- **Performance gate U20.34**: a 500 KB single-line file scanned across the 5 heaviest rules must complete well under the 2 s budget (measured baseline <300 ms). This is the regression lock for the HDR-001 ReDoS claim, which was **not reproduced** (end-to-end flat ~0.4–1 s; worst single rule 134 ms).
+
+### Changed
+
+- **CLI usage-error contract** (`src/cli.ts`): unknown options/subcommands now exit **2** as documented in `docs/AGENT-INTEGRATION.md` and `SKILL.md` (commander's default surfaced the `--fail-on` findings code 1). Implemented via an `exitOverride()` rolled over the **whole command tree** (program + subcommands); `--help`/`--version` still exit 0 (U20.35).
+
+### Tests
+
+- Unit gates U20.1–U20.38 added (`tests/verify-units.mjs`): **289 units** (was 251), all passing; full `npm test` green across all suites (reachability 7, honeypot all seeds + masking intact, clean 100/A, phase-1 25, phase-2 16, SARIF, v0.2, v0.3 hook 42/42, mode2 33, v0.4 47, v1.0 45).
+
 ## [1.3.0] — 2026-10-26
 
 Minor release: **one new detection + one severity-accuracy fix + positioning docs.** Semver is MINOR (not 1.2.1) because it carries both a bug fix and a new detection capability. **`v1.2.0` on npm does NOT include any of the changes below** — the OSV severity fix in particular was shipped in the codebase after the v1.2.0 tag, so the published 1.2.0 still upscales non-critical OSV severities to HIGH.

@@ -21,7 +21,13 @@ export function buildInventory(ctx: ScanContext): Inventory {
     if (routeMatch) {
       const path = "/" + routeMatch[1].replace(/\((.*?)\)\//g, "").replace(/\[\.\.\.(\w+)\]/, "*").replace(/\[(\w+)\]/, ":$1");
       const methods = [...f.content.matchAll(/export\s+(?:async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/gi)].map((m) => m[1].toUpperCase());
-      const guard = /auth|session|guard|middleware|verify/i.test(f.content) ? "in-file" : null;
+      // v1.3-audit (§5.4): the guard heuristic walked the whole file for the bare
+      // words auth/session/guard/… — a comment mentioning "authentication" (or the
+      // URL "/login") marked EVERY route in the file as guarded, so large backends
+      // reported 0 unguarded mutations. Now it requires a recognizable
+      // AUTHORIZATION CHECK shape (a session/token/guard CALL or a real header
+      // read), not a word.
+      const guard = hasAuthzCheck(f.content) ? "in-file" : null;
       for (const m of methods.length ? methods : ["GET"]) {
         inv.routes.push({ path, file: f.rel, kind: "route", method: m, guard });
       }
@@ -37,7 +43,7 @@ export function buildInventory(ctx: ScanContext): Inventory {
           file: f.rel,
           kind: "server-action",
           method: "POST",
-          guard: /auth|session|getCurrentUser|verify/i.test(f.content) ? "in-file" : null,
+          guard: hasAuthzCheck(f.content) ? "in-file" : null,
         });
       }
     }
@@ -45,16 +51,22 @@ export function buildInventory(ctx: ScanContext): Inventory {
     // ---- NestJS controllers + guard state ----
     if (ctx.stack.frameworks.nestjs && /\.controller\.ts$/.test(f.rel)) {
       const className = (f.content.match(/export\s+class\s+([A-Za-z_]\w*)/) ?? [])[1] ?? f.rel;
-      const hasGlobalGuard = ctx.files.some((x) => /APP_GUARD/.test(x.content));
-      const classGuards = (f.content.match(/@UseGuards\s*\(([^)]*)\)/) ?? [])[1]?.trim() ?? null;
+      const hasGlobalGuard = ctx.files.some((x) => /\.(?:ts|js|mjs|cjs)$/.test(x.rel) && /APP_GUARD/.test(x.content));
+      // class-level @UseGuards = decorators ABOVE the class declaration
+      const classIdx = f.content.search(/export\s+class\s+[A-Za-z_]\w*/);
+      const head = classIdx > -1 ? f.content.slice(0, classIdx) : "";
+      const classGuards = (head.match(/@UseGuards\s*\(([^)]*)\)/) ?? [])[1]?.trim() ?? null;
       const methods = [...f.content.matchAll(/@(Get|Post|Put|Patch|Delete|All|Head|Options)\s*\(\s*(?:["'`]([^"'`]*)["'`])?\s*\)/g)];
       for (const m of methods) {
+        // method-level @UseGuards within the decorator/method block after the route
+        const block = f.content.slice(m.index, m.index + 300);
+        const methodGuard = (block.match(/^\s*@UseGuards\s*\(([^)]*)\)/m) ?? [])[1]?.trim() ?? null;
         inv.routes.push({
           path: `/${m[2] ?? ""}`.replace(/\/+$/, "/"),
           file: f.rel,
           kind: "controller-method",
           method: m[1].toUpperCase(),
-          guard: classGuards ?? (hasGlobalGuard ? "APP_GUARD" : null),
+          guard: methodGuard ?? classGuards ?? (hasGlobalGuard ? "APP_GUARD" : null),
         });
       }
       if (!inv.controllers.some((c) => c.file === f.rel)) {
@@ -64,12 +76,12 @@ export function buildInventory(ctx: ScanContext): Inventory {
 
     // ---- Supabase: tables / RPCs / edge functions ----
     if (f.rel.endsWith(".sql") && /(^|\/)(supabase\/migrations|migrations|db\/migrations)\//.test(f.rel)) {
-      for (const m of f.content.matchAll(/\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:(\w+)\.)?(\w+)/gi)) {
+      for (const m of f.content.matchAll(/\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"?(\w+)"?\.)?"?(?!IF\b|NOT\b|EXISTS\b|ONLY\b)([a-zA-Z_][\w]*)"?/gi)) {
         const schema = (m[1] || "public").toLowerCase();
         inv.supabase.tables.push({
           name: `${schema}.${m[2]}`,
           file: f.rel,
-          rls_enabled: new RegExp(`ALTER\\s+TABLE\\s+(?:ONLY\\s+)?(?:IF\\s+EXISTS\\s+)?${schema}\\.${m[2]}\\s+ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY`, "i").test(
+          rls_enabled: new RegExp(`ALTER\\s+TABLE\\s+(?:ONLY\\s+)?(?:IF\\s+EXISTS\\s+)?"?${schema}"?\\.?"?${m[2]}"?\\s+ENABLE\\s+ROW\\s+LEVEL\\s+SECURITY`, "i").test(
             ctx.files.filter((x) => x.rel.endsWith(".sql")).map((x) => x.content).join("\n")
           ),
         });
@@ -98,4 +110,14 @@ export function buildInventory(ctx: ScanContext): Inventory {
   }
 
   return inv;
+}
+
+/**
+ * v1.3-audit (§5.4): recognizable AUTHORIZATION-CHECK shape — a session/token
+ * call, a guards decorator, or a credentials header read. A bare mention of
+ * the words auth/session/middleware (often just a comment or a URL) is NOT a
+ * check; word-presence marked every route "guarded" in big backends.
+ */
+function hasAuthzCheck(content: string): boolean {
+  return /(?:getSession|getServerSession|getAuth|auth\s*\(\)|requireUser|requireAuth|requireAdmin|requireLogin|requireSignIn|assertAuth|checkAuth|isAuthenticated|isLoggedIn|verifyToken|jwt\.verify|verifyJWT|UseGuards|getCurrentUser|currentUser\s*\(|getUser\s*\(|cookies\s*\(\s*\)\s*\.get|\.cookies\.get|authorization["'`]?\s*[,\]:]|headers\(\)\.get\(\s*["'`]authorization)/i.test(content);
 }

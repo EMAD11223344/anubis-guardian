@@ -28,9 +28,17 @@ const SQLI_SINKS: RegExp[] = [
   /\bsequelize\.query\s*\(/g,                                           // sequelize.query
   /\b(?:pool|client|db|connection)\.query\s*\(/g,                       // pool/client/db/connection .query
   /\b(?:pool|client|db|connection|knex)\.execute\s*\(/g,                // .execute( on DB handles
+  // v1.3-audit: DB framework receivers are NOT enumerable (TypeORM DataSource/EntityManager,
+  // mysql2 conn, drizzle db, Repository, …) — the DYNAMIC-SQL SHAPE of the first argument
+  // carries the verdict, so ANY receiver `.query(`/`.execute(` qualifies. Non-SQL shapes
+  // stay silent because verdicts require interpolation/concat/alias-dynamic in arg #1
+  // (`.querySelector(`/xstate `.execute(state,…)` never meet the shape).
+  /(?<![\w$.])[\w$]*(?:\.[\w$]+)*\.(?:query|execute)\s*\(/g,
 ];
-/** tagged templates Prisma parameterizes safely — never a call-sink match */
-const TAGGED_SAFE = /^(?:Prisma\.sql|sqltag|raw\s*\()/;
+/** receiver prefixes on the general `.query(/.execute(` sink that are NOT databases */
+const NON_SQL_RECV = /^(?:document|window|ctx|canvas|dom|el|elem|html|api|router|program)\b/i;
+/** tagged templates parameterize by design (Prisma .sql`…` / drizzle sql`…`) — never a call-sink */
+const TAGGED_SAFE = /^(?:Prisma\.sql|sqltag|raw\s*\(|sql\s*[\s`]|\$\{)/;
 
 /** identifiers a file considers request-derived (severity trace for T8) */
 function requestDerivedVars(content: string): Set<string> {
@@ -159,6 +167,9 @@ export function scanSast(ctx: ScanContext): RuleResult {
     if (!/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(f.rel)) continue;
     const fileClass = classifyFile(f);
     const isServer = fileClass === "server" || fileClass === "unknown" || /(^|\/)(server|api|lib)\//.test(f.rel);
+    // §5.1: path is a test/demo-script class (`tests/`, `specs/`, `*.test.*`,
+    // `fixtures/`, `mocks/`) — segment-scoped so "latest.ts" never matches.
+    const isTestPath = /(?:^|\/)(?:tests?|__tests__|specs?|fixtures?|mocks?)\/|\.test\.|\.spec\./i.test(f.rel);
     // request-derived identifiers in this file — severity trace for T8/T9
     const tracedVars = requestDerivedVars(f.content);
     const isReqDerived = (s: string): boolean =>
@@ -171,11 +182,14 @@ export function scanSast(ctx: ScanContext): RuleResult {
     if (isServer) {
       // v1.3: alias candidates for single-hop resolution (per file, built lazily)
     let aliasVars: Map<string, Array<{ line0: number; rhs: string }>> | null = null;
+    const seenSinks = new Set<number>(); // content-offset dedupe: sinks matched by several patterns count once
 
     for (const sinkRe of SQLI_SINKS) {
         sinkRe.lastIndex = 0;
         let sm: RegExpExecArray | null;
         while ((sm = sinkRe.exec(f.content)) !== null) {
+          if (seenSinks.has(sm.index)) continue;
+          seenSinks.add(sm.index);
           const sinkEnd = sm.index + sm[0].length;
           const openIdx = sinkEnd - 1; // "(" is the last char of the sink match
           const arg = firstCallArg(f.content, openIdx);
@@ -184,6 +198,8 @@ export function scanSast(ctx: ScanContext): RuleResult {
           if (/^\s*(?:\/\/|\*|\/\*)/.test(lineText)) continue;             // commented sink
           if (TAGGED_SAFE.test(arg.trim())) continue;                       // Prisma.sql`…` inside Unsafe
           const sinkName = sm[0].replace(/\s*\($/, "").trim();
+          const dotted = sinkName.search(/\.(?:query|execute)\s*$/);
+          if (dotted > 0 && NON_SQL_RECV.test(sinkName.slice(0, dotted))) continue; // DOM/router/state receivers — not DB handles
           const pushSast = (evalText: string, masked: string): void => {
             const traced = isReqDerived(evalText);
             findings.push({
@@ -278,7 +294,14 @@ export function scanSast(ctx: ScanContext): RuleResult {
       // (MEDIUM without taint — "the value is code, review this"); with explicit
       // interpolation it was already HIGH. Literal-only eval (eval('1+1')) and
       // eval mentioned inside comments or string literals stay untouched.
-      const dynRe = /\b(?:eval|new\s+Function|vm\.runIn(?:New|This)?Context)\s*\(/g;
+      // v1.2 (T9) + v1.3 audit (bare `Function(...)` invocation without `new`):
+      // eval / Function / new Function / vm.runIn*Context of a NON-LITERAL value
+      // is SAST-003 (MEDIUM without taint — "the value is code, review this");
+      // with explicit interpolation it was already HIGH. Literal-only calls
+      // (eval('1+1'), Function('return 1')()) and eval mentioned inside
+      // comments or string literals stay untouched. The `[^\w$.]` guard keeps
+      // property calls (obj.Function(...)) and dotted names out.
+      const dynRe = /(?:^|[^\w$.])(?:eval|(?:new\s+)?Function|vm\.runIn(?:New|This)?Context)\s*\(/g;
       let dm: RegExpExecArray | null;
       while ((dm = dynRe.exec(line)) !== null) {
         if (insideStringLiteral(line, dm.index)) continue;  // eval mentioned in a string/console message
@@ -290,11 +313,19 @@ export function scanSast(ctx: ScanContext): RuleResult {
           continue; // request-traced code execution is TAINT-006's job — no duplicate verdict
         }
         const interpolated = /\$\{|["'`]\s*\+\s*[A-Za-z_$]|[A-Za-z_$)\]]\s*\+\s*["'`]/.test(arg);
+        // v1.3-audit (§5.1): in TEST-CLASS paths (tests/, specs/, *.test.*, fixtures/,
+        // mocks/) eval-shaped SAST-003 is documented/demo code — a 62×-per-project noise
+        // class, not signal. DEMOTED to a LOW review note (always visible, never
+        // deducting), never excluded: a real runtime-eval sink in a script directory
+        // stays reviewable, and non-test paths keep the full HIGH/MEDIUM verdict.
+        const demote = isTestPath;
         findings.push({
           id: "SAST-003",
-          severity: interpolated ? "high" : "medium",
-          confidence: "medium",
-          title: interpolated
+          severity: demote ? "low" : interpolated ? "high" : "medium",
+          confidence: demote ? "low" : "medium",
+          title: demote
+            ? "Dynamic code execution in a test/demo script — LOW review note (test-class path)"
+            : interpolated
             ? "Code executed from an interpolated string (eval/new Function) — code injection risk"
             : "Dynamic code execution of a non-literal value (eval/new Function/vm) — confirm the value can never be user-controlled",
           file: f.rel, line: i + 1,
@@ -304,7 +335,7 @@ export function scanSast(ctx: ScanContext): RuleResult {
           fix_mode: "suggested-diff",
           root: `${f.rel}:${i + 1}`,
           root_cause: rootCause("SAST-003", `${f.rel}:${i + 1}`),
-          needs_confirmation: !interpolated,
+          needs_confirmation: demote || !interpolated,
           verified: true,
         });
         break; // one verdict per line — strongest shape wins
@@ -314,9 +345,15 @@ export function scanSast(ctx: ScanContext): RuleResult {
       if (/\bchild_process\b.*\bexec\s*\(|\bexec\s*\(\s*[`"'][^`"']*(?:\$\{|"\s*\+)/.test(line)) {
         const interpolated = /\$\{|\+\s*\w|\w\s*\+/.test(line);
         if (interpolated) {
+          // §5.1: same test-path demotion as the eval branch — proof scripts
+          // demonstrating shell exec are a review note, not a HIGH verdict.
+          const demoteExec = isTestPath;
           findings.push({
-            id: "SAST-003", severity: "high", confidence: "medium",
-            title: "Code executed from an interpolated string (shell exec) — command injection risk",
+            id: "SAST-003", severity: demoteExec ? "low" : "high",
+            confidence: demoteExec ? "low" : "medium",
+            title: demoteExec
+              ? "Shell exec with interpolation in a test/demo script — LOW review note"
+              : "Code executed from an interpolated string (shell exec) — command injection risk",
             file: f.rel, line: i + 1,
             evidence: { type: "code_execution", masked: line.trim().slice(0, 120) },
             owasp: "A03",
