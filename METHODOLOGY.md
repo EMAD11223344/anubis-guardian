@@ -116,6 +116,20 @@ sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
 
 - Static analysis sees patterns, not runtime truth — the authz matrix and taint
   canaries generate tests for **you** to run on staging; they do not confirm exploits.
+- **File-size caps (v1.4)**: files ≤512 KB are analyzed in full; larger text files
+  up to **4 MB** are analyzed in **overlapping line-boundary windows** (16-line
+  overlap, synthetic scope-break at each seam) with exact absolute line numbers,
+  disclosed in `meta.files_windowed`; files **above 4 MB stay oversize-skipped**
+  and are counted in `meta.files_skipped.oversize`. Window-adjacent caveat: a
+  variable chain whose assignment sits before a seam and whose sink lies after
+  it (beyond the overlap) cannot resolve — a conservative non-detection, never
+  a false positive. The scanner itself stays linear on adversarial inputs
+  (U20.34 budget gate + U22.1 battery gate).
+- **Capability packs are review prompts, not verdicts (v1.4)**: AUTHZ/TEN/LEAK/
+  RES/UPLOAD findings that depend on invisible layers carry `needs_confirmation`
+  plus a note naming exactly what the static check cannot see ( middleware,
+  APP_GUARD/RLS, runtime values, serving behavior, helper-hidden limits). The
+  full honesty entries live in `classes_not_covered` in every report.
 - Codebase Mode covers the frameworks with observed signal (Next.js, Supabase,
   NestJS + generic Node). Other stacks get the generic layers only — the coverage
   registry in every report states what ran.

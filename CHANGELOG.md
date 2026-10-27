@@ -1,8 +1,47 @@
 # Changelog
 
-## [Unreleased] — v1.3.0 audit round (uncommitted)
+## [1.4.0] — 2026-10-27
 
-Security-audit round against a multi-agent report: every claimed issue was reproduced against real code before fixing. Result: **10 confirmed false-negatives fixed, 5 false-positive classes silenced, 1 severity-accuracy demotion, 1 CLI contract fix, 1 hook enforcement extension.** One reported issue (HDR-001 ReDoS) was *not* reproduced and is locked out by a performance gate instead. No new dependencies; masking, determinism, and read-only contracts unchanged. Version stays 1.3.0 — everything here ships under the next release.
+Capability + perf/verification release. Two workstreams ship together: **(1)** the flow/ReDoS hardening round started post-v1.3.0 (bounded multi-hop value chase, adversarial battery that *reversed* an earlier "ReDoS not reproduced" conclusion), and **(2)** six new capability groups (A–F) plus large-file windowed scanning and a test-authz attribution fix. Unit count 289 → 319; every gate green; no new runtime dependencies; masking, determinism and no-exec contracts unchanged. **`v1.3.0` on npm includes none of the sections below** (all three commits post-date the v1.3.0 tag).
+
+### Fixed — ReDoS (verdict REVERSED from the "not reproduced" conclusion)
+
+- The previous audit's performance gate (U20.34) measured benign single-line inputs; an **adversarial battery** (48 pathological inputs × N vs 3N growth testing, not one-point timings) exposed **quadratic breaches in HDR-001**: a word-run payload degrading 9s@100KB → 81s@300KB, and a quote-run 18s → 167s.
+- Fixed by **bounding greedy `[\w$]*` identifier runs to `{0,64}`** in `hdr001.ts` (`SINK_ASSIGN_RE` + variable scanners), `sast.ts` (`requestDerivedVars` + the general app-layer sink regex) and `crypto.ts` (`assignTarget`). Re-run of the full battery: **all 48 cases LINEAR, worst 355ms@300KB**.
+- Locked twice: U20.34 keeps the 512KB/budget guard, and the new **U22.1 adversarial battery gate** (16 cases, linear-growth assertion above a documented noise floor) fails the suite if any rule regresses.
+
+### Added — flow layer (`src/rules/flow.ts`)
+
+- **Bounded multi-hop value chase** shared by SAST-001/sha/taint: bare and method-wrapped intermediate assignments (`a.trim()`) are followed up to **4 hops**, cycle-safe, with **no half-resolved verdicts** (a chain that cannot be completed returns null, never a guess).
+- **Cross-file helper flow** for imported SQL builders: local relative-import helpers are read (never executed; npm package specs are never followed).
+- Enables SAST-001 and v1.4 capability rules to see one-assignment hops that v1.3's single-hop propagation missed.
+
+### Added — capability groups A–F (real, wired into the engine and coverage registry)
+
+- **§A RBAC/authorization** (`src/rules/authzpack.ts`): **AUTHZ-001** — mutating request handler with privileged op and no recognizable authorization call in its *own* handler body (**MEDIUM, needs_confirmation**, note names the invisible layers: middleware, APP_GUARD-style global guards, DB-level RLS); **AUTHZ-002** — authorization *decision* taken from client-controlled input (`req.body.isAdmin`-shape), **HIGH**.
+- **§B multi-tenant isolation** (`scanTenant`): fires **only** where the repo declares tenant entities (Prisma models / SQL migrations with tenant columns — findings are TEN-002 by-ID tenant mutations, TEN-001 unscoped UPDATE/DELETE SQL; both MEDIUM review prompts naming invisible enforcement). Tenant-scope predicates stay silent; repo without declared tenant entities is never flagged.
+- **§C data leakage** (`src/rules/leakpack.ts`): **LEAK-001** credential-shaped fields serialized into client-facing response sinks (**MEDIUM**, note: runtime value unobservable — hash vs live secret); **LEAK-002** PII-shaped values into logs (**LOW** note).
+- **§D resource exhaustion** (`src/rules/dospack.ts`; scanner *self*-resilience is validated separately by the battery above): **RES-001** regexes built from request-controlled input (flow-assisted; **HIGH** direct / **MEDIUM**, needs_confirmation flow-resolved); **RES-002** pagination-less `findMany` inside request handlers (**MEDIUM**, note).
+- **§F upload security** (`src/rules/upload.ts`): **UPLOAD-001** request-derived writes into served directories (**HIGH**); **UPLOAD-002** limit-less upload parsers (multer/Busboy/Formidable); **UPLOAD-003** guard-less archive extraction (zip-bomb/zip-slip surface, incl. `extractAllTo` + `tar.x` pipelines; deduped per root cause).
+- All findings carry `needs_confirmation` + explicit invisible-layer notes per the honesty contract; the clean counterparts (authz calls, tenant-scoped predicates, `undefined`-stripped fields, `take`-caps, limit configs, guarded extraction) are unit-locked silent.
+- **Honesty**: the `classes_not_covered` registry gained explicit §A–§F entries (policy-level RBAC invisible, tenant enforcement invisible, runtime values invisible, fetch-timeout absence undetected, serving-layer behavior invisible).
+
+### Added — capability E: large-file windowed scanning (`src/walk.ts`)
+
+- Files **>512KB are now analyzed** instead of skipped-oversize: line-boundary **windows (≤512KB each) with 16-line overlap** plus a synthetic `}` scope-break at each seam so cross-window function attribution cannot silently chain; the **4MB hard cap remains** and still lands in `meta.files_skipped.oversize`.
+- Absolute line numbers verified through three seams on a 1.2MB fixture (JWT-003@line 2 + SAST-001@line 14004); overlap duplicates dedupe by fingerprint.
+- Disclosure: `meta.files_windowed` (file · KB · windows); `files_scanned` now counts unique disk files, not window entries. **Contract change, gate-locked**: U16.9/T7+ moved the oversize boundary from 512KB to 4MB.
+
+### Fixed — test-authz guard attribution (NEST-001 investigation)
+
+- Prior report's "2,009 endpoints" figure referenced an external repo that is not available locally — **non-reproducible, documented as missing evidence**. The *mechanisms* were verified on synthetic Nest fixtures: NEST-001 counts one row per decorator, class-level provider → method-level `@UseGuards` → global `APP_GUARD` precedence works, and a global provider found in code (never prose) silences the rule (all pre-existing v1.3 behavior, re-verified).
+- **Confirmed defect in `src/inventory.ts`**: `hasAuthzCheck()` was **file-level** for Next route rows and server actions — one guarded handler marked every handler in the file guarded, so a mixed POST-guarded/DELETE-unguarded route was reported `guarded` and test-authz *skipped* the unguarded mutation. Attribution is now **per handler** (brace-bounded body, same call-shape list as the AUTHZ pack), with the file-level truth kept only as the conservative fallback for bodies that cannot be closed within the bound (U24.1–U24.4). The AUTHZ-001 pack itself was already handler-scoped and stays unchanged.
+
+### Tests
+
+- Units **289 → 319** (all passing): U21.1–U21.13 capability positives/cleans/generalizations, U21.6b (ALTER TABLE tenant declaration), U22.1 battery lock, U23.1–U23.3 windowed-file gates, U24.1–U24.4 test-authz attribution.
+- New **`capab:verify`** acceptance harness chained into `npm test` after `clean:verify` (`tests/capab/`): a synthetic fixture tree scanned by the real CLI; the verifier asserts each capability rule fires on its positive and stays silent on its clean counterpart — **14/14**.
+- Full `npm test` green (exit 0): build, units 319, reachability 7, honeypot all seeds (masking intact), clean 100/A, capability acceptance 14, phase-1 25, phase-2 16, SARIF, acceptance v0.2 / v0.3 / v0.4 (47) / v1.0 (45).
 
 ### Fixed — false negatives (detections that were silent and now fire)
 

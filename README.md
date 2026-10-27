@@ -10,7 +10,7 @@
 <img src="docs/assets/hero.jpg" alt="Anubis Guardian — deterministic security auditor for AI-built projects: offline static-only scanner with score 100/A" width="100%">
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.3.0-8b5cf6.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-1.4.0-8b5cf6.svg)](package.json)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-blue.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6.svg)](tsconfig.json)
 [![Tests](https://img.shields.io/badge/regression%20gates-12%20suites-brightgreen.svg)](#-tests-regression-gates)
@@ -42,6 +42,7 @@ Existing scanners (Semgrep, Trivy, Gitleaks) are powerful but generic — they w
 | | Coverage |
 |---|---|
 | **Stack-specific** *(the differentiator — deep host-aware playbooks)* | **Supabase** — missing RLS, `USING (true)`, service-role exposure, Storage/Edge/policies, live L3 anon RLS probe (`SUPA-001..003`, `SUPA-R01..R08`) · **Next.js** — client/server boundary, public env, cookies, middleware-matcher gaps, CSRF heuristic (`NEXT-002`, `AUTH-001`) · **NestJS** — controller guards, CORS, helmet, throttler, Socket.IO gateways (`NEST-001..004`) |
+| **Application-security capability packs** *(v1.4 — framework-agnostic, review-prompts with invisible-layer notes)* | **RBAC/authorization** (`AUTHZ-001/002`: mutating handler without an authorization call in its own body · client-decided authorization) · **multi-tenant isolation hints** (`TEN-001/002`, fires only where the repo declares tenant entities) · **data leakage** (`LEAK-001/002`: credential fields in responses · PII in logs) · **resource exhaustion** (`RES-001/002`: request-built regexes via bounded flow · pagination-less reads in handlers) · **upload security** (`UPLOAD-001..003`: request-derived writes into served dirs · limit-less upload parsers · guard-less archive extraction) |
 | **Universal** *(works on any JS/TS project, any framework, any host)* | secrets + masking (`SEED`/`ENV`/`FILE`/`LOGS`/`HDR-001`) · git-history leaks · taint (`TAINT-001..006` SSRF / open redirect / path traversal / command injection / XSS / **dynamic code execution** — `eval`/`new Function`/`vm.runIn*` of request-tainted values) · JWT auth (`JWT-001/002` + **JWT-003** hardcoded signing/session secrets — rotate-first) · crypto (`CRYPTO-001`) · dependencies (`DEP-001..005`: CVEs incl. **transitive packages resolved from the lockfile**, malicious, typosquat, slopsquat; advisory-snapshot staleness flagged when >90 days) · dynamic-SQL analysis (`SAST-001` first-argument interpolation/concat across SQL sinks) · mass assignment / webhooks / exposed docs · Docker + CI/supply-chain (`DOCKER-001..003`, `CI-001..004`) · agent-environment audit (`AGENT-001..004`) · URL Mode headers/secrets (L1–L2) |
 
 ## 🧪 What It Checks
