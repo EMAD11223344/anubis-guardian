@@ -1,24 +1,77 @@
 # Anubis Guardian release pipeline (v1.0 — Plan Section 9.6 "Distribution supply chain").
-# Owner-facing: push a signed tag `v*` and this workflow builds, tests, attests and publishes.
+# Two release paths, one pipeline (historical behavior preserved + restored automation):
+# 1. Push a tag `v*` (maintainer-signed preferred: `git tag -s vX.Y.Z -m "vX.Y.Z"`)
+#    -> unconditional full pipeline. This is the historical flow: every npm release
+#    to date was triggered exactly by a tag push (v1.1.0 ... v1.5.0), never by a
+#    branch push.
+# 2. Push to main -> the gate job compares package.json's version against the npm
+#    registry; the pipeline runs ONLY when that version is NOT yet published.
+#    This is the automatic GitHub-to-npm path: bump package.json (+ lock, engine
+#    VERSION, README badge - all asserted pairwise by the U26.6 test gate), merge,
+#    and the release publishes itself. Ordinary main commits with an
+#    already-published version are no-ops (publish job skipped, run succeeds),
+#    and a second registry check right before `npm publish` prevents any
+#    duplicate-publication race from ever attempting an overwrite.
 # - npm Trusted Publishing / provenance: configure the package on npmjs.com
 #   (Settings → Publishing access → Trusted Publisher → this repo/workflow).
 #   `npm publish --provenance` then attests the artifact was built from THIS repo
 #   at THIS commit (sigstore) — no long-lived token story beyond the fine-grained
 #   NPM_TOKEN fallback if OIDC is not yet configured.
 # - SBOM (CycloneDX) + sha256 checksums are attached to the GitHub Release.
-# - The tag itself must be SIGNED by the maintainer: `git tag -s v1.0.0 -m "v1.0.0"`.
+# - On the main-push path the release step creates the `vX.Y.Z` tag itself
+#   (gh release create --target); on the tag path the pushed tag is used as-is
+#   (a maintainer-signed tag stays signed — signing is never replaced).
 name: Release
 
 on:
   push:
+    branches: ["main"]
     tags: ["v*"]
 
 permissions:
   contents: write   # create the GitHub Release with artifacts
   id-token: write   # npm provenance (sigstore / OIDC)
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.decide.outputs.should_release }}
+      release_tag: ${{ steps.decide.outputs.release_tag }}
+      tag_mode: ${{ steps.decide.outputs.tag_mode }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Decide release (tag push = always; main push = only if the version is missing from npm)
+        id: decide
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "should_release=true"  >> "$GITHUB_OUTPUT"
+            echo "release_tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "tag_mode=true"        >> "$GITHUB_OUTPUT"
+            echo "Tag push: releasing $PKG@$VER (full pipeline, historical path)"
+          elif npm view "$PKG@$VER" version >/dev/null 2>&1; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "release_tag="         >> "$GITHUB_OUTPUT"
+            echo "tag_mode=false"       >> "$GITHUB_OUTPUT"
+            echo "Main push with $PKG@$VER already on npm: no-op (publish job will be skipped)"
+          else
+            echo "should_release=true"  >> "$GITHUB_OUTPUT"
+            echo "release_tag=v${VER}"  >> "$GITHUB_OUTPUT"
+            echo "tag_mode=false"       >> "$GITHUB_OUTPUT"
+            echo "Main push with $PKG@$VER MISSING from npm: releasing v$VER"
+          fi
+
   publish:
+    needs: gate
+    if: needs.gate.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -35,7 +88,21 @@ jobs:
           npm pack
           sha256sum anubis-guardian-*.tgz > checksums-sha256.txt
           sha256sum anubis-guardian.cdx.json >> checksums-sha256.txt
+      - name: Duplicate guard - re-check npm registry after the tests
+        id: dup
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          if npm view "$PKG@$VER" version >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$PKG@$VER appeared on npm while tests ran - skipping publish (never overwrite)"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish to npm (provenance attestation)
+        if: steps.dup.outputs.publish == 'true'
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -47,7 +114,9 @@ jobs:
             anubis-guardian-*.tgz
             anubis-guardian.cdx.json
             checksums-sha256.txt
-      - name: Attach release files
-        run: gh release create "${GITHUB_REF_NAME}" anubis-guardian-*.tgz anubis-guardian.cdx.json checksums-sha256.txt --generate-notes
+      - name: Create release + attach files (creates the vX.Y.Z tag on the main-push path)
+        if: steps.dup.outputs.publish == 'true'
+        run: gh release create "${RELEASE_TAG}" anubis-guardian-*.tgz anubis-guardian.cdx.json checksums-sha256.txt --target "$GITHUB_SHA" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.gate.outputs.release_tag }}
