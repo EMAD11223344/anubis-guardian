@@ -1,7 +1,7 @@
 {
   "name": "anubis-guardian",
-  "version": "1.5.0",
-  "description": "Deterministic security auditor for AI-built projects \u2014 Codebase Mode + URL Mode (offline-first, MIT).",
+  "version": "1.5.1",
+  "description": "Deterministic security auditor for AI-built projects — Codebase Mode + URL Mode (offline-first, MIT).",
   "license": "MIT",
   "type": "module",
   "publishConfig": {

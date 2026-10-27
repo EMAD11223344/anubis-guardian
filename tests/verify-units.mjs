@@ -1738,6 +1738,44 @@ const vc = await import(d("dist/rules/valueclass.js"));
       JSON.stringify({ ms: Math.round(msS), jwt: j3.map((f) => f.line) }));
     rmD(perfDir, { recursive: true, force: true });
   }
+
+  // --- U26.6: runtime/release version consistency (release-candidate gate) ---
+  // The runtime constant (engine.ts VERSION), package.json, both package-lock
+  // root entries, the README version badge, the CLI --version output and a
+  // real scan's JSON `version` field must all agree — measured against the
+  // BUILT dist (npm test builds first), so it catches any future divergence,
+  // including a runtime constant left behind at a release bump. Pairwise
+  // equality (not a hardcoded version) keeps the gate valid for future bumps.
+  {
+    const { execFileSync } = await import("node:child_process");
+    const { mkdtempSync: mkTS, writeFileSync: wf, readFileSync: rf, rmSync: rmD } = await import("node:fs");
+    const { join: jn } = await import("node:path");
+    const { tmpdir: tdir } = await import("node:os");
+    const { pathToFileURL: toURL } = await import("node:url");
+    const RD = process.cwd(); // npm scripts run from the package root
+
+    const pkg = JSON.parse(rf(jn(RD, "package.json"), "utf8"));
+    const lock = JSON.parse(rf(jn(RD, "package-lock.json"), "utf8"));
+    const readme = rf(jn(RD, "README.md"), "utf8");
+    const badge = /\/badge\/version-([0-9.]+)/.exec(readme)?.[1];
+
+    const { VERSION: runtimeVersion, scan: scanFn } = await import(toURL(jn(RD, "dist/engine.js")));
+    // real scan on a minimal (non-windowed) fixture → engine result `version`
+    const vDir = mkTS(jn(tdir(), "u26-ver-"));
+    wf(jn(vDir, "package.json"), JSON.stringify({ name: "u26ver", dependencies: {} }));
+    const scanRes = scanFn(vDir);
+    rmD(vDir, { recursive: true, force: true });
+
+    const cliOut = execFileSync(process.execPath, [jn(RD, "dist", "cli.js"), "--version"], { encoding: "utf8" }).trim();
+    check("U26.6 E: release version consistency — CLI --version, scan-JSON version, engine VERSION constant, package.json, both package-lock root entries and the README badge all agree",
+      cliOut === pkg.version
+      && scanRes.version === pkg.version
+      && runtimeVersion === pkg.version
+      && lock.version === pkg.version
+      && lock.packages[""].version === pkg.version
+      && badge === pkg.version,
+      JSON.stringify({ pkg: pkg.version, cli: cliOut, scan: scanRes.version, runtime: runtimeVersion, lock: lock.version, lockPkgs: lock.packages[""].version, badge }));
+  }
 }
 
 // ---------- report ----------
