@@ -10,7 +10,7 @@
 | Environment | Value |
 |---|---|
 | Tool version | 1.5.1 |
-| Tool commit (provenance) | 646b182ae0c17a2c4196b5fb3cc1d4021260755c |
+| Tool commit (provenance) | 930468071c9d2b2b1d2c44e6424ce0007216f30a |
 | Node | v22.13.0 |
 | Platform | win32 · x64 · Windows_NT 10.0.26100 |
 | CPU | Intel(R) Core(TM) i5-4690 CPU @ 3.50GHz · 4 cores |
@@ -24,23 +24,27 @@
 | Measurement | Result | Status |
 |---|---|---|
 | Honeypot recall (49 planted checks, 2 roots — self-test) | 49/49 detected, masking contract intact | measured |
-| Honeypot findings by rule id | {"ENV-001":2,"SUPA-001":2,"SEC-002":1,"HDR-001":7,"SEED-001":2,"AGENT-003":1,"HIST-001":2,"NEXT-001":1,"HIST-ENV":1,"HIST-007":2,"FILE-006":1,"HIST-003":1,"SEC-008":1,"CI-002":1,"CI-004":1,"CI-003":1,"AGENT-002":1,"FILE-002":1,"AUTH-001":4,"AUTHZ-002":1,"SAST-003":1,"MASS-001":1,"WEBHOOK-001":1,"NEXT-002":2,"DOCKER-003":1,"CRYPTO-001":2,"LOGS-001":2,"JWT-001":1,"JWT-002":1,"DEP-002":1,"SUPA-003":1,"SUPA-R08":1,"SUPA-R01":2,"SUPA-R02":3,"SUPA-002":1,"NEST-001":2,"WS-001":1,"AGENT-001":4,"AGENT-004":3,"CI-001":2,"NEXT-004":4,"TAINT-004":1,"TAINT-001":1,"TAINT-002":1,"AUTHZ-001":1,"DOCKER-001":1,"DOCKER-002":1,"DEP-004":2,"SUPA-R06":3,"SUPA-R07":1,"NEST-002":2,"TAINT-003":1,"TAINT-005":1,"NEST-003":1,"NEST-004":1,"SWAGGER-001":1,"HIST-011":2,"RES-003":2,"DEP-003":1} | measured |
-| Honeypot multi-root scan wall time (2 roots, includes setup) | 2.41s | measured |
+| Honeypot findings by rule id | {"ENV-001":2,"SUPA-001":2,"SEC-002":1,"HDR-001":7,"SEED-001":2,"AGENT-003":1,"HIST-001":2,"NEXT-001":1,"HIST-ENV":1,"HIST-007":2,"FILE-006":1,"HIST-003":1,"SEC-008":1,"CI-002":1,"CI-004":1,"CI-003":1,"AGENT-002":1,"FILE-002":1,"SEC-010":1,"AUTH-001":4,"AUTHZ-002":1,"SAST-003":1,"MASS-001":1,"WEBHOOK-001":1,"NEXT-002":2,"DOCKER-003":1,"CRYPTO-001":2,"LOGS-001":2,"JWT-001":1,"JWT-002":1,"DEP-002":1,"SUPA-003":1,"SUPA-R08":1,"SUPA-R01":2,"SUPA-R02":3,"SUPA-002":1,"NEST-001":2,"WS-001":1,"AGENT-001":4,"AGENT-004":3,"CI-001":2,"NEXT-004":4,"TAINT-004":1,"TAINT-001":1,"TAINT-002":1,"AUTHZ-001":1,"DOCKER-001":1,"DOCKER-002":1,"DEP-004":2,"SUPA-R06":3,"SUPA-R07":1,"NEST-002":2,"TAINT-003":1,"TAINT-005":1,"NEST-003":1,"NEST-004":1,"SWAGGER-001":1,"HIST-011":2,"RES-003":2,"DEP-003":1} | measured |
+| Honeypot multi-root scan wall time (2 roots, includes setup) | 3.40s | measured |
 | Clean corpus false positives (must be 0 above threshold) | 0 findings above threshold — score 100, grade A | measured |
 | Labelled corpus recall (self-curated, vulnerable cases) | 17/17 detected at exact expected rule+line+severity | measured |
 | Labelled corpus false positives (safe cases, findings above LOW) | 0 — precision 1.00, recall 1.00 | measured |
-| Labelled corpus scan (fixture size / duration) | 35 files · 378 lines · 0.80s wall | measured |
+| Labelled corpus scan (fixture size / duration) | 35 files · 378 lines · 1.07s wall | measured |
 | Labelled corpus tolerated LOW advisories on safe files (no score) | 3 (documented LOW no-score review notes adjudicated via manifest "allowed" entries — calibration, not FPs) | measured |
-| Single-root scan wall time (Next.js+Supabase honeypot app) | 0.64s | measured |
+| Multilingual corpus recall (cross-language config surfaces) | 20/20 expected detections at exact rule+file+line | measured |
+| Multilingual corpus false positives (safe files above LOW / out-of-scope files at any severity) | 0 / 0 | measured |
+| Multilingual corpus total count (exact manifest contract) | 20/20 findings | measured |
+| Multilingual corpus scan (duration) | 2.18s wall (fixture of 8 languages/config formats + git history) | measured |
+| Single-root scan wall time (Next.js+Supabase honeypot app) | 0.82s | measured |
 | acceptance v0.2 (init-ci pins, determinism, workspaces, cross-root CRITICAL, artifacts) | ALL PASS (exit 0) | measured |
 | acceptance v0.3 (AI review + verifier, authz quarantine, taint canaries, hook, SKILL contract) | ALL PASS (exit 0) | measured |
 | acceptance v0.4 (URL Mode: L1 passivity, ownership gates, Supabase probe, determinism, renderers) | 47 gates passed, 0 failed | measured |
 | acceptance v1.0 (rules-lock, init-zap, restricted differential IDOR, packaging/SBOM, install smoke) | 45 gates passed, 0 failed | measured |
 | Mode 2 honeypot (planted URL classes incl. masking) | 33 checks passed, 0 failed | measured |
-| URL Mode L1 passive scan wall time (local fixture) | 0.28s | measured |
-| URL Mode L3 full scan wall time (L2 probes + Supabase detect + differential IDOR, local fixture) | 2.33s · 47 requests · score 0/F | measured |
-| OWASP NodeGoat (sanity — general layers) | pin c5cb68a7084e4ae7dcc60e6a98768720a81841e8 · 28 findings (score 0/F) · {"SEC-007":1,"DEP-001":9,"MASS-001":1,"HIST-005":1,"DEP-002":2,"CI-004":2,"CI-001":6,"TAINT-006":3,"TAINT-002":1,"HIST-011":1,"DEP-003":1} · 3.354s incl. clone | measured |
-| OWASP Juice Shop (sanity — general layers) | pin 717f5efa886b0417eeecb52378b03cf10567b7e2 · 142 findings (score 0/F) · {"SEC-007":3,"CI-002":1,"CRYPTO-001":2,"SAST-001":26,"SEC-009":37,"JWT-001":2,"UPLOAD-001":1,"MASS-001":1,"CI-004":13,"CI-001":7,"SWAGGER-001":10,"AUTHZ-001":6,"DOCKER-002":3,"FILE-001":3,"JWT-002":2,"WS-001":1,"SAST-003":8,"UPLOAD-003":4,"TAINT-003":7,"TAINT-001":1,"TAINT-006":1,"DOCKER-001":1,"HIST-011":1,"DEP-003":1} · 14.948s incl. clone | measured |
+| URL Mode L1 passive scan wall time (local fixture) | 0.31s | measured |
+| URL Mode L3 full scan wall time (L2 probes + Supabase detect + differential IDOR, local fixture) | 2.38s · 47 requests · score 0/F | measured |
+| OWASP NodeGoat (sanity — general layers) | pin c5cb68a7084e4ae7dcc60e6a98768720a81841e8 · 28 findings (score 0/F) · {"SEC-007":1,"DEP-001":9,"MASS-001":1,"HIST-005":1,"DEP-002":2,"CI-004":2,"CI-001":6,"TAINT-006":3,"TAINT-002":1,"HIST-011":1,"DEP-003":1} · 3.779s incl. clone | measured |
+| OWASP Juice Shop (sanity — general layers) | pin 717f5efa886b0417eeecb52378b03cf10567b7e2 · 264 findings (score 0/F) · {"SEC-007":3,"CI-002":1,"CRYPTO-001":2,"SEC-010":122,"SAST-001":26,"SEC-009":37,"JWT-001":2,"UPLOAD-001":1,"MASS-001":1,"CI-004":13,"CI-001":7,"SWAGGER-001":10,"AUTHZ-001":6,"DOCKER-002":3,"FILE-001":3,"JWT-002":2,"WS-001":1,"SAST-003":8,"UPLOAD-003":4,"TAINT-003":7,"TAINT-001":1,"TAINT-006":1,"DOCKER-001":1,"HIST-011":1,"DEP-003":1} · 16.839s incl. clone | measured |
 | gitleaks FP-accounting calibration (planted finding on a labelled-safe file is counted) | 1 planted finding(s) on the labelled-safe file counted as FP (expected ≥ 1) | measured |
 | gitleaks path normalization (abs vs rel --source equivalence) | identical normalized sets (abs vs rel --source) | measured |
 | External tool comparison status | semgrep: executable not runnable on this host — run the adapter command under WSL/Linux/Docker | pending |
@@ -101,7 +105,7 @@ Ground truth: `benchmarks/corpus/cases.json` (17 vulnerable + 12 safe cases, eac
 
 | Tool | Pin / configuration | Result on identical trees | Status |
 |---|---|---|---|
-| gitleaks | pinned 8.30.1, default rules (no config), --no-git | corpus: 4 findings · matched labelled secret cases: 3/3 · FP on safe files: 0 · clean-corpus hits: 2 (reviewed: jwt@.env:2, jwt@.env:3) · 0.80s + 0.76s | measured |
+| gitleaks | pinned 8.30.1, default rules (no config), --no-git | corpus: 4 findings · matched labelled secret cases: 3/3 · FP on safe files: 0 · clean-corpus hits: 2 (reviewed: jwt@.env:2, jwt@.env:3) · 0.94s + 0.77s | measured |
 | semgrep | version unavailable; config p/owasp-top-ten (community, OSS edition — no paid rules required); adapter contract: `semgrep scan --json --quiet --config p/owasp-top-ten <root>` | probe FAILED (exit null, non-JSON output (empty)) | PENDING — not runnable on this host (observed blocker recorded); maintainer reproduction: WSL/Linux or Docker + the adapter command |
 
 ### Comparison scope matrix (what is fairly comparable, and what is pending)
