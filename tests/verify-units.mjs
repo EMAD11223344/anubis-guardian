@@ -2424,6 +2424,27 @@ const vc = await import(d("dist/rules/valueclass.js"));
     sec010(envFile).length === 0 && envFile.findings.some((f) => f.id === "ENV-001"),
     JSON.stringify(envFile.findings.map((f) => `${f.id}@${f.line}`)));
 
+  // U29.9 — regression (SEC-010 adjudication, pinned Juice Shop corpus): i18n
+  // catalog UI strings are natural-language prose, not credential assignments.
+  // Key tokens `auth`/`token` inside translation keys + sentence values used to
+  // pass the heuristic; prose + ASCII value guards keep them silent. Includes a
+  // non-Latin-script value (CJK has no spaces) and an ASCII 3-word value, the
+  // two shapes observed across 120 FPs in frontend/src/assets/i18n/*.json.
+  const i18n = secrets.scanSecrets(sctx([cf("frontend/src/assets/i18n/en.json",
+    `{\n  "TITLE_TWO_FACTOR_AUTH_ENTER": "Enter the 6 digit token from your 2FA app",\n  "INITIAL_TOKEN_TOOLTIP": "The token to be entered from the authenticator must have 6 digits.",\n  "REMOVE_TWO_FACTOR_AUTH": "Remove 2FA from your account",\n  "LABEL_INITIAL_2FA_TOKEN": "Initiële code van je 2FA app",\n  "INITIAL_TOKEN_TOOLTIP_JA": "从authenticator输入的验证码必须有6个字符",\n  "AUTH_SECTION_HINT": "Konfiguration af 2FA",\n  "APP_NAME": "Juice Shop"\n}\n`)]));
+  check("U29.9 SEC-010 safe: i18n catalog UI strings (ASCII prose / non-Latin values, auth|token key tokens) stay silent",
+    sec010(i18n).length === 0 && i18n.findings.length === 0,
+    JSON.stringify(i18n.findings.map((f) => `${f.id}@${f.line}`)));
+
+  // U29.10 — safe counterpart: a REAL JSON configuration credential on an
+  // adjacent structural shape still fires (the guards must not weaken JSON
+  // config detection — opaque single-token ASCII value).
+  const jsonCfg = secrets.scanSecrets(sctx([cf("config/app.json",
+    `{\n  "PORT": "3000",\n  "JWT_SECRET": "S3cr3tK3y_n0tF0rSh4r1ng",\n  "LOG_LEVEL": "info"\n}\n`)]));
+  check("U29.10 SEC-010: JSON config credential `JWT_SECRET` (opaque ASCII single token) still fires — high @ line 3",
+    sec010(jsonCfg).length === 1 && sec010(jsonCfg)[0].line === 3 && sec010(jsonCfg)[0].severity === "high",
+    JSON.stringify(jsonCfg.findings.map((f) => `${f.id}@${f.line}`)));
+
   // --- U30: infra/config-as-policy pack (FB-001 / TF-001) ---
   const fire = infra.scanInfra(sctx([cf("firestore.rules", "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /public/{document=**} {\n      allow read, write: if true;\n    }\n  }\n}\n")]));
   check("U30.1 FB-001: `allow read, write: if true;` fires HIGH @ exact line 5",

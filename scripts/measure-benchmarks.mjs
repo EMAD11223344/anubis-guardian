@@ -112,8 +112,9 @@ try {
   const vuln = manifest.cases.filter((c) => c.kind === "vulnerable");
   const safe = manifest.cases.filter((c) => c.kind === "safe");
   corpusNVuln = vuln.length; corpusNSafe = safe.length;
-  let TP = 0, FN = 0, FP = 0, toleratedLow = 0;
-  corpusTable.push(`| Category | vulnerable | safe | TP | FN | FP | precision | recall |`);
+  let TP = 0, FN = 0, FP = 0, toleratedLow = 0, extraOnVuln = 0;
+  const extraIds = {};
+  corpusTable.push(`| Category | vulnerable | safe | TP | FN | FP | case precision | case recall |`);
   corpusTable.push(`|---|---|---|---|---|---|---|---|`);
   for (const c of manifest.cases) {
     const mine = findings.filter((f) => norm(f.file) === norm(c.file));
@@ -121,6 +122,13 @@ try {
     if (c.kind === "vulnerable") {
       const hit = mine.find((f) => f.id === c.rule && f.line === c.line && (RANK[f.severity] ?? 0) >= (RANK[c.severity_floor] ?? 0));
       verdict = hit ? "TP" : "FN";
+      // Adjudication boundary: findings on a vulnerable fixture BEYOND the
+      // expected hit are COUNTED, not classified — they have no manifest labels,
+      // so they are reported separately (never folded into precision).
+      for (const f of mine) {
+        const isExpected = f.id === c.rule && f.line === c.line && (RANK[f.severity] ?? 0) >= (RANK[c.severity_floor] ?? 0);
+        if (!isExpected) { extraOnVuln++; extraIds[f.id] = (extraIds[f.id] ?? 0) + 1; }
+      }
     } else {
       const bad = mine.filter((f) => {
         const rank = RANK[f.severity] ?? 0;
@@ -162,8 +170,9 @@ try {
     }
   };
   walk(CORPUS);
-  record("Labelled corpus recall (self-curated, vulnerable cases)", `${TP}/${vuln.length} detected at exact expected rule+line+severity`, FN + FP === 0 ? "measured" : "failed");
-  record("Labelled corpus false positives (safe cases, findings above LOW)", `${FP} — precision ${overallP}, recall ${overallR}`, FP === 0 ? "measured" : "failed");
+  record("Labelled corpus expected-rule detection (vulnerable fixtures)", `${TP}/${vuln.length} vulnerable cases hit at exact expected rule+line+severity floor — fixture-level metric, not finding-level precision/recall`, FN === 0 ? "measured" : "failed");
+  record("Labelled corpus unmatched extra findings on vulnerable fixtures (counted, not adjudicated)", `${extraOnVuln}${Object.keys(extraIds).length ? ` · by rule: ${JSON.stringify(extraIds)}` : " (none)"}`, "measured");
+  record("Labelled corpus safe-fixture false positives (findings above LOW)", `${FP} safe cases with unexpected findings — case-level precision ${overallP}, case-level recall ${overallR}`, FP === 0 ? "measured" : "failed");
   record("Labelled corpus scan (fixture size / duration)", `${fx} files · ${fl} lines · ${(corpusMs / 1000).toFixed(2)}s wall`, "measured");
   record("Labelled corpus tolerated LOW advisories on safe files (no score)", `${toleratedLow} (documented LOW no-score review notes adjudicated via manifest "allowed" entries — calibration, not FPs)`, "measured");
 } catch (e) {
@@ -458,8 +467,10 @@ const md = [`# BENCHMARKS.md — measured results only`,
   `> \`scripts/measure-benchmarks.mjs\` in a single run on the environment recorded below. Unmeasurable`,
   `> entries are marked PENDING — they are never estimated. Honeypot numbers are a **self-test** (we`,
   `> planted what we catch); the external OWASP suites report raw finding counts on unlabelled projects`,
-  `> — **observations, not recall** — and every labelled precision/recall number below is judged against`,
-  `> the pinned manifest in \`benchmarks/corpus/cases.json\`, which is self-curated (see reading guide).`,
+  `> — **observations, not recall** — and every labelled precision/recall number below is CASE-LEVEL,`,
+  `> judged against the pinned manifest in \`benchmarks/corpus/cases.json\`, which is self-curated (see`,
+  `> reading guide). It is a documented self-baseline — not finding-level precision/recall, and not`,
+  `> external validation.`,
   ``,
   `| Environment | Value |`,
   `|---|---|`,
@@ -479,9 +490,18 @@ const md = [`# BENCHMARKS.md — measured results only`,
   `|---|---|---|`,
   ...results.map((r) => `| ${r.name} | ${r.value.replace(/\|/g, "\\|")} | ${r.status} |`),
   ``,
-  `## Labelled corpus — per-category precision / recall (self-curated)`,
+  `## Labelled corpus — per-category case-level precision / recall (self-curated)`,
   ``,
   `Ground truth: \`benchmarks/corpus/cases.json\` (${corpusNVuln} vulnerable + ${corpusNSafe} safe cases, each an adjudicated fixture pair; provenance and matching rules are pinned in the manifest itself).`,
+  ``,
+  `> **Metric definitions — what the code measures.** A vulnerable case counts as detected (TP) only when`,
+  `> the manifest's expected rule id fires on the expected file at the expected line with severity ≥ the`,
+  `> manifest floor. **Case-level precision** = vulnerable cases with the expected hit ÷ (those + safe`,
+  `> cases with any unexpected finding). **Case-level recall** = expected hits ÷ vulnerable cases. This is`,
+  `> **fixture-level expected-rule detection — not finding-level precision/recall**: findings on vulnerable`,
+  `> fixtures beyond the expected hit are counted and reported separately in the results table ("unmatched`,
+  `> extra findings on vulnerable fixtures"), not classified against labels. The corpus is small and`,
+  `> self-curated; no universal precision/recall claim is made from it.`,
   ``,
   ...corpusTable,
   ``,
@@ -492,6 +512,16 @@ const md = [`# BENCHMARKS.md — measured results only`,
   ...corpusDetail,
   ``,
   `> What this table supports: fixture lineage, detection behavior at exact lines, and the LOW-allowlist calibration policy. It does **not** support a general-purpose recall claim — the corpus is authored in-repo.`,
+  ``,
+  `### SEC-010 adjudication on the pinned Juice Shop checkout (manual review round)`,
+  ``,
+  `The pre-adjudication measurement reported **122 SEC-010 findings** on the pinned Juice Shop checkout (raw tool count). A manual review of the grouped locations (file type, credential-key pattern, value shape, severity; representative samples opened per group) classified:`,
+  ``,
+  `- **120 false positives** — i18n translation catalogs (\`frontend/src/assets/i18n/*.json\`): UI strings (labels / tooltips / titles) whose key tokens contain \`auth\`/\`token\` and whose sentence-like values passed the value-realness bar. Root cause fixed in the rule (values must be opaque printable-ASCII and not ≥3-word prose); regression fixtures U29.9/U29.10 lock the behavior (i18n UI strings silent, a real JSON config credential still fires).`,
+  `- **1 confirmed true positive in kind, intentional in context** — \`data/static/users.yml\` seed-user TOTP secret: a real hardcoded credential in a config format, deliberately committed seed data in this deliberately-vulnerable training app.`,
+  `- **1 false positive retained as a documented boundary** — \`data/static/challenges.yml\` \`key: <challenge-identifier>\`: a standalone generic \`key\` name with a camelCase identifier value. The \`key\` token is retained deliberately (compound forms like \`api_key\`/\`access_key\` and bare \`key: AIza…\` Google keys are high-value) — no rule weakening, no whole-file-class suppression.`,
+  ``,
+  `Post-fix, the external-suite row above re-measures the same pin with the i18n false-positive class eliminated (the remaining SEC-010 findings are the two YAML config surfaces adjudicated above). These are manually adjudicated results, distinguished from the tool-measured counts in the tables.`,
   ``,
   `## External tool comparison — identical working-tree snapshots`,
   ``,
@@ -521,7 +551,7 @@ const md = [`# BENCHMARKS.md — measured results only`,
   `## Reading guide`,
   ``,
   `- **Honeypot recall** = self-test: deterministic proof the shipped rules catch every planted class (49 checks, 2 roots).`,
-  `- **Labelled corpus P/R** = self-curated fixture pairs with an adjudicated, commit-pinned manifest: precision/recall arithmetic is reproducible, but the labels are ours — treat as a documented self-baseline, not external validation.`,
+  `- **Labelled corpus P/R** = case-level fixture metrics with an adjudicated, commit-pinned manifest: expected-rule detection on vulnerable fixtures + unexpected-finding counting on safe fixtures, both reproducible from the manifest — but the labels are ours and the corpus is small: treat as a documented self-baseline (fixture-level expected-rule detection), not external validation and not finding-level precision/recall. Unmatched extras on vulnerable fixtures are counted and reported separately.`,
   `- **Clean corpus** = false-positive control: a clean project must finish at 100/A with zero findings above threshold.`,
   `- **Acceptance gates** = the frozen plan scopes (v0.2 CI/determinism, v0.3 AI+authz+hook, v0.4 URL Mode, v1.0 supply chain + restricted active scope) — every gate must pass.`,
   `- **External suites** (NodeGoat / Juice Shop) = classic vulnerable Node apps — raw finding counts on UNLABELLED projects; useful as sanity observations, never as recall.`,

@@ -1,0 +1,40 @@
+# Anubis Guardian — independent test CI (v1.5.x).
+# Purpose: prove the COMPLETE test suite on ordinary development changes.
+# This is deliberately separate from release.yml: on an ordinary main push the
+# release workflow's `gate` job only DECIDES whether a release is warranted, and
+# its `publish` job (which runs npm ci + npm test) is skipped when the version
+# is already published — so a green release-gate run is NOT evidence that the
+# tests ran. This workflow runs them on every push to main and every PR.
+# Policy (mirrors release.yml):
+# - read-only permissions — no publishing, no tags, no releases here;
+# - third-party Actions pinned to full commit SHAs (supply-chain policy);
+# - Node version matches the release pipeline;
+# - any failing check fails the job (clear red conclusion, no partial green).
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  tests:
+    name: tests (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install (npm ci)
+        run: npm ci
+      - name: Full test suite (npm test)
+        run: npm test
+      - name: Package dry-run (npm pack --dry-run)
+        run: npm pack --dry-run

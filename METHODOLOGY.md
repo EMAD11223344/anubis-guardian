@@ -114,8 +114,16 @@ pending, never estimated. Three result classes are kept strictly apart:
 - **Curated self-tests** (honeypot 49 planted checks; the labelled corpus in
   `benchmarks/corpus/`) are self-curated by definition — the labels were authored
   in-repo and their provenance/matching rules are pinned in
-  `benchmarks/corpus/cases.json`. Their precision/recall numbers are a documented
-  self-baseline, **not** external validation.
+  `benchmarks/corpus/cases.json`. Their numbers are a documented self-baseline,
+  **not** external validation. The labelled metric is **case-level fixture
+  detection, not finding-level precision/recall**: a vulnerable case counts as
+  detected only when its manifest-listed rule fires at the expected file+line
+  with severity ≥ the manifest floor (case-level recall = expected hits ÷
+  vulnerable cases); safe fixtures must show no unexpected findings (case-level
+  precision = expected hits ÷ (those + safe fixtures with unexpected findings));
+  findings on vulnerable fixtures beyond the expected hit are counted and
+  reported separately ("unmatched extra findings on vulnerable fixtures") rather
+  than classified. No universal precision/recall claim is made from this corpus.
 - **Clean-project false-positive control** (tests/clean) must stay at 0 findings
   above threshold (score 100, grade A).
 - **Unlabelled external projects** (OWASP NodeGoat / Juice Shop sanity clones)

@@ -10,7 +10,8 @@
 [![Version](https://img.shields.io/badge/version-1.5.1-8b5cf6.svg)](package.json)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-blue.svg)](package.json)
 [![npm](https://img.shields.io/badge/npm-install%20--global-cb3837.svg)](https://www.npmjs.com/package/anubis-guardian)
-[![Tests](https://img.shields.io/github/actions/workflow/status/EMAD11223344/anubis-guardian/release.yml?label=tests%20%26%20gate)](https://github.com/EMAD11223344/anubis-guardian/actions/workflows/release.yml)
+[![Tests](https://img.shields.io/github/actions/workflow/status/EMAD11223344/anubis-guardian/ci.yml?branch=main&label=tests)](https://github.com/EMAD11223344/anubis-guardian/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/EMAD11223344/anubis-guardian/release.yml?branch=main&label=release%20gate)](https://github.com/EMAD11223344/anubis-guardian/actions/workflows/release.yml)
 
 **Secrets & git history · SAST & taint · Authorization · Dependencies · CI & supply-chain · Infra-as-code · SARIF · Coverage manifest — offline by default**
 
@@ -112,7 +113,7 @@ Every number below reproduces from [`scripts/measure-benchmarks.mjs`](scripts/me
 |---|---|
 | Curated honeypot self-test (49 planted checks, 2 roots) | **49/49 detected**, masking contract intact |
 | Clean-project false-positive control | **0 findings above threshold — score 100, grade A** |
-| Labelled precision/recall corpus (17 vulnerable + 12 safe adjudicated cases) | **17/17 TP, 0 FP** — self-curated manifest [benchmarks/corpus](benchmarks/corpus/cases.json), not an external-recall claim |
+| Labelled corpus - fixture-level expected-rule detection (17 vulnerable + 12 safe adjudicated cases) | **17/17 expected hits at exact rule+file+line, 0 unexpected findings on safe fixtures** (extras on vulnerable fixtures are counted and reported separately) - self-curated manifest [benchmarks/corpus](benchmarks/corpus/cases.json), case-level metric, not an external-recall claim |
 | **Multilingual regression corpus** (Python/Go/Java-properties/Terraform/Actions/Docker/Firebase/manifests + safe counterparts) | **20/20 expected detections at exact rule+file+line, 0 FP, out-of-scope boundaries locked silent** — manifest [tests/multilingual/manifest.json](tests/multilingual/manifest.json) |
 | Skilled-tool comparison (gitleaks, pinned 8.30.1, identical trees) | **3/3** labelled secret cases matched, 0 FP on safe files; Semgrep numerical comparison **PENDING** with a full scope matrix |
 | Scale on the benchmark hardware | single-root fixture scan ≈ sub-second (0.66 s for the ~30-file honeypot tree) — per-measurement wall times, environment, and the adversarial worst case are recorded in [BENCHMARKS.md](BENCHMARKS.md) |
@@ -182,7 +183,7 @@ score = 100 − (25 × CRITICAL + 10 × HIGH + 4 × MEDIUM + 1 × LOW)      grad
 - **A finding is evidence, never proof.** Authorization/tenant findings follow the two-tier contract: a missing *visible* check (`AUTHZ-001`, MEDIUM) is a review prompt — middleware, framework guards, and database RLS are legitimately invisible to static analysis and always win.
 - **The analysis is bounded, by design.** Rules are structured regex/heuristics over a shared bounded data-flow chase (≤4 assignment hops, same function scope, one imported-local-helper level) — **no AST parser, no call graph, no cross-function/cross-file data flow**. Deeper aliasing and helper-mediated flows are tracked only to documented bounds; what a scan did not chase is in the coverage manifest.
 - **Non-JS/TS code-level defects are not claimed.** Python/Go/Java SQLi, debug-mode, weak-randomness and similar code patterns in other languages are out of scope (the multilingual corpus **locks these boundaries silent** so a future rule cannot start firing there unnoticed); the Semgrep adapter is the opt-in path.
-- **Recall claims stay local.** The labelled corpus (29 adjudicated cases) and the multilingual corpus are **self-curated** — their precision/recall is a documented self-baseline, **not** external validation; raw counts on unlabelled projects (NodeGoat, Juice Shop) are observations, not recall.
+- **Recall claims stay local.** The labelled corpus (29 adjudicated cases) and the multilingual corpus are **self-curated** - the labelled metric is **case-level fixture detection**: a vulnerable case counts as detected only when its manifest-listed rule fires at the expected file+line with at least the manifest severity floor, safe fixtures must show no unexpected findings, and additional findings on vulnerable fixtures are counted and reported separately (not adjudicated). This is a documented self-baseline, **not** external validation and **not** finding-level precision/recall; raw counts on unlabelled projects (NodeGoat, Juice Shop) are observations, not recall.
 - **Known performance boundary.** Files >512 KB are analyzed in windows to 4 MB; above 4 MB is disclosed and skipped. Worst case measured: an adversarial ~4 MB file of ~2M single-character rows scans in ~70 s on the benchmark hardware. Locked by regression gates U26.1–U26.5.
 - **No DAST engine** — URL mode is consent-gated, bounded, and passive-first; deep dynamic testing belongs to your own tooling (a ZAP baseline config can be generated).
 - Full list with rationale: [METHODOLOGY.md §8](METHODOLOGY.md).

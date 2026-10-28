@@ -86,8 +86,16 @@ const ASSIGN_RE = /\b(api[_-]?key|api[_-]?secret|secret[_-]?key|auth[_-]?token|a
  * The key is TOKENIZED (same policy as DOCKER-003's ARG names) and must contain
  * a credential token; the value must look real (same looksReal bar) and must
  * not be a reference (env reads, `${…}` interpolation, TF `var.` references,
- * public-by-design key shapes). Lines already reported by SEC-001..009 or
- * SEC-009's quoted-assignment heuristic are skipped — one root cause, one finding.
+ * public-by-design key shapes) — and must itself be credential-SHAPED: opaque
+ * printable-ASCII, not a multi-word prose sentence. The prose/ASCII guards came
+ * out of the SEC-010 adjudication on the pinned Juice Shop corpus (120 of 122
+ * findings were i18n catalog UI strings like `"TITLE_TWO_FACTOR_AUTH_ENTER":
+ * "Enter the 6 digit token from your 2FA app"` in frontend/src/assets/i18n/*.json
+ * — natural-language values with credential-ish key tokens `auth`/`token`).
+ * Documented boundary: a quoted multi-word passphrase or a non-ASCII-charset
+ * credential value is out of the heuristic's model and will be missed.
+ * Lines already reported by SEC-001..009 or SEC-009's quoted-assignment
+ * heuristic are skipped — one root cause, one finding.
  */
 const SEC010_TOKENS = new Set([
   "secret", "password", "passwd", "pass", "pwd", "token", "key", "apikey",
@@ -108,6 +116,16 @@ const SEC010_QUOTED = /^["']([^"'\n]{8,})["']/;
 const SEC010_BARE_OK = /^[^\s"'`()[\]{}<>]+$/;
 /** public-by-design key shapes (publishable keys, SSH public keys) are not secrets */
 const SEC010_PUBLIC_VALUE = /^(?:pk_(?:live|test)_|sb_publishable_|ssh-(?:rsa|ed25519|ecdsa)\s)/;
+
+/** Credential values are opaque printable-ASCII tokens; non-ASCII text (i18n
+ * catalogs in Greek/Cyrillic/Thai/CJK scripts, etc.) is UI content, not a secret. */
+const SEC010_ASCII = /^[\x20-\x7E]+$/;
+/** ≥3 whitespace-separated words = a prose sentence (UI label/tooltip/title),
+ * not a credential. Unquoted values are already single tokens (SEC010_BARE_OK);
+ * this guard covers quoted values, where i18n strings otherwise pass looksReal. */
+function isProse(v: string): boolean {
+  return v.trim().split(/\s+/).length >= 3;
+}
 
 function looksReal(v: string): boolean {
   if (PLACEHOLDER.test(v)) return false;
@@ -312,6 +330,8 @@ export function scanSecrets(ctx: ScanContext): RuleResult {
             v.length >= 8 &&
             (quoted || SEC010_BARE_OK.test(v)) &&
             looksReal(v) &&
+            SEC010_ASCII.test(v) &&
+            !isProse(v) &&
             !PLACEHOLDER.test(v) &&
             !SEC010_PUBLIC_VALUE.test(v) &&
             !/(?:process\.env|os\.environ|getenv)/.test(line) &&
