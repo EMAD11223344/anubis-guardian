@@ -5,6 +5,11 @@ wrong. Rule contributions are the highest-leverage way to help — and the easie
 way to get a PR rejected is to skip the false-positive contract. Read this once;
 it saves everyone a review round.
 
+> **For a new detector pack (TypeScript), start with
+> [docs/ARCHITECTURE.md §7](docs/ARCHITECTURE.md) — the repeatable add-a-detector
+> procedure with `src/rules/infra.ts` as the worked example.** This page covers
+> the contribution contract and the JSON DSL.
+
 ## The non-negotiables
 
 1. **Every rule ships with clean cases.** A rule that fires on code that is

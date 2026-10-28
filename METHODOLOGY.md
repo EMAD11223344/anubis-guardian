@@ -168,6 +168,20 @@ command** — never fabricated, never used to claim a winner.
   `req.body` shapes. Remaining boundary: body-reading forms outside the
   recognized source set (custom parse helpers) stay invisible to RES-001 while
   the AUTHZ/TAINT layers may still see them.
+- **Language coverage (multilingual round)**: code-level SAST/taint/authz
+  analysis is **JS/TS-only by design**; other languages are covered at the
+  config/repo layers only — secret shapes by value, `SEC-010`
+  configuration-format credential assignment (tokenized key names with quoted
+  or bare values in properties/ini/toml/tf/yaml/json/python/go/shell files),
+  `FB-001` Firebase rules, `TF-001` Terraform ACLs, and the CI/Docker/history
+  layers. Dependency **version** auditing is npm-ecosystem-only —
+  `requirements.txt`/`go.mod`/`Cargo.toml` manifests are inventoried but not
+  version-audited. The multilingual regression corpus locks these boundaries
+  silent (`tests/multilingual/manifest.json` → `out_of_scope_locked_silent`).
+  Quoted-assignment detection is value-shape-dependent (a secret-key-looking
+  value without digits or under 20 chars stays silent — recorded in the corpus
+  classifications); JS camelCase single-name `dbPassword` remains a known
+  SEC-009 alternation boundary (documented, deliberately not widened).
 
 - Static analysis sees patterns, not runtime truth — the authz matrix and taint
   canaries generate tests for **you** to run on staging; they do not confirm exploits.

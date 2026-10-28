@@ -73,6 +73,42 @@ const PATTERNS: SecretPattern[] = [
 /** Generic credential-assignment heuristic (context: value must look real, not placeholder). */
 const ASSIGN_RE = /\b(api[_-]?key|api[_-]?secret|secret[_-]?key|auth[_-]?token|access[_-]?token|private[_-]?key|client[_-]?secret|password|passwd|pwd)\b\s*[:=]\s*["']([^"'\n]{8,})["']/gi;
 
+/**
+ * SEC-010 (dev round) — credential assignment in NON-JS/TS configuration
+ * formats (properties / ini / toml / tf / yaml / json / python / go / shell).
+ * Two matcher gaps the JS-focused SEC-009 heuristic cannot see:
+ *   1. key tokens: `DB_PASSWORD` / `spring.datasource.password` / `jwt.secret` —
+ *      `\bpassword` can never match after a `_`/`.` junction or inside a
+ *      camelCase name (word-char → word-char, no boundary), and bare `secret`
+ *      is not in SEC-009's alternation at all;
+ *   2. bare values: `.properties`/`.tf`/shell files rarely quote values, and
+ *      SEC-009 requires a quoted string.
+ * The key is TOKENIZED (same policy as DOCKER-003's ARG names) and must contain
+ * a credential token; the value must look real (same looksReal bar) and must
+ * not be a reference (env reads, `${…}` interpolation, TF `var.` references,
+ * public-by-design key shapes). Lines already reported by SEC-001..009 or
+ * SEC-009's quoted-assignment heuristic are skipped — one root cause, one finding.
+ */
+const SEC010_TOKENS = new Set([
+  "secret", "password", "passwd", "pass", "pwd", "token", "key", "apikey",
+  "credential", "credentials", "private", "jwt", "oauth", "bearer", "auth",
+]);
+
+function keyCredentialRisk(name: string): boolean {
+  const tokens = name
+    .replace(/(?<=[a-z0-9])(?=[A-Z])/g, "_") // camelCase → snake splitting
+    .toLowerCase()
+    .split(/[^a-z0-9]+/);
+  return tokens.some((t) => SEC010_TOKENS.has(t));
+}
+
+const SEC010_KEY_RE = /^\s*"?([A-Za-z_][A-Za-z0-9_.-]{2,})"?\s*[:=]+\s*(.*)$/;
+const SEC010_QUOTED = /^["']([^"'\n]{8,})["']/;
+/** bare (unquoted) values must be single opaque tokens — no whitespace, quotes, parens or braces */
+const SEC010_BARE_OK = /^[^\s"'`()[\]{}<>]+$/;
+/** public-by-design key shapes (publishable keys, SSH public keys) are not secrets */
+const SEC010_PUBLIC_VALUE = /^(?:pk_(?:live|test)_|sb_publishable_|ssh-(?:rsa|ed25519|ecdsa)\s)/;
+
 function looksReal(v: string): boolean {
   if (PLACEHOLDER.test(v)) return false;
   if (!/[A-Za-z]/.test(v) || !/\d/.test(v)) return false;
@@ -122,13 +158,20 @@ export function scanSecrets(ctx: ScanContext): RuleResult {
     const fileClass = classifyFile(f);
     const isMd = /\.(md|mdx|txt|rst)$/i.test(f.rel) || /(^|\/)(README|CHANGELOG)/i.test(f.rel);
     const isEnvExample = /(^|\/)\.env\.example$|(^|\/)\.env\.template$/i.test(f.rel);
+    // SEC-010 scope: configuration/properties-style files OUTSIDE the JS/TS
+    // surface. .env* files are owned by the dedicated env layer (ENV-001 +
+    // per-line reachability); JS/TS code is owned by SEC-009 (quoted
+    // assignments) — the format-agnostic surfaces live here.
+    const inEnvFilePath = /(^|\/)\.env/.test(f.rel);
+    const sec010File = !/\.[cm]?[jt]sx?$|\.tsx?$/i.test(f.rel) && !inEnvFilePath && !isMd && !isEnvExample;
 
     for (let i = 0; i < f.lines.length; i++) {
       const line = f.lines[i];
+      let lineSecFired = false; // a provider/assignment secret already reported on this line
 
       // In .env* files the VARIABLE NAME defines reachability: public prefix → client,
       // plain name → server-only env (the documented-correct Supabase pattern).
-      const inEnvFile = /(^|\/)\.env/.test(f.rel);
+      const inEnvFile = inEnvFilePath;
       const envKey = envKeyOf(line);
       const clientHit = inEnvFile
         ? isClientEnvKey(envKey)
@@ -216,6 +259,7 @@ export function scanSecrets(ctx: ScanContext): RuleResult {
           // as a low-confidence review note (no score impact), replacing the old
           // blanket "docs excluded" silent skip so coverage stays honest.
           const notePath = isNotePath(f.rel);
+          lineSecFired = true;
           const masked = maskSecret(v);
           const root = masked.sha256_prefix;
           findings.push({
@@ -230,12 +274,15 @@ export function scanSecrets(ctx: ScanContext): RuleResult {
       }
 
       // --- generic assignment heuristic ---
+      let assignFired = false;
       if (!isMd && !isEnvExample) {
         ASSIGN_RE.lastIndex = 0;
         while ((m = ASSIGN_RE.exec(line)) !== null) {
           const key = m[1], v = m[2];
           if (!looksReal(v)) continue;
           if (/(?:process\.env|os\.environ|getenv)/.test(line)) continue; // read from env — clean
+          assignFired = true;
+          lineSecFired = true;
           const masked = maskSecret(v);
           const root = masked.sha256_prefix;
           findings.push({
@@ -249,6 +296,41 @@ export function scanSecrets(ctx: ScanContext): RuleResult {
             remediation: { type: "rotate-first", provider: "generic", steps: "1) Confirm the value is real 2) Rotate it at the provider 3) Load from server-side env 4) Scrub git history if committed", history_cleanup: "git filter-repo if the value appears in history" },
             root, root_cause: rootCause("SEC-009", root), verified: true,
           });
+        }
+      }
+
+      // --- SEC-010 (dev round): credential assignment in configuration formats ---
+      if (sec010File && !lineSecFired && !assignFired) {
+        const km = line.match(SEC010_KEY_RE);
+        if (km && keyCredentialRisk(km[1])) {
+          let v = (km[2] ?? "").trim();
+          const q = v.match(SEC010_QUOTED);
+          let quoted = false;
+          if (q) { v = q[1]; quoted = true; }
+          else { v = v.replace(/\s+[;#].*$/, "").trim(); } // trailing comment (properties/shell/yaml)
+          if (
+            v.length >= 8 &&
+            (quoted || SEC010_BARE_OK.test(v)) &&
+            looksReal(v) &&
+            !PLACEHOLDER.test(v) &&
+            !SEC010_PUBLIC_VALUE.test(v) &&
+            !/(?:process\.env|os\.environ|getenv)/.test(line) &&
+            !/\$\{/.test(line)
+          ) {
+            const masked = maskSecret(v);
+            const root = masked.sha256_prefix;
+            notePush(f.rel, {
+              id: "SEC-010", severity: "high", confidence: "medium",
+              title: `Hardcoded credential in configuration ("${km[1].toLowerCase()}")`,
+              file: f.rel, line: i + 1,
+              evidence: { type: "hardcoded_credential_config", masked: masked.masked, sha256_prefix: masked.sha256_prefix, note: "configuration-format credential assignment — confirm the value is a real credential" },
+              owasp: "A02",
+              fix: "Move this credential to a secret store or environment reference and rotate it if it was ever committed (rotate-first).",
+              fix_mode: "suggested-diff",
+              remediation: { type: "rotate-first", provider: "generic", steps: "1) Confirm the value is real 2) Rotate it at the provider 3) Load from server-side env / secret manager 4) Scrub git history if committed", history_cleanup: "git filter-repo if the value appears in history" },
+              root, root_cause: rootCause("SEC-010", root), verified: true,
+            });
+          }
         }
       }
     }

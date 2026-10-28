@@ -23,6 +23,7 @@ import { scanLeak } from "./rules/leakpack.js";
 import { scanDos } from "./rules/dospack.js";
 import { scanUpload } from "./rules/upload.js";
 import { scanAgentEnv } from "./rules/agentenv.js";
+import { scanInfra } from "./rules/infra.js";
 import { computeScore } from "./score.js";
 import { applySuppression, parseInlineIgnores, fingerprint, mkFinding, excludeToRegExp, type RawFinding } from "./util.js";
 import { CHECKS, CLASSES_COVERED, CLASSES_NOT_COVERED } from "./coverage.js";
@@ -111,6 +112,7 @@ export function scan(rootDir: string, opts: ScanOptions = {}): ScanResult {
     ...scanLeak(ctx).findings,     // v1.4 capability C: data-leakage pack
     ...scanDos(ctx).findings,      // v1.4 capability D: resource-exhaustion pack
     ...scanUpload(ctx).findings,   // v1.4 capability F: upload-security pack
+    ...scanInfra(ctx).findings,    // dev round W3: infra/config pack (FB-001, TF-001)
   ];
 
   // org rules (--rules-dir, v1.4 organizational deployment)

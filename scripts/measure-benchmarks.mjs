@@ -170,6 +170,40 @@ try {
   record("Labelled corpus P/R", `PENDING — corpus adjudication error: ${e.message}`, "pending");
 }
 
+// ---------- 2c. Multilingual regression corpus (cross-language config surfaces) ----------
+// tests/multilingual = the W3 multilingual fixture (Python, Go, Java properties,
+// Terraform, Docker, GitHub Actions, Firebase rules, dependency manifests) with a
+// committed manifest. Expectations are read from the manifest, never hardcoded;
+// safe counterparts must stay clean; documented out-of-scope files must stay
+// SILENT at any severity (the boundary itself is under regression lock).
+try {
+  const ML = join(ROOT, "tests", "multilingual");
+  const tml = Date.now();
+  const mls = run(["node", join(ML, "setup.mjs")]);
+  if (mls.status !== 0) throw new Error(`setup exit ${mls.status}`);
+  const mlScan = run(["node", CLI, "scan", join(ML, "app"), "--format", "json", "-o", join(TMP, "multilingual.json")]);
+  const mlMs = Date.now() - tml;
+  if (mlScan.status !== 0 || !existsSync(join(TMP, "multilingual.json"))) throw new Error(`scan exit ${mlScan.status}`);
+  const mlManifest = JSON.parse(readFileSync(join(ML, "manifest.json"), "utf8"));
+  const mlFindings = JSON.parse(readFileSync(join(TMP, "multilingual.json"), "utf8")).findings;
+  const MLRANK = { critical: 4, high: 3, medium: 2, low: 1, info: 0 };
+  const mnorm = (p) => String(p).replace(/\\/g, "/");
+  let mlHits = 0;
+  for (const exp of mlManifest.expected_detections) {
+    const hit = mlFindings.find((f) => f.id === exp.id && mnorm(f.file) === mnorm(exp.file) && f.line === exp.line);
+    if (hit && (MLRANK[hit.severity] ?? 0) >= (MLRANK[exp.severity_floor] ?? 0)) mlHits++;
+  }
+  const safeBad = mlFindings.filter((f) => mlManifest.safe_files_zero_above_low.includes(mnorm(f.file)) && (MLRANK[f.severity] ?? 0) >= 2);
+  const oosBad = mlFindings.filter((f) => mlManifest.out_of_scope_locked_silent.some((o) => mnorm(o.file) === mnorm(f.file)));
+  const countOk = mlFindings.length === mlManifest.expected_count;
+  record("Multilingual corpus recall (cross-language config surfaces)", `${mlHits}/${mlManifest.expected_detections.length} expected detections at exact rule+file+line`, mlHits === mlManifest.expected_detections.length ? "measured" : "failed");
+  record("Multilingual corpus false positives (safe files above LOW / out-of-scope files at any severity)", `${safeBad.length} / ${oosBad.length}`, safeBad.length === 0 && oosBad.length === 0 ? "measured" : "failed");
+  record("Multilingual corpus total count (exact manifest contract)", countOk ? `${mlFindings.length}/${mlManifest.expected_count} findings` : `MISMATCH: ${mlFindings.length} findings vs expected ${mlManifest.expected_count}`, countOk ? "measured" : "failed");
+  record("Multilingual corpus scan (duration)", `${(mlMs / 1000).toFixed(2)}s wall (fixture of 8 languages/config formats + git history)`, "measured");
+} catch (e) {
+  record("Multilingual corpus regression", `PENDING — multilingual adjudication error: ${e.message}`, "pending");
+}
+
 // ---------- 3. Single-root perf ----------
 const t1 = Date.now();
 run(["node", CLI, "scan", join(ROOT, "tests", "honeypot", "app"), "--format", "json", "-o", join(TMP, "perf1.json")]);

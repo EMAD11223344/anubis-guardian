@@ -14,6 +14,8 @@
  *   U11 walk: CRLF EOL robustness (no trailing \r; CI-003 stays alive on CRLF checkouts)
  *   U12 rules/history: gitScope containment (history/ls-files must NEVER import an unrelated ancestor repo)
  *   U13 rules/taint: TAINT-005 sink shapes (backtick send, string-concat send, res.write/res.end)
+ *   U29 secrets: SEC-010 configuration-format credential assignment (W3 multilingual round)
+ *   U30 infra: FB-001 Firebase public-write rules / TF-001 Terraform public-read ACL (W3)
  * All imports come from dist/ — run after `npm run build` (the npm test chain does).
  */
 import { createHash } from "node:crypto";
@@ -2350,6 +2352,108 @@ const vc = await import(d("dist/rules/valueclass.js"));
   check("U28.28 P0-5 tokenizer: generic type arguments containing braces (`Promise<Record<string, { a: 1 }>>`) before `=> {` do not open the body — the real body is located and AUTHZ-001 fires at line 3",
     z2.length === 1 && z2[0].name.startsWith("DELETE") && z2[0].bodyEnd0 >= 5,
     JSON.stringify(z2));
+}
+
+// ---------- U29: SEC-010 - credential assignment in configuration formats (W3 multilingual round) ----------
+// Two matcher gaps SEC-009 (JS-focused) cannot see: (1) `\bpassword` never matches
+// after `_`/`.`/camelCase junctions; (2) bare (unquoted) values in properties/tf/py files.
+{
+  const secrets = await import(d("dist/rules/secrets.js"));
+  const infra = await import(d("dist/rules/infra.js"));
+  const sctx = (files) => ({ stack: { frameworks: {}, detected: [] }, rel: (x) => x, trackedFiles: new Set(), gitAvailable: false, files, rootDir: "/p" });
+  const cf = (rel, content) => ({ abs: `/p/${rel}`, rel, content, lines: content.split("\n") });
+  const sec010 = (res) => res.findings.filter((f) => f.id === "SEC-010");
+  const REAL = "Pr0d-Secret-2026!xYz9";
+
+  // U29.1 — quoted assignment with an underscore/camel key (python)
+  const py = secrets.scanSecrets(sctx([cf("app/settings.py", `import os\n\nSECRET_KEY = os.environ["DJANGO_SECRET_KEY"]\nDB_PASSWORD = "${REAL}"\nDEBUG = True\n`)]));
+  check("U29.1 SEC-010: quoted `DB_PASSWORD = \"…\"` in Python fires (\\bpassword can never match inside DB_PASSWORD) — high @ exact line 4",
+    sec010(py).length === 1 && sec010(py)[0].line === 4 && sec010(py)[0].severity === "high"
+      && !py.findings.some((f) => f.id === "SEC-009"),
+    JSON.stringify(py.findings.map((f) => `${f.id}@${f.line}`)));
+
+  // U29.2 — unquoted properties values (java/spring) incl. bare `secret` token
+  const props = secrets.scanSecrets(sctx([cf("resources/application.properties",
+    "spring.datasource.url=jdbc:postgresql://db.internal:5432/prod\nspring.datasource.username=app_user\nspring.datasource.password=" + REAL + "\njwt.secret=x7Kp9mQw2vB4nZ8hJ3fL6dRs5tYgUe1C\n")]));
+  check("U29.2 SEC-010: unquoted `spring.datasource.password=` and `jwt.secret=` fire — 2 findings @ lines 3,4",
+    sec010(props).length === 2 && sec010(props).map((f) => f.line).join(",") === "3,4",
+    JSON.stringify(props.findings.map((f) => `${f.id}@${f.line}`)));
+
+  // U29.3 — no double-report: quoted TF password attr is SEC-009's root cause (one finding)
+  const tfq = secrets.scanSecrets(sctx([cf("infra/main.tf", `resource "aws_db_instance" "app" {\n  username       = "app_admin"\n  password       = "${REAL}"\n}\n`)]));
+  check("U29.3 SEC-010 dedupe: quoted TF `password = \"…\"` stays ONE finding (SEC-009) — SEC-010 does not duplicate it",
+    tfq.findings.length === 1 && tfq.findings[0].id === "SEC-009" && tfq.findings[0].line === 3
+      && sec010(tfq).length === 0,
+    JSON.stringify(tfq.findings.map((f) => `${f.id}@${f.line}`)));
+
+  // U29.4 — safe: env reads stay silent (os.environ / getenv / process.env lines)
+  const envReads = secrets.scanSecrets(sctx([cf("app/settings.py",
+    `import os\nSECRET_KEY = os.environ["DJANGO_SECRET_KEY"]\nDB_PASSWORD = os.environ["DB_PASSWORD"]\n`),
+    cf("entrypoint.sh", "#!/bin/sh\nexport DB_PASSWORD=$(getenv DB_PASSWORD)\n")]));
+  check("U29.4 SEC-010 safe: env reads (os.environ / getenv) in python+shell stay silent",
+    sec010(envReads).length === 0 && envReads.findings.length === 0,
+    JSON.stringify(envReads.findings.map((f) => `${f.id}@${f.line}`)));
+
+  // U29.5 — safe: ${...} interpolation and var references stay silent
+  const refs = secrets.scanSecrets(sctx([cf("resources/application.properties",
+    "spring.datasource.password=${DB_PASSWORD}\njwt.secret=${JWT_SECRET}\n"),
+    cf("infra/main.tf", "resource \"aws_db_instance\" \"app\" {\n  password = var.db_password\n}\n")]));
+  check("U29.5 SEC-010 safe: ${…} interpolation and TF var.db_password references stay silent",
+    refs.findings.length === 0,
+    JSON.stringify(refs.findings.map((f) => `${f.id}@${f.line}`)));
+
+  // U29.6 — safe: placeholder values and public-by-design key shapes stay silent
+  const publics = secrets.scanSecrets(sctx([cf("config/settings.ini", "db_password=changeme\nsmtp_password=changeme2\n"),
+    cf("deploy/vars.yml", "public_key: pk_live_51Kx9PublicByDesign0000\nssh_key: ssh-rsa AAAAB3NzaC1yc2EAAADAATAABAAABAQ\n")]));
+  check("U29.6 SEC-010 safe: placeholder values and publishable/SSH public keys stay silent",
+    sec010(publics).length === 0 && publics.findings.length === 0,
+    JSON.stringify(publics.findings.map((f) => `${f.id}@${f.line}`)));
+
+  // U29.7 — JS/TS surface untouched by SEC-010; note: camelCase single-name
+  // `dbPassword` in JS is a pre-existing SEC-009 alternation boundary (its
+  // `\b(key)` tokens cannot match after a camelCase junction) — documented as a
+  // known heuristic limit, NOT claimed as detection.
+  const js = secrets.scanSecrets(sctx([cf("src/lib/db.ts", `const dbPassword = "${REAL}";\n`)]));
+  check("U29.7 SEC-010 scope: JS/TS files stay out of SEC-010; camelCase single-name dbPassword in JS is a documented SEC-009 boundary (no finding — honest, not fabricated)",
+    sec010(js).length === 0 && js.findings.length === 0,
+    JSON.stringify(js.findings.map((f) => `${f.id}@${f.line}`)));
+
+  // U29.8 — .env files stay in the dedicated env layer (no SEC-010 double-report)
+  const envFile = secrets.scanSecrets(sctx([cf(".env", `POSTGRES_PASSWORD=${REAL}\n`)]));
+  check("U29.8 SEC-010 scope: .env files are the env layer's domain — SEC-010 stays silent there",
+    sec010(envFile).length === 0 && envFile.findings.some((f) => f.id === "ENV-001"),
+    JSON.stringify(envFile.findings.map((f) => `${f.id}@${f.line}`)));
+
+  // --- U30: infra/config-as-policy pack (FB-001 / TF-001) ---
+  const fire = infra.scanInfra(sctx([cf("firestore.rules", "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /public/{document=**} {\n      allow read, write: if true;\n    }\n  }\n}\n")]));
+  check("U30.1 FB-001: `allow read, write: if true;` fires HIGH @ exact line 5",
+    fire.findings.length === 1 && fire.findings[0].id === "FB-001" && fire.findings[0].severity === "high" && fire.findings[0].line === 5,
+    JSON.stringify(fire.findings.map((f) => `${f.id}@${f.line}`)));
+
+  const fire2 = infra.scanInfra(sctx([cf("storage.rules", "service firebase.storage {\n  match /b/{bucket}/o {\n    allow write: if true;\n    allow create, update: if true;\n    allow read: if true;\n  }\n}\n")]));
+  check("U30.2 FB-001: write-verb variants fire (write @3, create+update @4) and read-only `if true` stays the LOW review note @5",
+    fire2.findings.length === 3
+      && fire2.findings.filter((f) => f.severity === "high").map((f) => f.line).join(",") === "3,4"
+      && fire2.findings.some((f) => f.severity === "low" && f.line === 5),
+    JSON.stringify(fire2.findings.map((f) => `${f.severity}:${f.id}@${f.line}`)));
+
+  const fireSafe = infra.scanInfra(sctx([cf("firestore.rules", "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /users/{uid} {\n      allow read, write: if request.auth != null;\n    }\n  }\n}\n")]));
+  check("U30.3 FB-001 safe: `if request.auth != null` stays fully silent",
+    fireSafe.findings.length === 0,
+    JSON.stringify(fireSafe.findings.map((f) => `${f.id}@${f.line}`)));
+
+  const tf = infra.scanInfra(sctx([cf("infra/main.tf", "resource \"aws_s3_bucket\" \"uploads\" {\n  bucket = \"app-uploads\"\n  acl    = \"public-read\"\n}\n")]));
+  check("U30.4 TF-001: public-read ACL fires HIGH + needs_confirmation @ exact line 3",
+    tf.findings.length === 1 && tf.findings[0].id === "TF-001" && tf.findings[0].severity === "high"
+      && tf.findings[0].line === 3 && tf.findings[0].needs_confirmation === true,
+    JSON.stringify(tf.findings.map((f) => `${f.id}@${f.line}`)));
+
+  const tfSafe = infra.scanInfra(sctx([cf("infra/main.tf", "resource \"aws_s3_bucket\" \"uploads\" {\n  bucket = \"app-uploads\"\n  acl    = \"private\"\n}\n"),
+    cf("infra/variables.tf", "variable \"region\" {\n  default = \"us-east-1\"\n}\n"),
+    cf("firestore.rules", "allow read, write: if request.auth != null;\n")]));
+  check("U30.5 TF-001/FB-001 safe: private ACL, non-ACL .tf, and authed rules stay silent",
+    tfSafe.findings.length === 0,
+    JSON.stringify(tfSafe.findings.map((f) => `${f.id}@${f.line}`)));
 }
 
 // ---------- report ----------

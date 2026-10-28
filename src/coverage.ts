@@ -13,6 +13,7 @@ export interface CheckDef {
 export const CHECKS: CheckDef[] = [
   { id: "recon", layer: "Phase 0", applicable: () => true },
   { id: "SEC-001..009", layer: "L1 secrets", applicable: () => true },
+  { id: "SEC-010", layer: "L1 secrets — credential assignment in configuration formats (properties/ini/toml/tf/yaml/json/python/go/shell; dev round)", applicable: () => true },
   { id: "SUPA-001", layer: "L1 secrets", applicable: () => true },
   { id: "ENV-001", layer: "L1/L2", applicable: () => true },
   { id: "HDR-001", layer: "L1 secrets", applicable: () => true },
@@ -44,6 +45,8 @@ export const CHECKS: CheckDef[] = [
   { id: "DEP-001..005", layer: "L3 dependency audit", applicable: () => true },
   { id: "CI-001..004", layer: "L5 ci/supply-chain pack (Step 0: 22% of sample)", applicable: () => true },
   { id: "DOCKER-001..003", layer: "L5 docker pack", applicable: () => true },
+  { id: "FB-001", layer: "L5 infra/config pack — Firebase security rules public write (dev round)", applicable: () => true },
+  { id: "TF-001", layer: "L5 infra/config pack — Terraform public-read storage ACL (dev round)", applicable: () => true },
   { id: "inventory", layer: "Phase 0 recon inventory", applicable: () => true },
 ];
 
@@ -72,6 +75,8 @@ export const CLASSES_COVERED = [
   "resource-exhaustion review pack (RES-001 request-built regexes via bounded flow, RES-002 pagination-less collection reads in handlers, RES-003 outbound requests without visible timeout/cancellation in handlers, v1.4/1.5)",
   "upload-security pack (UPLOAD-001 request-derived writes into served dirs, UPLOAD-002 limit-less upload parsers, UPLOAD-003 guard-less archive extraction, v1.4)",
   "large-file windowed scanning (files >512KB analyzed in line-boundary windows to 4MB with overlap; v1.5 adds a mandatory-progress guarantee for giant-line files — every supported byte is covered or the window disclosed via meta.files_windowed)",
+  "configuration-format credential assignment (SEC-010 — tokenized credential names with quoted or bare values in properties/ini/toml/tf/yaml/json/python/go/shell files; env reads, ${...} interpolation and var references stay clean)",
+  "infra/config-as-policy (FB-001 Firebase security rules granting write verbs with `if true` — read-only public stays a LOW review note; TF-001 Terraform public-read storage ACL)",
 ];
 
 export const CLASSES_NOT_COVERED = [
@@ -82,7 +87,8 @@ export const CLASSES_NOT_COVERED = [
   "business & payment logic (human review by design)",
   "DAST / wide fuzzing (non-goal by design)",
   "compliance SOC2/PCI/HIPAA (non-goal by design)",
-  "non-JS/TS languages (non-goal — use the Semgrep adapter)",
+  "non-JS/TS SAST (non-goal — Python/Go/Java/other code-level injection, debug-mode and randomness patterns are NOT analyzed; the config-file layers SEC-010/FB-001/TF-001 and the Semgrep adapter cover configuration surfaces and opt-in code depth)",
+  "non-npm dependency auditing (bundled advisory snapshot + lockfile parsing are npm-ecosystem-only — requirements.txt / pyproject / go.mod / cargo manifests are inventoried but not version-audited)",
   "§A honesty: policy-level RBAC (role/permission MODELS) and middleware/RLS enforcement are invisible — AUTHZ gives call-shape evidence only, never a confirmed enforcement gap",
   "§B honesty: tenant isolation enforcement (RLS policies, ORM global scopes, service-layer guards) is invisible — TEN findings are review prompts gated on repo-declared tenant entities only",
   "§C honesty: runtime VALUES are unobservable — LEAK cannot distinguish a real secret from a hash/expiring token. Whole-object flows are tracked only when the response argument resolves through a bounded chase to a wide-query shape (LEAK-003, v1.5): re-shaped/nested objects and non-identifier arguments remain invisible",

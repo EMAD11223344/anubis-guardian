@@ -1,5 +1,37 @@
 # Changelog
 
+## Multilingual round (round 3 — Unreleased) — cross-language config-surface detection + committed multilingual regression corpus (dev codebase, not yet released)
+
+An independently-reported multilingual scan fixture (Python, Go, Java properties, Terraform, Docker, GitHub Actions, Firebase rules, dependency manifests; hypothesis ≈20 findings in ≈0.5 s) was **recreated as a committed deterministic regression corpus** (`tests/multilingual/` — generator + manifest + gate; secret VALUES are generated at setup time so the public repo contains no fake-but-plausible credentials). Every reported miss was reproduced through the real CLI before fixing, then classified. No release action taken in this round (npm stays at the last published version; no tag). **Do not release from this section** — the next version number is decided separately.
+
+### Fixed — detection gaps (all reproduced through the real scanner before fixing)
+
+- **`SEC-010` — credential assignment in configuration formats (language-independent).** Two matcher gaps the JS-focused SEC-009 heuristic cannot see: (1) `SEC-009`'s `\bpassword`-style key alternation can never match after a `_`/`.` junction or inside a camelCase name — Python `DB_PASSWORD = "…"`, `spring.datasource.password`, and `jwt.secret` were invisible; (2) bare (unquoted) values in `.properties`/`.tf`/`.py`/shell files were invisible — SEC-009 requires a quoted string. SEC-010 tokenizes the key (same policy as DOCKER-003's ARG names) and requires a real-looking value; env reads (`os.environ`/`getenv`/`process.env`), `${…}` interpolation, `var.*` references, placeholder values and public-by-design shapes (`pk_live_`, `ssh-rsa`) stay clean; lines already reported by SEC-001..009 are skipped (one root cause, one finding — a quoted Terraform password stays a single SEC-009 hit). Scoped to non-JS/TS files; `.env*` stays with the dedicated env layer.
+- **`FB-001` — Firebase security rules granting public write** (`allow read, write: if true;` and write/create/update/delete variants → HIGH). Read-only `if true` stays a LOW `needs_confirmation` review note (public static content can be intentional). Single-line `allow` statements only — documented limit.
+- **`TF-001` — Terraform public-read storage ACL** (`acl = "public-read(-write)"` → HIGH + `needs_confirmation`, static-site hosting can be intentional). Only the literal ACL attribute — public-access-block resources are future work (documented).
+
+### Reproduced miss classifications (honest, evidence-backed)
+
+- Python `SECRET_KEY = "django-insecure-…"` **fires today** via SEC-009 for real-looking values — the report's miss was a **false assumption** for quoted values with digits; misses remain value-shape-dependent (no digit / <20 chars = silent, unchanged).
+- Quoted Terraform `password = "…"` **fires today** via SEC-009 (≥20-char values) — also value-shape-dependent.
+- Vulnerable `requirements.txt` pins are **out of scope by design**: the bundled advisory snapshot is npm-ecosystem-only; `classes_not_covered` now states the non-npm dependency boundary explicitly.
+- Python/Go string-concatenated SQLi are **out of scope non-JS/TS SAST** — locked silent in the corpus (`out_of_scope_locked_silent`) so a future rule cannot start firing there unnoticed.
+- JS camelCase single-name `dbPassword` is a **pre-existing SEC-009 alternation boundary**, documented (U29.7) and deliberately left unchanged to avoid FP-risk widening.
+
+### Added
+
+- **Committed multilingual regression corpus** (`tests/multilingual/`): deterministic generator (8 language/config surfaces + git-history fixture + safe counterparts + documented out-of-scope files), committed manifest with **20 expected detections at exact rule+file+line + severity floors**, zero-above-LOW safe files, locked-silent out-of-scope files, masking literals, byte-identical determinism and a wall-time budget. Wired as `multilingual:verify` into `npm test`. Gate: 38 checks passed; measured CLI scan ≈0.6 s (2.26 s including setup, recorded in BENCHMARKS.md).
+- **New rule pack `src/rules/infra.ts`** (FB-001/TF-001) — registered in the engine and coverage registry; serves as the worked example of the add-a-detector procedure.
+- **Unit gates U29.1–U29.8 + U30.1–U30.5** (386 total, up from 373): SEC-010 positives at exact lines, the full safe-counterexample set, the dedupe contract, the JS/TS-scope claim, the `.env`-layer exclusivity; FB-001 verb matrix + authed-rules silence; TF-001 severity/confirmation + private-ACL silence.
+- **`docs/ARCHITECTURE.md`** — engine pipeline, five-category detector taxonomy with per-pack inventory (entry functions, rule IDs, file filters, fs/exec boundaries), shared finding contracts, fixture/regression layers, the two existing extension points (`--rules-dir` JSON DSL, `--tools` adapters), the repeatable add-a-detector procedure, and recorded rejected alternatives. Coverage-registry figures verified in-tree: **37 check entries ≈96 concrete rule IDs** (HIST-009 retired inside its range), 32 URL-mode checks, 3 adapter result classes; the "131 rule IDs" figure circulating in earlier notes has no source in this tree.
+- **`SECURITY.md`** + **version-consistency gate** (`tests/verify-version.mjs`, wired into `npm test` as `version:verify`): package.json ↔ engine VERSION ↔ README badge must agree (guards the drift class of the W4 audit).
+- **Benchmark rows**: the generator (`scripts/measure-benchmarks.mjs`) gained a multilingual section (recall / FP / exact-count / duration), all read from the committed manifest.
+
+### Changed
+
+- **README repositioned** as the landing page for a multi-layer **repository** security scanner: capability tiers separate universal repo layers (any language) from JS/TS code analysis and optional playbooks; real masked report excerpt; honest language-coverage table (non-JS/TS SAST and non-npm dependency auditing declared, not implied); Supabase/Next.js/NestJS documented as optional playbooks, never prerequisites; security-policy and architecture links added; roadmap rows reconciled with the W4 audit.
+- **Coverage registry**: `CHECKS` +3 entries (SEC-010, FB-001, TF-001 → 37), `classes_covered` extended (configuration-format credential assignment; infra/config-as-policy), `classes_not_covered` now names non-JS/TS SAST and non-npm dependency auditing explicitly.
+
 ## [Unreported-defect round 2 — Unreleased] six reported P0 detection defects + benchmark-integrity repairs (dev codebase, not yet released)
 
 Six externally reported P0 defects, each **reproduced against the unmodified tree through the real scanner path before fixing**, then fixed at the root cause and regression-locked. No release action taken in this round (npm stays at the last published version; no tag). **Do not release from this section** — the next version number is decided separately.
