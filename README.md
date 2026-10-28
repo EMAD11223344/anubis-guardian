@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/hero.svg" alt="Anubis Guardian — security that covers the repository, guides the AI agent, and catches risks before they ship: multi-layer repository security scanner, offline and deterministic" width="100%">
+<img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/hero-art.svg" alt="Anubis Guardian hero art — an Anubis figure weighing a glowing heart against a feather on a dark high-tech background. Overlay text: Security that covers the repository, guides the AI agent, and catches risks before they ship. One security workflow. Multiple detection layers. Explicit coverage. Actionable findings. npm install -g anubis-guardian" width="100%">
 
 # ⚱ Anubis Guardian
 
@@ -27,7 +27,7 @@
 
 Anubis Guardian examines security risks across **code, repository history, dependencies, delivery pipelines, and infrastructure** — and helps AI coding agents avoid insecure patterns before they become part of the codebase.
 
-It scans a **whole repository** — every text file, not just `.js`/`.ts` — and produces a deterministic, byte-reproducible report: masked secrets, severity scoring, a **coverage manifest** that states what ran and what didn't, and `needs_confirmation` review prompts for everything static analysis cannot see. It is offline-first (no network calls without explicit consent flags), never executes scanned code, and writes nothing into the scanned tree.
+It scans a **whole repository** — text files across the tree, not just `.js`/`.ts` — and produces a deterministic, byte-reproducible report: masked secrets, severity scoring, a **coverage manifest** that states what ran and what didn't, and `needs_confirmation` review prompts for everything static analysis cannot see. It is offline-first (no network calls without explicit consent flags), never executes scanned code, and writes nothing into the scanned tree. Nothing is silently dropped: binary files, >4 MB files, unreadable files, and `--exclude`/`--max-files` caps are all skipped **and disclosed** in the report (files >512 KB are analyzed in windows).
 
 What makes it different from a secret scanner or a general SAST engine:
 
@@ -128,7 +128,7 @@ Every number below reproduces from [`scripts/measure-benchmarks.mjs`](scripts/me
 | Labelled corpus - fixture-level expected-rule detection (17 vulnerable + 12 safe adjudicated cases) | **17/17 expected hits at exact rule+file+line, 0 unexpected findings on safe fixtures** (extras on vulnerable fixtures are counted and reported separately) — case-level, self-curated, [benchmarks/corpus](benchmarks/corpus/cases.json); **not** an external-recall claim |
 | **Multilingual regression corpus** (Python/Go/Java-properties/Terraform/Actions/Docker/Firebase/manifests + safe counterparts) | **20/20 expected detections at exact rule+file+line, 0 FP, out-of-scope boundaries locked silent** — these specific supported cases, not universal multilingual SAST |
 | Skilled-tool comparison (gitleaks, pinned 8.30.1, identical trees) | **3/3** labelled secret cases matched, 0 FP on safe files; Semgrep numerical comparison **PENDING** with a full scope matrix |
-| Scale on the benchmark hardware | single-root fixture scan ≈ sub-second (0.66 s for the ~30-file honeypot tree) — per-measurement wall times, environment, and the adversarial worst case are recorded in [BENCHMARKS.md](BENCHMARKS.md) |
+| Scale on the benchmark hardware | single-root scan of the Next.js+Supabase honeypot fixture (`tests/honeypot/app`) took **0.96 s** — per-measurement wall times, environment, and the adversarial worst case are recorded in [BENCHMARKS.md](BENCHMARKS.md) |
 
 > Wall times are local-machine records for scale transparency — **not universal performance guarantees**. The documented worst case (an adversarial ~4 MB pathological file, ~70 s) and its regression gates are disclosed in the limitations.
 
@@ -156,7 +156,7 @@ anubis-guardian scan-url https://example.com --level 2 --ownership-token <nonce>
 L1 is always passive (headers, cookies, secrets in public bundles). L2 discovery and L3 probing require verified ownership — a DNS TXT record or `/.well-known` file — and private targets additionally need `--allow-private`. Cloud metadata endpoints are refused unconditionally. **Scanning systems you do not own is illegal; the tool enforces the gate rather than relying on your promise.**
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/modes.svg" alt="Anubis Guardian's two modes — Mode 1: offline codebase audit (universal repo layers for any stack, deep JS/TS analysis, optional framework playbooks); Mode 2: consent-gated URL audit (L1 passive, L2 discovery, L3 probe — verified ownership required, rate-limited, SSRF-guarded)" width="100%">
+  <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/modes-art.svg" alt="Anubis Guardian's two modes on a stylized two-panel interface. Mode 1 — codebase audit, offline and static-only: secrets and git history, config/CI/infrastructure, credentials in configuration, npm dependency audit, JS/TS SAST/taint/authz, optional framework playbooks, SARIF/JSON/HTML with a coverage manifest. Mode 2 — URL audit, consent-gated: L1 passive, L2 discovery, L3 probe with verified ownership (DNS TXT or .well-known file); the gate is enforced. Chips: 49/49 honeypot self-test, 0 false positives on the clean corpus, 17/17 labelled corpus, 20/20 multilingual corpus, 3/3 gitleaks matched" width="100%">
 </p>
 
 ## Output formats & exit codes
@@ -269,7 +269,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## العربية (Quick Guide)
 
-**أنوبس جارديان** — ماسح أمني متعدد الطبقات للمستودعات (Repository Security Scanner)، حتمي (Deterministic) وسريع على المشاريع المكتوبة بجافاسكربت/تايبسكربت — خصوصًا مشاريع الذكاء الاصطناعي (vibe coding). ثابت وغير متصل بالإنترنت، لا يُنفّذ الكود المفحوص، ويقنّع الأسرار في كل المخرجات.
+**أنوبس جارديان** — ماسح أمني متعدد الطبقات للمستودعات (Repository Security Scanner)، حتمي (Deterministic) وغير متصل بالإنترنت. يفحص أمان المستودع بالكامل عبر طبقات تعمل مع أي لغة برمجة، مع **تحليل كود أعمق لـ JS/TS** كقدرة إضافية معلنة — مناسب لمشاريع الذكاء الاصطناعي (vibe coding) وغيرها. لا يُنفّذ الكود المفحوص، ويقنّع الأسرار في كل المخرجات.
 
 **طبقات عالمية بأي لغة** (أسرار ملتزمة وسجل git، أسرار في ملفات الإعدادات بـ أي صيغة، CI وDocker وقواعد Firebase وTerraform، تبعيات npm) + **تحليل كود عميق لـ JS/TS** (SAST وtaint والصلاحيات) + **ملحقات إطارات اختيارية** (Supabase / Next.js / NestJS — ليست شرطًا أبدًا)؛ حدود التغطية معلنة بصراحة في تقرير التغطية.
 
