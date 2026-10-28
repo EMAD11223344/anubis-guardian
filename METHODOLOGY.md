@@ -107,12 +107,46 @@ baseline config for the owner's own staging target — the engine embeds no DAST
 
 **No number is published without a measurement.** `BENCHMARKS.md` contains only
 results produced by `scripts/measure-benchmarks.mjs` on the recorded environment
-(tool version, Node version, date). Claims that cannot be measured yet are
-listed as pending, not estimated. Honeypot recall is a *self-test* (we planted
-the vulnerabilities we catch); external-corpus numbers (Juice Shop / NodeGoat
-sanity, labeled AI-corpus) are the honest recall signal and are labeled as such.
+(tool version + full provenance commit, Node version, CPU/RAM/OS, date, and a
+statement of trial policy). Claims that cannot be measured yet are listed as
+pending, never estimated. Three result classes are kept strictly apart:
+
+- **Curated self-tests** (honeypot 49 planted checks; the labelled corpus in
+  `benchmarks/corpus/`) are self-curated by definition — the labels were authored
+  in-repo and their provenance/matching rules are pinned in
+  `benchmarks/corpus/cases.json`. Their precision/recall numbers are a documented
+  self-baseline, **not** external validation.
+- **Clean-project false-positive control** (tests/clean) must stay at 0 findings
+  above threshold (score 100, grade A).
+- **Unlabelled external projects** (OWASP NodeGoat / Juice Shop sanity clones)
+  report **raw finding counts only — observations, never recall**: no ground truth
+  exists to adjudicate TP/FP on them.
+
+External tool comparisons (gitleaks, semgrep) run on identical directory
+snapshots with pinned versions and disclosed configurations; matching rules and
+excluded scopes are documented in BENCHMARKS.md. A numerical comparison that
+cannot run in a given environment is published as **PENDING with the maintainer
+command** — never fabricated, never used to claim a winner.
 
 ## 8. Known limitations (stated up front)
+
+- **Next.js App Router handler analysis (v1.5.2 candidate) — bounded heuristics**:
+  the handler-body locator is a string/comment/template-aware bounded tokenizer,
+  not an AST parser. Documented corners: an object-brace default value inside an
+  express callback parameter, a TS return-type annotation containing object
+  braces, and braces inside the first argument string can still misplace the
+  body boundary. AUTHZ-002's request-body tracking is bounded to ≤8 body locals,
+  one-hop aliases, and a decision-shape contract (if/switch/equality/ternary) over
+  the rule's documented authz-field list — deeper alias chains or field flows
+  through helper functions are not chased. Taint treats parsed request JSON
+  (`await request.json()`) as untrusted wholesale — any field reaching a sink is
+  reviewable; field-level sensitivity is out of scope. The rule contract remains
+  `needs_confirmation` review prompts, never verdicts.
+- **RES-001 sibling gap (documented, unfixed)**: dospack's request-source regex
+  (RES-001, regex-from-request-input) recognizes the `req.body`-shaped sources
+  but does not yet recognize `await request.json()` — a parsed-body value fed to
+  `new RegExp(...)` can be missed while the AUTHZ/TAINT layers see it. Left for
+  the next review round to keep the v1.5.2 change surface auditable.
 
 - Static analysis sees patterns, not runtime truth — the authz matrix and taint
   canaries generate tests for **you** to run on staging; they do not confirm exploits.

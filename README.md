@@ -17,13 +17,45 @@
 
 ---
 
-## What is it?
+## What it detects
 
-Anubis Guardian scans your codebase for real security defects — hardcoded secrets, dynamic SQL, unsafe framework configuration, missing authorization evidence, tenant-isolation hints, data-exposure risks, and more — and produces a **deterministic, reproducible report** with masking, scoring, and generated (never-executed) test scaffolds.
+Anubis Guardian scans your codebase for real security defects and produces a **deterministic, reproducible report** — masked secrets, scored severity, coverage manifest, and generated (never-executed) test scaffolds:
 
-It is built around the failure patterns of AI-generated ("vibe-coded") applications — service keys shipped to the client, `Math.random()` tokens, unpinned CI actions, client-visible credentials — but it is a **general tool for any ES/TS codebase**, with optional deep playbooks for a few popular frameworks.
+- **Committed secrets & exposure** — service-role keys (value-decoded JWTs), provider tokens, DB URLs with passwords, `.env` leaks, git-history traces `HIST-*` · `SUPA-*` · `SEC-*` · `ENV-*`
+- **SAST & taint-lite** — dynamic SQL, unsafe framework configuration, SSRF/open-redirect/path-traversal/injection/XSS flows to recognized sinks `SAST-*` · `TAINT-001..006` · `JWT-*` · `NEXT-*`
+- **Authorization & access control** — request handlers with a privileged operation and no recognizable authorization check (`AUTHZ-001`), and authorization **decisions taken from client-controlled input** — including decisions read from parsed request bodies (`AUTHZ-002`) `AUTHZ-*` · `TEN-001/002` (tenant isolation)
+- **Data leakage, resource exhaustion, uploads** — credential-shaped responses, pagination-less reads, timeouts, upload/archive guards `LEAK-*` · `RES-*` · `UPLOAD-*`
+- **Supply chain & CI** — unpinned CI actions, script injection, root Docker images, dependency CVEs `CI-*` · `DOCKER-*` · `DEP-*`
+- Everything boundary-sensitive carries **`needs_confirmation`** — a review prompt naming the invisible layer (middleware, DB RLS, runtime values), never a fabricated verdict.
 
-**Who it is for:** solo developers, teams adopting AI coding agents, and CI pipelines that want a fast, deterministic, offline security gate. It does not replace human security review; it gives that review a prioritized, honest starting point.
+## Why AI-built applications
+
+The rules are seeded from a pattern-frequency study of 100 AI-generated projects — the failure shapes of "vibe-coded" code: **service keys shipped to the client, `Math.random()` tokens, unpinned CI actions, client-visible credentials, Next.js App Router handlers whose security state was copy-pasted away**. Agent-built apps change fast and nobody re-reads them; this is a fast, offline, deterministic gate for that workflow. It remains a general tool for any ES/TS codebase, with optional deep playbooks (Supabase, Next.js, NestJS).
+
+## How it differs from a secret scanner or a general SAST engine
+
+| | Anubis Guardian | Secret scanners (e.g. gitleaks) | General SAST engines (e.g. Semgrep) |
+|---|---|---|---|
+| **Detection focus** | framework & application logic: authz evidence, tenant isolation, taint to sinks, NEXT/Supabase/Nest playbooks | secret patterns in files and git history | whatever rules/ruleset the operator curates — arbitrary breadth |
+| **Zero-config value** | opinionated battery that runs out of the box with masking + scoring + coverage manifest | strong on the one class it targets | depends entirely on the ruleset you pick; no scoring contract |
+| **Evidence discipline** | two-tier contract: evidence-backed vs `needs_confirmation` review prompts, root-cause caps, no-CRITICAL-without-confirmation | matched/unmatched secrets | finding confidence/calibration depends on the selected ruleset — no built-in evidence-tier contract |
+| **Measured overlap** | committed-secret classes on identical trees: **both tools matched all labelled cases (2/2), 0 false positives on safe files** — scope and detail in [BENCHMARKS.md](BENCHMARKS.md) | | |
+
+There is no "winner" to claim — the tool classes overlap on secrets and diverge everywhere else, and the [comparison section of BENCHMARKS.md](BENCHMARKS.md) pins versions, configuration, matching rules, and every pending scope instead of fabricating superiority.
+
+## Measured performance & detection (highlights)
+
+Every number below reproduces from [`scripts/measure-benchmarks.mjs`](scripts/measure-benchmarks.mjs) on the environment recorded in [BENCHMARKS.md](BENCHMARKS.md) — no number appears there without a measurement, and unmeasurable entries are marked PENDING:
+
+| Measured on the candidate (commit-pinned) | Result |
+|---|---|
+| Curated honeypot self-test (49 planted checks, 2 roots) | **49/49 detected**, masking contract intact |
+| Clean-project false-positive control | **0 findings above threshold — score 100, grade A** |
+| Labelled precision/recall corpus (10 vulnerable + 8 safe adjudicated cases) | **10/10 TP, 0 FP** — self-curated manifest [benchmarks/corpus](benchmarks/corpus/cases.json), not an external-recall claim |
+| Skilled-tool comparison (gitleaks, pinned 8.30.1, identical trees) | **2/2** labelled secret cases matched, 0 FP on safe files; Semgrep numerical comparison **PENDING** with a full scope matrix |
+| Scale on the benchmark hardware | single-root fixture scan ≈ sub-second (0.70 s for the ~30-file Next.js+Supabase honeypot tree) — per-measurement wall times, environment, and the adversarial worst case are all recorded in [BENCHMARKS.md](BENCHMARKS.md) |
+
+> Wall times are local-machine records for scale transparency — **not universal performance guarantees**. The documented worst case (an adversarial ~4 MB pathological file) and its regression gates are disclosed in the limitations below.
 
 > 🛡️ **Different from after-the-fact scanners:** beyond detection, an optional pinned agent hook (`init-hook`) blocks service-role keys, RLS-killing SQL, and secret literals **at write time**, before they enter your codebase.
 
@@ -56,7 +88,7 @@ Framework-agnostic **review prompts** — because static analysis cannot see mid
 
 | Group | Rules | What fires (and severity) | Honest boundary |
 |---|---|---|---|
-| **A. RBAC / authorization** | `AUTHZ-001/002` | mutating request handler with a privileged operation and no authorization call in its **own handler body** (MEDIUM, review) · authorization decided from client input like `req.body.isAdmin` (HIGH) | middleware, global guards, and DB RLS are invisible — a guard elsewhere is assumed, never claimed |
+| **A. RBAC / authorization** | `AUTHZ-001/002` | mutating request handler with a privileged operation and no authorization call in its **own handler body** (MEDIUM, review) · authorization decided from client input like `req.body.isAdmin` or a parsed `request.json()` body (`if (body.isAdmin)`) (HIGH) | middleware, global guards, and DB RLS are invisible — a guard elsewhere is assumed, never claimed |
 | **B. Multi-tenant isolation** | `TEN-001/002` | by-ID mutation **or read** of a declared tenant entity keyed only on request input (MEDIUM review) · unscoped tenant-table SQL | fires **only** where the repo declares tenant entities (schema.prisma / SQL migrations); enforcement layers invisible |
 | **C. Data leakage** | `LEAK-001..003` | credential-shaped fields in responses (MEDIUM review) · PII in logs (LOW) · **whole-object serialization of a wide query result** — escalates to MEDIUM when the queried model declares credential columns (v1.5) | runtime values unobservable (hash vs live secret); nested/derived shapes beyond one chase hop remain invisible |
 | **D. Resource exhaustion** | `RES-001..003` | regex built from request input (HIGH direct / MEDIUM flow-traced) · pagination-less reads in handlers (MEDIUM review) · **outbound requests without visible timeout/cancellation** in handlers (LOW note, v1.5) | shared clients/wrappers may apply limits invisibly; unbounded loops over request arrays remain undetected |
@@ -165,12 +197,22 @@ The repo ships [`skill/SKILL.md`](skill/SKILL.md) (Agent Skills format) that tea
 
 More flags: `--exclude` globs, `--max-files` (fail-closed size cap), `--schema dump.sql` (Supabase dashboard-drift check), `--tools gitleaks,osv-scanner,semgrep` (opt-in adapters), `--online` (slopsquat registry check), `--quarantine` (generated authorization/canary test suites — written, **never executed** by the tool), `test-authz`, `rules-lock`, `init-zap`.
 
+## What Anubis Guardian does NOT prove
+
+- **A finding is evidence, never proof.** Authorization/tenant findings follow a two-tier contract: a missing *visible* check (`AUTHZ-001`, MEDIUM) is a review prompt — middleware, framework guards, and database RLS are legitimately invisible to static analysis and always win.
+- **The analysis is bounded, by design.** Rules are structured regex/heuristics over a shared bounded data-flow chase (≤4 assignment hops, same function scope, cycle-safe, one imported-local-helper level) — **no AST parser, no call graph, no cross-function/cross-file data flow**, and deliberately so: determinism, masking, no-exec, zero runtime cost. Deeper aliasing, helper-mediated field flows, and whole-body taint granularity are tracked only to the documented bounds; what a scan did not chase is in the coverage manifest.
+- **Recall claims stay local.** The labelled corpus in [benchmarks/corpus](benchmarks/corpus/cases.json) is self-curated (10 vulnerable + 8 safe adjudicated pairs, commit-pinned) — its precision/recall is a documented self-baseline, **not** external validation; raw counts on unlabelled projects (NodeGoat, Juice Shop) are observations, not recall.
+- **Known performance boundary.** Files >512 KB are analyzed in windows to 4 MB; above 4 MB is disclosed and skipped. Worst case is honest: an adversarial ~4 MB file of ~2M single-character rows scans in ~70 s on the benchmark hardware (padded absolute-line windows multiply per-rule row visits); realistic density is far faster. Locked by regression gates U26.1–U26.5.
+- **No DAST engine** — URL mode is consent-gated, bounded, and passive-first; deep dynamic testing belongs to your own tooling (a ZAP baseline config can be generated)
+- Full list with rationale: [METHODOLOGY.md §8](METHODOLOGY.md)
+
 ## Documentation
 
 | Document | Contents |
 |---|---|
 | [METHODOLOGY.md](METHODOLOGY.md) | determinism contract, scoring, false-positive control, known limitations |
-| [BENCHMARKS.md](BENCHMARKS.md) | measured results only — honeypot recall, clean corpus, wall-time scale |
+| [BENCHMARKS.md](BENCHMARKS.md) | measured results only — honeypot recall, labelled corpus P/R, clean corpus, tool comparison with pinned versions & configs, wall-time scale |
+| [benchmarks/corpus](benchmarks/corpus/cases.json) | the adjudicated labelled corpus manifest + reproducible vulnerable/safe fixture pairs |
 | [CONTRIBUTING-RULES.md](CONTRIBUTING-RULES.md) | how to contribute rule packs (clean cases mandatory, CRITICAL gating) |
 | [docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md) | AI-agent wiring recipes and the exit-code contract |
 | [studies/RESULTS.md](studies/step0-pattern-study/RESULTS.md) | the pattern-frequency study (100 AI-built projects) that seeded the rules |
@@ -184,23 +226,14 @@ Contributions are welcome — bug reports, new universal rules, new framework pl
 
 Found a security issue in Anubis Guardian itself (not in your scanned code)? Report it privately via [GitHub Security Advisories](https://github.com/EMAD11223344/anubis-guardian/security/advisories/new) rather than a public issue. Scanned-code findings are not tool vulnerabilities — run the scanner on your own repo and read the report.
 
-## Known limitations (stated up front)
-
-- **By design:** regex/structured heuristics rather than a full AST engine; SQL-sink values are tracked through a bounded same-function chase (≤4 hops, cycle-safe, one imported-local-helper level) — **no call-graph, no cross-function dataflow**
-- **Single file scope for taint-lite**, capped at MEDIUM, with generated canary tests you run yourself
-- **Authorization/tenant/isolation findings are evidence, not proof** — invisible middleware, RLS, or runtime values always win
-- **JS/TS only for codebase mode** (non-JS languages: use the supplied Semgrep adapter)
-- **Large files:** >512 KB analyzed in windows to 4 MB (exact absolute line numbers); above 4 MB disclosed as skipped; window-seam dataflow chains beyond the overlap stay non-detections. **Worst-case wall time is honest:** an adversarial 4 MB file of ~2M single-character rows scans in ~70 s (the padded absolute-line windows multiply per-rule row visits); realistic-density files scan far faster. Locked by regression gates U26.1–U26.5.
-- **No DAST engine** — URL mode is consent-gated, bounded, and passive-first; deep dynamic testing belongs to your own tooling (a ZAP baseline config can be generated)
-- Full list with rationale: [METHODOLOGY.md §8](METHODOLOGY.md)
-
 ## Roadmap
 
 | Stage | Status |
 |---|---|
 | v1.4 — six capability groups + adversarial ReDoS battery + windowed large-file scanning | ✅ shipped |
 | v1.5 — window-progress guarantee, whole-object LEAK-003, RES-003 timeouts, TEN-002 reads, SSRF severity accuracy | ✅ shipped |
-| Bounded interprocedural parameter-flow analysis + measured third-party benchmarks | 🔜 next |
+| v1.5.2 candidate — Next.js App Router AUTHZ/TAINT fixes, labelled benchmark corpus, pinned gitleaks/semgrep comparison | 🚧 candidate built — release pending owner review |
+| Bounded interprocedural parameter-flow analysis | 🔜 next |
 
 ## License
 

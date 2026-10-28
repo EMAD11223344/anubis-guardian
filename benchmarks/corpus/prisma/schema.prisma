@@ -1,0 +1,5 @@
+model Invoice {
+  id             Int    @id @default(autoincrement())
+  organizationId Int
+  amount         Int
+}
