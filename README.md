@@ -9,7 +9,7 @@
 *An open-source, multi-layer security platform for software repositories and AI-assisted development.*
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.5.1-8b5cf6.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-1.5.2-8b5cf6.svg)](package.json)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-blue.svg)](package.json)
 [![npm](https://img.shields.io/badge/npm-install%20--global-cb3837.svg)](https://www.npmjs.com/package/anubis-guardian)
 [![Tests](https://img.shields.io/github/actions/workflow/status/EMAD11223344/anubis-guardian/ci.yml?branch=main&label=tests)](https://github.com/EMAD11223344/anubis-guardian/actions/workflows/ci.yml)
@@ -257,8 +257,8 @@ Detailed, calibrated roadmap with per-item value/prereqs/fixtures/risks: [ROADMA
 |---|---|
 | v1.4 — six capability groups + adversarial ReDoS battery + windowed large-file scanning | ✅ shipped |
 | v1.5 — window-progress guarantee, whole-object LEAK-003, RES-003 timeouts, TEN-002 reads, SSRF severity accuracy | ✅ shipped |
-| Unreleased fix rounds (labeled internally v1.5.2/v1.5.3 candidates) — Next.js App Router AUTHZ/TAINT fixes, 6 reported P0 detection defects reproduced + regression-locked, benchmark-integrity repairs (pinned external SHAs, gitleaks path calibration, corpus 29 cases) | 🚧 built on main — release pending owner review |
-| Multilingual round (this phase) — `SEC-010` config-credential detection, `FB-001`/`TF-001` infra pack, committed multilingual regression corpus (20/20, 0 FP), benchmark row | 🚧 built on main — release pending owner review |
+| v1.5.2 — Next.js App Router AUTHZ/TAINT fixes, 6 reported P0 detection defects reproduced + regression-locked, benchmark-integrity repairs (pinned external SHAs, gitleaks path calibration, corpus 29 cases) | ✅ shipped |
+| v1.5.2 — multilingual round: `SEC-010` config-credential detection, `FB-001`/`TF-001` infra pack, committed multilingual regression corpus (20/20, 0 FP), benchmark row | ✅ shipped |
 | Bounded interprocedural parameter-flow analysis | 🔜 unscheduled (contract change — see ROADMAP.md R7) |
 
 ## License

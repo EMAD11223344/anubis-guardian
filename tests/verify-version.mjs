@@ -10,6 +10,7 @@
  *   2. src/engine.ts VERSION constant (via dist/engine.js)
  *   3. the README version badge (badge/version-X.Y.Z)
  *   4. the docs/site landing page version badge, when present
+ *   5. package-lock.json root "version" and packages[""].version
  * Historical references (CHANGELOG Unreleased sections, corpus provenance
  * strings, fix-commit round labels) are deliberately NOT asserted — they are
  * commit-history, not release labels.
@@ -30,6 +31,14 @@ const check = (name, cond, extra = "") => {
 };
 
 check(`package.json version parses as semver (${v})`, /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(v));
+
+try {
+  const lock = JSON.parse(readFileSync(join(ROOT, "package-lock.json"), "utf8"));
+  check(`package-lock.json root version === ${v}`, lock.version === v, lock.version ? `lock says ${lock.version}` : "lock root version not found");
+  check(`package-lock.json packages[""].version === ${v}`, Boolean(lock.packages && lock.packages[""]) && lock.packages[""].version === v, lock.packages && lock.packages[""] ? `lock package says ${lock.packages[""].version}` : "lock packages[\"\"] entry not found");
+} catch (e) {
+  check("package-lock.json readable", false, String(e));
+}
 
 const dist = readFileSync(join(ROOT, "dist", "engine.js"), "utf8");
 const m = dist.match(/VERSION = "([^"]+)"/);

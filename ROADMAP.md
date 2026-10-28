@@ -2,8 +2,8 @@
 
 > Written 2026-10-28 against commit-phase "v1.5.3 fix phase" (base `874bec1`).
 > Note on version labels: "v1.5.2" / "v1.5.3" here are INTERNAL fix-phase names
-> for work built on main — **not released**; npm stays at the last published
-> version (1.5.1) until the owner cuts the release.
+> for work built on main. Those rounds shipped consolidated as **v1.5.2**
+> (2026-10-28); the phase names remain historical commit provenance below.
 > Every "missing" claim below was audited against the current source first —
 > items marked **exists (partial)** cite the file:line where the capability
 > already lives, so we never claim absence of something we already ship.

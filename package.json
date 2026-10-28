@@ -1,6 +1,6 @@
 {
   "name": "anubis-guardian",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Multi-layer repository security scanner for AI-built projects — universal secret/CI/infra layers for any language, deep SAST & taint for JS/TS, optional framework playbooks; deterministic, offline-first, MIT.",
   "license": "MIT",
   "type": "module",

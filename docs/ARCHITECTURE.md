@@ -1,6 +1,6 @@
 # Architecture & Extending the Detector Set
 
-> Verified against the working tree of the W3 multilingual round (base `c5bd119`, fixes in the same dev phase as the v1.5.2/v1.5.3 fix commits — unreleased; npm stays at the last published version until the owner releases). This document describes the system as it **is** — every entry point, file filter, and count below was read from the implementation, not projected. Where numbers can drift, the *source* is named instead of a snapshot.
+> Verified against the v1.5.2 release tree (which includes the fixes from the internal "v1.5.2"/"v1.5.3" fix phases and the multilingual round — shipped consolidated as v1.5.2, 2026-10-28). This document describes the system as it **is** — every entry point, file filter, and count below was read from the implementation, not projected. Where numbers can drift, the *source* is named instead of a snapshot.
 
 Anubis Guardian is deliberately **not a plugin framework**. It is a single deterministic pipeline with a small number of well-defined seams. This page inventories the pipeline, the detector taxonomy, the shared contracts every detector inherits, and the repeatable procedure for adding a detector — with `src/rules/infra.ts` (added in the multilingual round) as the worked, regression-locked example.
 
