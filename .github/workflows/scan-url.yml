@@ -1,0 +1,165 @@
+
+# =============================================================================
+# anubis-scan.yml — Arena web-bridge dispatch (scan-url on GitHub-hosted runner)
+#
+# ┌─────────────────────────── STANDING NO-LEAK LEDGER (4 rules) ─────────────┐
+# │ 1. NEVER echo or print target_url, ownership_token, or the nonce — not to │
+# │    output, not to the step summary, not into annotations (masks are       │
+# │    belt-and-braces; the primary control is no-echo discipline).           │
+# │ 2. No artifacts, no check-run annotations, no job summaries are EVER      │
+# │    written. Reports travel via the HMAC callback only.                    │
+# │ 3. On callback failure the report dies with the runner (no-storage law).  │
+# │ 4. Completion lines name ONLY the opaque nonce_prefix + the exit code.    │
+# └───────────────────────────────────────────────────────────────────────────┘
+#
+# Version knob: vars.ANUBIS_TOOL_VERSION is asserted against `--version`,
+# fail-closed on mismatch. Fallback source mode for registry outages:
+# set the repo VARIABLE ANUBIS_SOURCE_MODE=pinned to build from a pinned SHA.
+# =============================================================================
+name: anubis-scan
+
+permissions:
+  # write is required only for the final self-delete step (retention Option B).
+  actions: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_id:
+        description: "Opaque correlation id from the Arena backend"
+        required: true
+        type: string
+      target_url:
+        description: "Canonical target URL (already validated backend-side)"
+        required: true
+        type: string
+      level:
+        description: "1 | 2 | 3"
+        required: true
+        type: string
+      ownership_token:
+        description: "Ownership nonce (L2/L3 only; empty for L1)"
+        required: false
+        type: string
+        default: ""
+      nonce_prefix:
+        description: "Opaque log prefix (safe to print)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  scan-url:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: mask (belt-and-braces — primary control is no-echo)
+        env:
+          TARGET_URL: ${{ inputs.target_url }}
+          OWNERSHIP_TOKEN: ${{ inputs.ownership_token }}
+          NONCE_PREFIX: ${{ inputs.nonce_prefix }}
+        run: |
+          [ -n "$TARGET_URL" ] && echo "::add-mask::$TARGET_URL"
+          [ -n "$OWNERSHIP_TOKEN" ] && echo "::add-mask::$OWNERSHIP_TOKEN"
+          [ -n "$NONCE_PREFIX" ] && echo "::add-mask::$NONCE_PREFIX"
+
+      - name: resolve tool version knob (fail-closed)
+        id: version
+        env:
+          EXPECTED: ${{ vars.ANUBIS_TOOL_VERSION }}
+        run: |
+          set -euo pipefail
+          if [ -z "$EXPECTED" ]; then
+            echo "vars.ANUBIS_TOOL_VERSION is unset — refusing to run (fail-closed)"
+            exit 1
+          fi
+          echo "expected=${EXPECTED}" >> "$GITHUB_OUTPUT"
+
+      - name: pinned-SHA fallback checkout (only when ANUBIS_SOURCE_MODE=pinned)
+        if: vars.ANUBIS_SOURCE_MODE == 'pinned'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ vars.ANUBIS_PINNED_SHA }}
+          persist-credentials: false
+
+      - name: install + verify tool version (fail-closed)
+        if: vars.ANUBIS_SOURCE_MODE != 'pinned'
+        env:
+          EXPECTED: ${{ vars.ANUBIS_TOOL_VERSION }}
+        run: |
+          set -euo pipefail
+          ACTUAL="$(npx --yes -p "anubis-guardian@$EXPECTED" anubis-guardian --version | tr -d 'v[:space:]')"
+          if [ "$ACTUAL" != "${EXPECTED#v}" ]; then
+            echo "version mismatch — expected ${EXPECTED}, got ${ACTUAL}. Fail-closed: no scan."
+            exit 1
+          fi
+          echo "tool version verified: $ACTUAL"
+
+      - name: build tool from pinned SHA (fallback source mode)
+        if: vars.ANUBIS_SOURCE_MODE == 'pinned'
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+
+      - name: run anubis-guardian scan-url (report to disk only)
+        env:
+          TARGET_URL: ${{ inputs.target_url }}
+          LEVEL: ${{ inputs.level }}
+          OWNERSHIP_TOKEN: ${{ inputs.ownership_token }}
+          EXPECTED: ${{ vars.ANUBIS_TOOL_VERSION }}
+          NONCE_PREFIX: ${{ inputs.nonce_prefix }}
+          ANUBIS_SOURCE_MODE: ${{ vars.ANUBIS_SOURCE_MODE }}
+        run: |
+          set -uo pipefail
+          EXIT=0
+          if [ "${ANUBIS_SOURCE_MODE:-}" = "pinned" ]; then
+            NODE_BIN="node dist/cli.js"   # fallback mode: previously built repo
+          else
+            NODE_BIN="npx --yes -p anubis-guardian@$EXPECTED anubis-guardian"
+          fi
+          ARGS=(--format json -o report-to.json)
+          case "$LEVEL" in
+            1) ARGS=(scan-url "$TARGET_URL" -l 1 "${ARGS[@]}") ;;
+            2)
+              if [ -z "$OWNERSHIP_TOKEN" ]; then
+                echo "scan refused: level 2 without ownership token is never dispatched"
+                exit 2
+              fi
+              ARGS=(scan-url "$TARGET_URL" -l 2 --ownership-token "$OWNERSHIP_TOKEN" "${ARGS[@]}")
+              ;;
+            3)
+              if [ -z "$OWNERSHIP_TOKEN" ]; then
+                echo "scan refused: level 3 without ownership token is never dispatched"
+                exit 2
+              fi
+              ARGS=(scan-url "$TARGET_URL" -l 3 --ownership-token "$OWNERSHIP_TOKEN" "${ARGS[@]}")
+              ;;
+            *) echo "invalid level payload — refusing"; exit 2 ;;
+          esac
+          $NODE_BIN "${ARGS[@]}" || EXIT=$?
+          if [ "$EXIT" = "0" ]; then
+            echo "scan-output: completed for ${NONCE_PREFIX:-$(echo scan)} (no more output allowed)"
+          else
+            echo "scan-output: scanner exited $EXIT for ${NONCE_PREFIX:-scan} (refusal or error — content suppressed)"
+          fi
+          printf '%s' "$EXIT" > exit-code.txt
+          exit 0
+
+      - name: deliver report to Arena backend (HMAC-gated callback)
+        env:
+          ANUBIS_CALLBACK_URL: ${{ vars.ANUBIS_CALLBACK_URL }}
+          ANUBIS_CALLBACK_SECRET: ${{ secrets.ANUBIS_CALLBACK_SECRET }}
+          SCAN_ID: ${{ inputs.scan_id }}
+          EXPECTED_VERSION: ${{ vars.ANUBIS_TOOL_VERSION }}
+          NONCE_PREFIX: ${{ inputs.nonce_prefix }}
+        run: node scripts/anubis-callback.mjs $(ls report-to.json 2>/dev/null || true) exit-code.txt
+
+      - name: self-delete run (retention Option B)
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X DELETE "/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            || echo "self-delete skipped (GitHub in-progress-delete quirk) — 1-day retention floor applies"
