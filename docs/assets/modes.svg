@@ -12,7 +12,7 @@
   </defs>
   <rect width="920" height="480" fill="url(#bg)" rx="12"/>
   <text x="460" y="46" text-anchor="middle" fill="#f2e6c8" font-size="30" font-weight="700">⚱ ANUBIS GUARDIAN</text>
-  <text x="460" y="70" text-anchor="middle" fill="#8fb6c9" font-size="15">Deterministic security auditor for JavaScript / TypeScript projects</text>
+  <text x="460" y="70" text-anchor="middle" fill="#8fb6c9" font-size="15">Two modes, one engine — universal repo layers for any stack, deep code analysis for JS/TS</text>
 
   <!-- MODE 1 -->
   <rect x="28" y="92" width="420" height="330" rx="10" fill="#0b1c17" stroke="#c9932e" stroke-width="1.5"/>

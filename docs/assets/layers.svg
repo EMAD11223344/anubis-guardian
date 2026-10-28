@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="600" viewBox="0 0 1100 600" font-family="Segoe UI, Arial, sans-serif" role="img" aria-label="Anubis Guardian security model — repository input flows through five detection layers into one deterministic masked report with an explicit coverage manifest">
+  <defs>
+    <linearGradient id="lbg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#08141c"/><stop offset="1" stop-color="#0c1e28"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0c554"/><stop offset="1" stop-color="#c9932e"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6fe3de"/><stop offset="1" stop-color="#2fa8b5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1100" height="600" fill="url(#lbg)" rx="12"/>
+  <text x="550" y="44" text-anchor="middle" fill="#f2e6c8" font-size="24" font-weight="700">One security workflow — multiple detection layers, explicit coverage</text>
+
+  <!-- INPUT -->
+  <rect x="30" y="86" width="240" height="452" rx="10" fill="#0b1822" stroke="#2b5f6e" stroke-width="1.5"/>
+  <text x="150" y="120" text-anchor="middle" fill="url(#cyan)" font-size="17" font-weight="700">INPUT</text>
+  <text x="150" y="142" text-anchor="middle" fill="#8fb6c9" font-size="13">your repository</text>
+  <g fill="#dceef5" font-size="14">
+    <text x="52" y="180">· working tree — every</text>
+    <text x="66" y="200">text file, any language</text>
+    <text x="52" y="236">· git history — commits,</text>
+    <text x="66" y="256">deletions, backups</text>
+    <text x="52" y="292">· manifests — package.json,</text>
+    <text x="66" y="312">lockfiles, requirements.txt</text>
+    <text x="52" y="348">· CI / containers / IaC —</text>
+    <text x="66" y="368">workflows, Dockerfiles, .tf</text>
+    <text x="52" y="404">· agent configs — .mcp.json,</text>
+    <text x="66" y="424">skill settings</text>
+  </g>
+  <rect x="48" y="448" width="204" height="70" rx="8" fill="#0d2330" stroke="#2b5f6e"/>
+  <text x="150" y="476" text-anchor="middle" fill="#8fa8b8" font-size="12">offline-first · never executes</text>
+  <text x="150" y="496" text-anchor="middle" fill="#8fa8b8" font-size="12">the code it reads</text>
+
+  <!-- LAYERS -->
+  <g font-size="14">
+    <rect x="330" y="86"  width="440" height="80" rx="10" fill="#0b1c17" stroke="#c9932e" stroke-width="1.5"/>
+    <text x="352" y="118" fill="url(#gold)" font-size="16" font-weight="700">1 · Repo &amp; git history</text>
+    <text x="352" y="144" fill="#dceef5">secret shapes by value · .env hygiene · sensitive files</text>
+    <rect x="330" y="180" width="440" height="80" rx="10" fill="#0b1c17" stroke="#c9932e" stroke-width="1.5"/>
+    <text x="352" y="212" fill="url(#gold)" font-size="16" font-weight="700">2 · Config, CI &amp; infrastructure</text>
+    <text x="352" y="238" fill="#dceef5">GitHub Actions · Docker · Firebase · Terraform</text>
+    <rect x="330" y="274" width="440" height="80" rx="10" fill="#0b1c17" stroke="#c9932e" stroke-width="1.5"/>
+    <text x="352" y="306" fill="url(#gold)" font-size="16" font-weight="700">3 · Credentials in configuration</text>
+    <text x="352" y="332" fill="#dceef5">tokenized key names, quoted or bare — any stack</text>
+    <rect x="330" y="368" width="440" height="80" rx="10" fill="#0b1c17" stroke="#c9932e" stroke-width="1.5"/>
+    <text x="352" y="400" fill="url(#gold)" font-size="16" font-weight="700">4 · Dependencies (npm)</text>
+    <text x="352" y="426" fill="#dceef5">CVEs · known-malicious · typosquats · no-lockfile</text>
+    <rect x="330" y="460" width="440" height="80" rx="10" fill="#0b1822" stroke="#2fa8b5" stroke-width="1.5"/>
+    <text x="352" y="492" fill="url(#cyan)" font-size="16" font-weight="700">5 · Code analysis — JS/TS only, disclosed</text>
+    <text x="352" y="518" fill="#dceef5">SAST · taint-lite · authorization evidence</text>
+  </g>
+  <rect x="330" y="556" width="440" height="30" rx="6" fill="#0d2330"/>
+  <text x="550" y="576" text-anchor="middle" fill="#8fa8b8" font-size="12">language-independent layers never require JS/TS — boundaries declared per report</text>
+
+  <!-- REPORT -->
+  <rect x="830" y="86" width="240" height="452" rx="10" fill="#0b1822" stroke="#2b5f6e" stroke-width="1.5"/>
+  <text x="950" y="120" text-anchor="middle" fill="url(#cyan)" font-size="17" font-weight="700">REPORT</text>
+  <text x="950" y="142" text-anchor="middle" fill="#8fb6c9" font-size="13">one deterministic document</text>
+  <g fill="#dceef5" font-size="14">
+    <text x="852" y="180">· score / 100 + grade A–F</text>
+    <text x="852" y="216">· masked evidence + sha256</text>
+    <text x="852" y="252">· exact file · line · fix</text>
+    <text x="852" y="288">· needs_confirmation for</text>
+    <text x="866" y="308">what static analysis can't</text>
+    <text x="866" y="328">see (middleware, RLS)</text>
+    <text x="852" y="364">· coverage manifest —</text>
+    <text x="866" y="384">checks_run / applicable,</text>
+    <text x="866" y="404">classes_not_covered</text>
+  </g>
+  <rect x="848" y="448" width="204" height="70" rx="8" fill="#0d2330" stroke="#2b5f6e"/>
+  <text x="950" y="476" text-anchor="middle" fill="#8fa8b8" font-size="12">terminal · json · md · html ·</text>
+  <text x="950" y="496" text-anchor="middle" fill="#8fa8b8" font-size="12">sarif (GitHub Security tab)</text>
+
+  <!-- connectors -->
+  <g stroke="#2fa8b5" stroke-width="2" fill="none" opacity="0.7">
+    <path d="M 270 160 h 44 M 270 496 h 44"/>
+    <path d="M 770 160 h 44 M 770 496 h 44"/>
+    <path d="M 296 160 l 10 -8 M 296 160 l 10 8 M 314 160 h 16"/>
+  </g>
+</svg>

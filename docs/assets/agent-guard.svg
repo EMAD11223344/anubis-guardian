@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="440" viewBox="0 0 1100 440" font-family="Segoe UI, Arial, sans-serif" role="img" aria-label="The Anubis Guardian agent skill guides the AI agent and proposes suggested diffs only; the optional write-time guard blocks selected supported patterns before they enter the codebase. Neither prevents all vulnerabilities.">
+  <defs>
+    <linearGradient id="abg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#08141c"/><stop offset="1" stop-color="#0c1e28"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0c554"/><stop offset="1" stop-color="#c9932e"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6fe3de"/><stop offset="1" stop-color="#2fa8b5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1100" height="440" fill="url(#abg)" rx="12"/>
+  <text x="550" y="44" text-anchor="middle" fill="#f2e6c8" font-size="24" font-weight="700">Agent skill — and an optional write-time guard</text>
+  <text x="550" y="70" text-anchor="middle" fill="#8fb6c9" font-size="14">two different mechanisms, both bounded and honestly scoped</text>
+
+  <!-- SKILL -->
+  <rect x="34" y="96" width="500" height="250" rx="10" fill="#0b1c17" stroke="#c9932e" stroke-width="1.5"/>
+  <text x="284" y="130" text-anchor="middle" fill="url(#gold)" font-size="19" font-weight="700">SKILL — guides the agent</text>
+  <g fill="#dceef5" font-size="14">
+    <text x="60" y="168">· teaches Claude Code / Cursor / opencode to run</text>
+    <text x="74" y="188">anubis-guardian scan and read findings honestly</text>
+    <text x="60" y="220">· helps the agent avoid insecure patterns while</text>
+    <text x="74" y="240">it writes code — before the risky code exists</text>
+    <text x="60" y="272">· proposes suggested diffs only — applies</text>
+    <text x="74" y="292">nothing without human approval</text>
+  </g>
+  <text x="284" y="328" text-anchor="middle" fill="#b8b09a" font-size="12" font-weight="600">guidance and evidence — not prevention of all vulnerabilities</text>
+
+  <!-- GUARD -->
+  <rect x="566" y="96" width="500" height="250" rx="10" fill="#0b1822" stroke="#2fa8b5" stroke-width="1.5"/>
+  <text x="816" y="130" text-anchor="middle" fill="url(#cyan)" font-size="19" font-weight="700">GUARD — blocks, at write time</text>
+  <g fill="#dceef5" font-size="14">
+    <text x="592" y="168">· optional init-hook in the agent's edit path</text>
+    <text x="592" y="204">· blocks selected supported patterns before they</text>
+    <text x="606" y="224">enter the codebase — service-role keys,</text>
+    <text x="606" y="244">RLS-killing SQL, committed secret literals</text>
+    <text x="592" y="276">· developer stays in control — blocks are</text>
+    <text x="606" y="296">named, bounded, and explainable</text>
+  </g>
+  <text x="816" y="328" text-anchor="middle" fill="#8fa8b8" font-size="12" font-weight="600">selected supported patterns — not an all-risk firewall</text>
+
+  <rect x="34" y="368" width="1032" height="44" rx="8" fill="#0d2330" stroke="#2b5f6e"/>
+  <text x="550" y="395" text-anchor="middle" fill="#8fa8b8" font-size="14">The skill guides. The guard blocks selected patterns at write time. Neither prevents all vulnerabilities.</text>
+</svg>

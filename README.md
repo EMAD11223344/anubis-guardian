@@ -1,10 +1,12 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/hero.svg" alt="Anubis Guardian — multi-layer repository security scanner: deterministic, offline static analysis" width="100%">
+<img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/hero.svg" alt="Anubis Guardian — security that covers the repository, guides the AI agent, and catches risks before they ship: multi-layer repository security scanner, offline and deterministic" width="100%">
 
 # ⚱ Anubis Guardian
 
-**A multi-layer repository security scanner with a deterministic, reproducible report — built for codebases written by AI coding agents**
+**Security that covers the repository, guides the AI agent, and catches risks before they ship.**
+
+*An open-source, multi-layer security platform for software repositories and AI-assisted development.*
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.5.1-8b5cf6.svg)](package.json)
@@ -13,7 +15,7 @@
 [![Tests](https://img.shields.io/github/actions/workflow/status/EMAD11223344/anubis-guardian/ci.yml?branch=main&label=tests)](https://github.com/EMAD11223344/anubis-guardian/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/actions/workflow/status/EMAD11223344/anubis-guardian/release.yml?branch=main&label=release%20gate)](https://github.com/EMAD11223344/anubis-guardian/actions/workflows/release.yml)
 
-**Secrets & git history · SAST & taint · Authorization · Dependencies · CI & supply-chain · Infra-as-code · SARIF · Coverage manifest — offline by default**
+**One security workflow. Multiple detection layers. Explicit coverage. Actionable findings.**
 
 </div>
 
@@ -23,9 +25,17 @@
 
 ## What it is
 
-Anubis Guardian scans a **whole repository** — every text file, not just `.js`/`.ts` — and produces a deterministic, byte-reproducible report: masked secrets, severity scoring, a **coverage manifest** that states what ran and what didn't, and `needs_confirmation` review prompts for everything static analysis cannot see. It is offline-first (no network calls without explicit consent flags), never executes scanned code, and writes nothing into the scanned tree.
+Anubis Guardian examines security risks across **code, repository history, dependencies, delivery pipelines, and infrastructure** — and helps AI coding agents avoid insecure patterns before they become part of the codebase.
 
-Detection is organized in **capability tiers**, so the report is honest about language boundaries:
+It scans a **whole repository** — every text file, not just `.js`/`.ts` — and produces a deterministic, byte-reproducible report: masked secrets, severity scoring, a **coverage manifest** that states what ran and what didn't, and `needs_confirmation` review prompts for everything static analysis cannot see. It is offline-first (no network calls without explicit consent flags), never executes scanned code, and writes nothing into the scanned tree.
+
+What makes it different from a secret scanner or a general SAST engine:
+
+- **Repository-scale coverage with honest language boundaries.** Universal repo layers work on any stack; the deeper code-level analysis is JS/TS-only — and the report says so instead of implying otherwise.
+- **Evidence discipline.** Findings are two-tier: evidence-backed, or an explicit `needs_confirmation` review prompt. No CRITICAL without independent confirmation. Secrets are masked everywhere.
+- **One report an AI agent can act on.** Every finding carries a fix; `--fix-prompt` turns the report into a deterministic repair prompt; SARIF goes to the GitHub Security tab.
+
+Detection is organized in **capability tiers**, so the report is explicit about what each layer covers:
 
 | Tier | What it covers | Languages |
 |---|---|---|
@@ -34,7 +44,9 @@ Detection is organized in **capability tiers**, so the report is honest about la
 | **3 · Framework playbooks (optional)** | Supabase (RLS, service-role), Next.js (client/server boundary), NestJS (guards, CORS, helmet) | only when the repo uses them — **never prerequisites** |
 | **4 · Opt-in tools & modes** | gitleaks / osv-scanner / semgrep adapters, `--online` registry checks, consent-gated URL mode, AI review, agent write-guard hook | declared inputs only, disclosed in report metadata |
 
-Tier 1 works on Python, Go, Java, Ruby, Rust, Terraform, YAML, shell, TOML/INI/JSON — anything textual. Tier 2's deeper code-level analysis is **JS/TS-only and this is disclosed, not implied** (see [Language coverage](#language-coverage--honest-boundaries)).
+<p align="center">
+  <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/layers.svg" alt="Anubis Guardian security model: your repository (working tree, git history, manifests, CI, agent configs) flows through five detection layers — repo and git history, config/CI/infrastructure, credentials in configuration, npm dependencies, and JS/TS-only code analysis — into one deterministic report with masked evidence, needs_confirmation prompts, and a coverage manifest" width="100%">
+</p>
 
 ## 30-second start
 
@@ -47,7 +59,9 @@ anubis-guardian scan . --fail-on high  # CI gate: exit 1 on HIGH+
 
 Open the report. Every finding carries a masked value, the exact file and line, a suggested fix, and — where static analysis cannot confirm — a `needs_confirmation` prompt naming the invisible layer (middleware, database RLS, runtime values). The coverage manifest in the same report states `checks_run / checks_applicable` and the full `classes_not_covered` list, so a grade **A** reads as *"nothing was found by the executed checks"* — never as *"this codebase is secure"*.
 
-## What it detects (tier 1 — universal, any language)
+## What it checks
+
+### Universal repo layers — any language, any stack
 
 | Layer | Rule family |
 |---|---|
@@ -63,26 +77,24 @@ Open the report. Every finding carries a masked value, the exact file and line, 
 | npm dependency audit — CVEs against the bundled advisory snapshot, known-malicious packages, typosquats, no-lockfile hallucination candidates | `DEP-001..005` |
 | Agent environment — unpinned MCP servers, secrets in agent configs, permission wildcards | `AGENT-001..004` |
 
-## Tier 2 — JS/TS code analysis
+### JS/TS code analysis — the deeper tier
 
 - **SAST** — dynamic SQL, `eval`/`exec`, weak hashing, dangerous HTML (`SAST-001..004`, `CRYPTO-001`)
 - **Taint-lite** — SSRF, open redirect, path traversal, injection, reflected XSS, code-execution flows through a **bounded data-flow chase** (≤4 assignment hops, same function, cycle-safe) (`TAINT-001..006`, `JWT-*`)
 - **Authorization evidence** — mutating handlers with no recognizable authz call (`AUTHZ-001`) and decisions taken from client-controlled input, including parsed `request.json()` bodies and one-hop aliases (`AUTHZ-002`); tenant-isolation hints (`TEN-001/002`)
 - **Data leakage / resources / uploads** — credential-shaped responses, whole-object serialization of wide queries, pagination-less reads, missing timeouts, upload & archive guards (`LEAK-*`, `RES-*`, `UPLOAD-*`, `MASS-001`, `WEBHOOK-001`, `WS-001`, `LOGS-001`)
 
-## Language coverage — honest boundaries
-
-| Your code | What fires |
-|---|---|
-| **JS / TypeScript** (any framework) | Tiers 1 + 2 in full |
-| **Python, Go, Java, Ruby, Rust, …** | Tier 1 config/repo layers: secret shapes by value, `SEC-010` config credentials (e.g. Python `DB_PASSWORD = "…"`, Java properties, Terraform attributes), `FB-001`/`TF-001` infra policies, CI/Docker/history/dependencies-of-the-repo layers |
-| **Code-level SAST for non-JS/TS languages** | ❌ **not analyzed** — declared non-goal (`classes_not_covered`); use the opt-in Semgrep adapter for code-level depth in other languages |
-| **`requirements.txt` / `go.mod` / `Cargo.toml` version auditing** | ❌ **not audited** — the bundled advisory snapshot is npm-ecosystem-only; manifests are inventoried, versions are not checked |
-| **Any database / ORM in JS/TS** | query-pattern recognition (raw SQL strings, Prisma/Drizzle/TypeORM-style calls, chained builders) — not an exhaustive SQL parser; reach is disclosed per report |
-
 Supabase, Next.js and NestJS are **optional playbooks** that add host-aware depth when the repo uses them (`SUPA-R01..R08`, `NEXT-*`, `NEST-001..004`) — the universal layers never require them, and if none apply the coverage manifest says so.
 
-## A real report excerpt
+## Agent integration — skill guides, guard blocks
+
+The repo ships [`skill/SKILL.md`](skill/SKILL.md) (Agent Skills format) that teaches Claude Code / Cursor / opencode to run the scan, read findings honestly, and propose **suggested diffs only** — applying nothing without approval. The optional `init-hook` guard blocks service-role keys, RLS-killing SQL, and secret literals **at write time**, before they enter the codebase. Wiring recipes and the exit-code contract: [docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md).
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/agent-guard.svg" alt="The agent skill guides the agent to run the scan, read findings honestly, and propose suggested diffs only; the optional write-time guard blocks selected supported patterns — service-role keys, RLS-killing SQL, secret literals — before they enter the codebase. Neither prevents all vulnerabilities." width="100%">
+</p>
+
+## A real finding
 
 From the committed multilingual regression corpus (`tests/multilingual/`, scan of a Python/Go/Java/Terraform fixture — values are masked by contract):
 
@@ -103,24 +115,24 @@ From the committed multilingual regression corpus (`tests/multilingual/`, scan o
 }
 ```
 
-Findings carry `fix` + `fix_mode: "suggested-diff"` — for any AI agent, `--fix-prompt fix.md` turns the report into a deterministic repair prompt; `--format sarif` uploads to the GitHub Security tab.
+How to read it: `masked` shows the value's shape without exposing it; `needs_confirmation: false` means the evidence stands on its own — a `true` finding is a **review prompt**, not a verdict; `remediation` is the bounded, actionable fix path. Findings also carry `fix` + `fix_mode: "suggested-diff"` — for any AI agent, `--fix-prompt fix.md` turns the report into a deterministic repair prompt; `--format sarif` uploads to the GitHub Security tab.
 
-## Measured performance & detection
+## Measured results & fair comparison
 
 Every number below reproduces from [`scripts/measure-benchmarks.mjs`](scripts/measure-benchmarks.mjs) on the environment recorded in [BENCHMARKS.md](BENCHMARKS.md) — no number appears there without a measurement, and unmeasurable entries are marked PENDING:
 
 | Measured on the committed corpora (commit-pinned) | Result |
 |---|---|
-| Curated honeypot self-test (49 planted checks, 2 roots) | **49/49 detected**, masking contract intact |
+| Curated honeypot self-test (49 planted checks, 2 roots) | **49/49 detected**, masking contract intact — a self-test, not general recall |
 | Clean-project false-positive control | **0 findings above threshold — score 100, grade A** |
-| Labelled corpus - fixture-level expected-rule detection (17 vulnerable + 12 safe adjudicated cases) | **17/17 expected hits at exact rule+file+line, 0 unexpected findings on safe fixtures** (extras on vulnerable fixtures are counted and reported separately) - self-curated manifest [benchmarks/corpus](benchmarks/corpus/cases.json), case-level metric, not an external-recall claim |
-| **Multilingual regression corpus** (Python/Go/Java-properties/Terraform/Actions/Docker/Firebase/manifests + safe counterparts) | **20/20 expected detections at exact rule+file+line, 0 FP, out-of-scope boundaries locked silent** — manifest [tests/multilingual/manifest.json](tests/multilingual/manifest.json) |
+| Labelled corpus - fixture-level expected-rule detection (17 vulnerable + 12 safe adjudicated cases) | **17/17 expected hits at exact rule+file+line, 0 unexpected findings on safe fixtures** (extras on vulnerable fixtures are counted and reported separately) — case-level, self-curated, [benchmarks/corpus](benchmarks/corpus/cases.json); **not** an external-recall claim |
+| **Multilingual regression corpus** (Python/Go/Java-properties/Terraform/Actions/Docker/Firebase/manifests + safe counterparts) | **20/20 expected detections at exact rule+file+line, 0 FP, out-of-scope boundaries locked silent** — these specific supported cases, not universal multilingual SAST |
 | Skilled-tool comparison (gitleaks, pinned 8.30.1, identical trees) | **3/3** labelled secret cases matched, 0 FP on safe files; Semgrep numerical comparison **PENDING** with a full scope matrix |
 | Scale on the benchmark hardware | single-root fixture scan ≈ sub-second (0.66 s for the ~30-file honeypot tree) — per-measurement wall times, environment, and the adversarial worst case are recorded in [BENCHMARKS.md](BENCHMARKS.md) |
 
 > Wall times are local-machine records for scale transparency — **not universal performance guarantees**. The documented worst case (an adversarial ~4 MB pathological file, ~70 s) and its regression gates are disclosed in the limitations.
 
-## How it differs from a secret scanner or a general SAST engine
+### How it differs from a secret scanner or a general SAST engine
 
 | | Anubis Guardian | Secret scanners (e.g. gitleaks) | General SAST engines (e.g. Semgrep) |
 |---|---|---|---|
@@ -144,7 +156,7 @@ anubis-guardian scan-url https://example.com --level 2 --ownership-token <nonce>
 L1 is always passive (headers, cookies, secrets in public bundles). L2 discovery and L3 probing require verified ownership — a DNS TXT record or `/.well-known` file — and private targets additionally need `--allow-private`. Cloud metadata endpoints are refused unconditionally. **Scanning systems you do not own is illegal; the tool enforces the gate rather than relying on your promise.**
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/modes.svg" alt="Anubis Guardian modes — Mode 1: offline codebase audit (universal repo layers, JS/TS analysis, optional framework playbooks); Mode 2: consent-gated URL audit (L1 passive, L2 discovery, L3 probe — verified ownership required)" width="100%">
+  <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/modes.svg" alt="Anubis Guardian's two modes — Mode 1: offline codebase audit (universal repo layers for any stack, deep JS/TS analysis, optional framework playbooks); Mode 2: consent-gated URL audit (L1 passive, L2 discovery, L3 probe — verified ownership required, rate-limited, SSRF-guarded)" width="100%">
 </p>
 
 ## Output formats & exit codes
@@ -178,7 +190,17 @@ score = 100 − (25 × CRITICAL + 10 × HIGH + 4 × MEDIUM + 1 × LOW)      grad
 - Root-cause caps: repeated findings of the same root cause deduct at most 2× the first; `score_breakdown` in the JSON explains every deduction
 - The coverage manifest lists what ran; `classes_not_covered` states what the tool does **not** attempt
 
-## What Anubis Guardian does NOT prove
+## Supported coverage & honest limits
+
+| Your code | What fires |
+|---|---|
+| **JS / TypeScript** (any framework) | Tiers 1 + 2 in full |
+| **Python, Go, Java, Ruby, Rust, …** | Tier 1 config/repo layers: secret shapes by value, `SEC-010` config credentials (e.g. Python `DB_PASSWORD = "…"`, Java properties, Terraform attributes), `FB-001`/`TF-001` infra policies, CI/Docker/history/dependencies-of-the-repo layers |
+| **Code-level SAST for non-JS/TS languages** | ❌ **not analyzed** — declared non-goal (`classes_not_covered`); use the opt-in Semgrep adapter for code-level depth in other languages |
+| **`requirements.txt` / `go.mod` / `Cargo.toml` version auditing** | ❌ **not audited** — the bundled advisory snapshot is npm-ecosystem-only; manifests are inventoried, versions are not checked |
+| **Any database / ORM in JS/TS** | query-pattern recognition (raw SQL strings, Prisma/Drizzle/TypeORM-style calls, chained builders) — not an exhaustive SQL parser; reach is disclosed per report |
+
+What Anubis Guardian does **not** prove:
 
 - **A finding is evidence, never proof.** Authorization/tenant findings follow the two-tier contract: a missing *visible* check (`AUTHZ-001`, MEDIUM) is a review prompt — middleware, framework guards, and database RLS are legitimately invisible to static analysis and always win.
 - **The analysis is bounded, by design.** Rules are structured regex/heuristics over a shared bounded data-flow chase (≤4 assignment hops, same function scope, one imported-local-helper level) — **no AST parser, no call graph, no cross-function/cross-file data flow**. Deeper aliasing and helper-mediated flows are tracked only to documented bounds; what a scan did not chase is in the coverage manifest.
@@ -187,10 +209,6 @@ score = 100 − (25 × CRITICAL + 10 × HIGH + 4 × MEDIUM + 1 × LOW)      grad
 - **Known performance boundary.** Files >512 KB are analyzed in windows to 4 MB; above 4 MB is disclosed and skipped. Worst case measured: an adversarial ~4 MB file of ~2M single-character rows scans in ~70 s on the benchmark hardware. Locked by regression gates U26.1–U26.5.
 - **No DAST engine** — URL mode is consent-gated, bounded, and passive-first; deep dynamic testing belongs to your own tooling (a ZAP baseline config can be generated).
 - Full list with rationale: [METHODOLOGY.md §8](METHODOLOGY.md).
-
-## AI-agent integration
-
-The repo ships [`skill/SKILL.md`](skill/SKILL.md) (Agent Skills format) that teaches Claude Code / Cursor / opencode to run the scan, read findings honestly, and propose **suggested diffs only** — applying nothing without approval. The optional `init-hook` guard hook blocks service-role keys, RLS-killing SQL, and secret literals **at write time**, before they enter the codebase. See [docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md).
 
 ## CI/CD
 
@@ -213,13 +231,13 @@ The engine is a single deterministic pipeline with deliberate seams — not a pl
 | Document | Contents |
 |---|---|
 | [METHODOLOGY.md](METHODOLOGY.md) | determinism contract, scoring, false-positive control, known limitations |
-| [BENCHMARKS.md](BENCHMARKS.md) | measured results only — honeypot recall, labelled corpus P/R, multilingual corpus, clean corpus, tool comparison with pinned versions & configs, wall-time scale |
+| [BENCHMARKS.md](BENCHMARKS.md) | measured results only — honeypot self-test, labelled-corpus case metrics, multilingual corpus, clean corpus, tool comparison with pinned versions & configs, wall-time scale |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | engine pipeline, detector inventory, extension points, add-a-detector procedure |
+| [docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md) | AI-agent wiring recipes and the exit-code contract |
 | [ROADMAP.md](ROADMAP.md) | capability-calibrated prioritized roadmap (P1–P3 items with prereqs, fixtures, risks) |
 | [docs/TRUST-AUDIT.md](docs/TRUST-AUDIT.md) | release-pipeline trust review — verified controls, ranked tasks, explicit non-claims |
 | [benchmarks/corpus](benchmarks/corpus/cases.json) | the adjudicated labelled corpus manifest + reproducible vulnerable/safe fixture pairs |
 | [CONTRIBUTING-RULES.md](CONTRIBUTING-RULES.md) | how to contribute rule packs (clean cases mandatory, CRITICAL gating) |
-| [docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md) | AI-agent wiring recipes and the exit-code contract |
 | [studies/RESULTS.md](studies/step0-pattern-study/RESULTS.md) | the pattern-frequency study (100 AI-built projects) that seeded the rules |
 | [docs/site](docs/site/index.html) | GitHub Pages landing page |
 
