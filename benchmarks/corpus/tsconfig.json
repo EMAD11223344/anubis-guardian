@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@vuln/*": ["vuln/secrets-client-alias/lib/*"],
+      "@safe/*": ["safe/secrets-server-only-alias/lib/*"]
+    }
+  }
+}

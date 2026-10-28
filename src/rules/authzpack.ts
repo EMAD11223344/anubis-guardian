@@ -29,9 +29,22 @@ const FIX_CLIENT_AUTHZ =
 
 /** authorization-check call shapes — SAME list the AUTHZ pack attributes per handler */
 export const AUTHZ_CALL =
-  /(?:getSession|getServerSession|getAuth|auth\s*\(\)|requireUser|requireAuth|requireAdmin|requireLogin|requireSignIn|assertAuth|checkAuth|isAuthenticated|isLoggedIn|verifyToken|jwt\.verify|verifyJWT|UseGuards|getCurrentUser|currentUser\s*\(|getUser\s*\(|cookies\s*\(\s*\)\s*\.get|\.cookies\.get|authorization["'`]?\s*[,\]:]|headers\(\)\.get\(\s*["'`]authorization|authori[sz]ation\s*[:=]|can\s*\(|canAbili|ability\.|authorize\s*\(|hasPermission|hasRole|checkPermission|accessCheck|policy\.(?:allow|check))/i;
+  /(?:getSession|getServerSession|getAuth|auth\s*\(\)|requireUser|requireAuth|requireAdmin|requireLogin|requireSignIn|assertAuth|checkAuth|isAuthenticated|isLoggedIn|verifyToken|jwt\.verify|verifyJWT|UseGuards|getCurrentUser|currentUser\s*\(|getUser\s*\(|cookies\s*\(\s*\)\s*\.get|\.cookies\.get|authorization["'`]?\s*[,\]:]|headers\(\)\.get\(\s*["'`]authorization|authori[sz]ation\s*[:=]|can\s*\(|canAbili|ability\.|authorize\s*\(|hasPermission|hasRole|checkPermission|accessCheck|policy\.(?:allow|check)|constructEvent(?:Async)?\s*\(|\bcreateHmac\b|\btimingSafeEqual\b|\bnew\s+Webhook\s*\()/i;
 /** comments never count as a check */
 const isComment = (line: string): boolean => /^\s*(?:\/\/|\*|\/\*)/.test(line.trim());
+
+/**
+ * v1.5.3 — webhook signature verification is an AUTHENTICATION check: a route
+ * whose body verifies the provider signature (Stripe constructEvent /
+ * constructEventAsync, Svix/Standard-Webhooks `new Webhook(...)` + `.verify`,
+ * hand-rolled `createHmac` + `timingSafeEqual`) is NOT "unauthenticated".
+ * Precise call shapes only — the bare WORDS constructEvent/verify/Webhook in
+ * prose or a comment prove nothing (comment lines are never matched).
+ * Honesty note kept everywhere: signature authenticity ≠ application
+ * authorization — verifying the sender does not authorize every operation.
+ */
+const WEBHOOK_AUTH_CALL =
+  /constructEvent(?:Async)?\s*\(|\bcreateHmac\b|\btimingSafeEqual\b|\bnew\s+Webhook\s*\(/;
 
 /** privileged operations: writes/destructive calls on data layers */
 const PRIVILEGED_OP =
@@ -60,9 +73,19 @@ const REQ_JSON_DESTRUCTURE =
   /(?:const|let|var)\s*\{([^}]+)\}\s*=\s*(?:\(?\s*)?(?:await\s+)?req(?:uest)?\s*\.\s*json\s*\(\s*\)/;
 /** one-hop body alias: `const auth = body;` */
 const REQ_JSON_ALIAS = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*;?\s*$/;
+/** one-hop property alias: `const r = body.role;` (field must be authz-relevant) */
+const REQ_JSON_PROP = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*\??\.\s*([A-Za-z_$][\w$]*)\s*;?\s*$/;
+/** re-destructure from an existing body local: `const { role } = body;` */
+const REQ_JSON_REDESTRUCT = /(?:const|let|var)\s*\{([^}]+)\}\s*=\s*([A-Za-z_$][\w$]*)\s*;?\s*$/;
 
 interface BodyLocals { bodyVars: string[]; authzIdents: string[] }
-/** bounded per-block collection of request-body locals (parse + destructure + one-hop alias) */
+/**
+ * Bounded per-block collection of request-body locals (parse + destructure +
+ * one-hop alias/property-alias/re-destructure). Bounds (documented): ≤8 body
+ * locals, ≤8 authz idents, ONE hop — `const s = r;` after `const r = body.role`
+ * is beyond the bound and deliberately untracked (deterministic, review-note
+ * rule; deeper alias chains are named in classes_not_covered).
+ */
 function requestBodyLocals(body: string[]): BodyLocals {
   const bodyVars: string[] = [];
   const authzIdents: string[] = [];
@@ -81,11 +104,27 @@ function requestBodyLocals(body: string[]): BodyLocals {
     }
   }
   for (const bl of body) {
-    if (bodyVars.length >= 8) break;
+    if (bodyVars.length >= 8 && authzIdents.length >= 8) break;
     if (!bodyVars.length) break;
-    const ma = REQ_JSON_ALIAS.exec(bl.trim());
-    if (ma && bodyVars.includes(ma[2] as string) && !bodyVars.includes(ma[1] as string)) {
+    const t = bl.trim();
+    if (isComment(t)) continue;
+    const ma = REQ_JSON_ALIAS.exec(t);
+    if (ma && bodyVars.includes(ma[2] as string) && !bodyVars.includes(ma[1] as string) && bodyVars.length < 8) {
       bodyVars.push(ma[1] as string);
+      continue;
+    }
+    const mp = REQ_JSON_PROP.exec(t);
+    if (mp && bodyVars.includes(mp[2] as string) && AUTHZ_FIELD.test(mp[3] as string)
+      && authzIdents.length < 8 && !authzIdents.includes(mp[1] as string)) {
+      authzIdents.push(mp[1] as string); // `const r = body.role` — the alias now carries the authz field
+      continue;
+    }
+    const mr = REQ_JSON_REDESTRUCT.exec(t);
+    if (mr && bodyVars.includes(mr[2] as string) && authzIdents.length < 8) {
+      for (const part of (mr[1] as string).split(",")) {
+        const id = /^([A-Za-z_$][\w$]*)/.exec(part.split(":").pop()?.trim() ?? "")?.[1];
+        if (id && AUTHZ_FIELD.test(id) && !authzIdents.includes(id)) authzIdents.push(id);
+      }
     }
   }
   return { bodyVars, authzIdents };
@@ -119,22 +158,93 @@ type Frame =
 interface BodySpan { open0: number; close0: number }
 
 /**
- * v1.5.2 — robust handler-body identification (was: "first `{` in a 4-line
+ * Bounded balanced `{…}` scan starting at (li, col) — used by the fn-mode
+ * header logic to tell a TS return-type ANNOTATION group
+ * (`): { id: string } { … }`) from the real body brace. Skips string/template
+ * frames like the main loop; bounded by `budget` characters. Returns the
+ * position AFTER the closing brace and the next non-space char, or null when
+ * the budget is exhausted (null = "unknown" — the caller then treats the
+ * candidate as the body, which keeps the conservative 40-line window).
+ */
+function balancedBraceGroup(
+  lines: string[], li0: number, col0: number, hiLine: number, budget: number
+): { endLine: number; endCol: number; nextNonSpace: string; next2: string } | null {
+  let depth = 0, chars = 0;
+  let quote: string | null = null;
+  for (let li = li0; li < hiLine; li++) {
+    const line = lines[li] ?? "";
+    for (let col = li === li0 ? col0 : 0; col < line.length; col++) {
+      if (++chars > budget) return null;
+      const c = line[col] as string;
+      const nx = col + 1 < line.length ? (line[col + 1] as string) : "";
+      if (quote) {
+        if (c === "\\") { col++; }
+        else if (c === quote) quote = null;
+        continue;
+      }
+      // backticks are treated as ordinary characters here: the scanner is only
+      // used on TS type-annotation groups, where a template literal is itself
+      // the arg of a bounded balanced count — string quotes stay the frame that
+      // matters (a `${ "}" }`-style brace inside a quote is skipped via quote).
+      if (c === '"' || c === "'") { quote = c; continue; }
+      if (c === "/" && nx === "/") break; // rest of the line is a comment
+      if (c === "/" && nx === "*") { while (col < line.length - 1 && !(line[col] === "*" && line[col + 1] === "/")) col++; col++; continue; }
+      if (c === "{") depth++;
+      else if (c === "}") {
+        depth--;
+        if (depth === 0) {
+          // find the next TWO non-space chars after the group — the caller
+          // distinguishes `…} {` (annotation → body) from `…} => {`
+          // (annotation → arrow → body)
+          let first = "", second = "";
+          for (let j = col + 1; j < line.length; j++) {
+            const n = line[j] as string;
+            if (/\s/.test(n)) continue;
+            if (!first) { first = n; continue; }
+            second = n;
+            return { endLine: li, endCol: col + 1, nextNonSpace: first, next2: second };
+          }
+          for (let k = li + 1; k < Math.min(lines.length, li + 4); k++) {
+            const t = (lines[k] ?? "").trim();
+            if (!t) continue;
+            if (!first) { first = t[0] as string; if (t.length > 1) { second = t[1] as string; break; } continue; }
+            second = t[0] as string;
+            break;
+          }
+          return { endLine: li, endCol: col + 1, nextNonSpace: first, next2: second };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * v1.5.3 — robust handler-body identification (was: "first `{` in a 4-line
  * window", which mistook destructured-parameter / TS-annotation braces for the
  * body opening and truncated the handler before the security-relevant calls).
  *
  * Bounded, string/comment/template-aware scanner: parentheses of the parameter
  * list/type arguments are tracked, and the BODY is the depth-0 `{` AFTER the
- * parameter list closes (`fn` mode: `export (async) function METHOD(...)` /
- * `export const METHOD = ... =>` / NestJS `@Post() method(...)`), or the `{`
- * following the callback `=>` while the call is still open (`express` mode:
- * `app.post("/path", (req, res) => { … })`).
+ * parameter list closes (`fn` mode: `export (async) function METHOD(...)`,
+ * `export const METHOD = ... =>`, alias-exported handlers, NestJS
+ * `@Post() method(...)`), or the `{` following the callback `=>` while the
+ * call is still open (`express` mode: `app.post("/path", (req, res) => { … })`).
+ *
+ * fn-mode header handling (v1.5.3): after the parameter list closes, the header
+ * may still contain TS type material — generic arguments
+ * (`): Record<string, {a: 1}> => {`) and return-type annotations whose braces
+ * are OBJECTS, not the body (`): { id: string } {`). Both are resolved:
+ * `<…>` brackets open a type-argument region (braces inside are skipped), an
+ * arrow `=>` after the close marks the next `{` as the body, and a `{…}` group
+ * followed by another `{` in a `:`-annotation context is skipped as an
+ * annotation group via a bounded balanced lookahead.
  *
  * Documented corners (bounded heuristic, review-note rule — never a verdict):
- * a `{`-bearing object default inside the starkest express callback parameter
- * or a TS return-type annotation that itself holds object braces can still
- * misplace the boundary; both are rare in route handlers and the rule contract
- * stays needs_confirmation.
+ * an object-brace default inside an express callback parameter, or a body
+ * whose first statement is a nested bare block after a `:`-annotated
+ * signature, can still misplace the boundary; both are rare in route handlers
+ * and the rule contract stays needs_confirmation.
  */
 function handlerBodySpan(lines: string[], start0: number, mode: HMode): BodySpan | null {
   const hiLine = Math.min(lines.length, start0 + SIG_WINDOW);
@@ -142,9 +252,14 @@ function handlerBodySpan(lines: string[], start0: number, mode: HMode): BodySpan
   let paren = 0, openedParen = false, closedOnce = false, sawArrow = false;
   let bodyOpen0 = -1, bodyDepth = 0;
   let chars = 0;
-  for (let li = start0; li < hiLine; li++) {
+  // fn-mode header state (active only AFTER the parameter list closed)
+  let headerAngle = 0, colonSeen = false, arrowAfterParen = false;
+  // `col` lives ACROSS the outerLine label: the annotation-skip jump resumes
+  // scanning at the balanced group's end position, so it must not be reset by
+  // a per-iteration redeclaration.
+  let col = 0;
+  outerLine: for (let li = start0; li < hiLine; li++) {
     const line = lines[li] ?? "";
-    let col = 0;
     while (col < line.length) {
       if (++chars > CHAR_BUDGET) {
         return bodyOpen0 === -1 ? null : { open0: bodyOpen0, close0: Math.min(lines.length - 1, bodyOpen0 + BODY_MAX) };
@@ -193,18 +308,49 @@ function handlerBodySpan(lines: string[], start0: number, mode: HMode): BodySpan
       }
       if (c === "(") { paren++; openedParen = true; sawArrow = false; col++; continue; }
       if (c === ")") { if (paren > 0) { paren--; if (paren === 0) closedOnce = true; } col++; continue; }
-      if (c === "=" && nx === ">") { sawArrow = true; col += 2; continue; }
+      if (c === "=" && nx === ">") {
+        sawArrow = true;
+        if (mode === "fn" && paren === 0 && closedOnce) arrowAfterParen = true; // `): Type => {`
+        col += 2; continue;
+      }
+      if (mode === "fn" && paren === 0 && closedOnce && bodyOpen0 === -1) {
+        // header material after the signature's parens: `: Type<…>`, generics
+        if (c === ":") colonSeen = true;
+        if (c === "<") headerAngle++;
+        if (c === ">" && headerAngle > 0) headerAngle--;
+      }
       if (c === "{") {
-        const openBody =
-          mode === "fn"
-            ? paren === 0 && (closedOnce || (!openedParen && sawArrow))
-            : paren > 0 && sawArrow && !closedOnce;
+        let openBody = false;
+        if (mode === "fn") {
+          if (headerAngle > 0) { col++; continue; } // generic-argument brace — type material, not the body
+          if (paren === 0) {
+            if (!openedParen) openBody = sawArrow;      // parameterless arrow: `async x => {`
+            else if (arrowAfterParen) openBody = true;  // body after `): Type => `
+            else if (colonSeen) {
+              // `:`-annotated return type: this `{` may be an ANNOTATION group.
+              // Bounded lookahead: followed by another `{` (annotation → body)
+              // or by `=>` (annotation → arrow → body) → skip the group;
+              // anything else means this `{` IS the body.
+              const g = balancedBraceGroup(lines, li, col, hiLine, CHAR_BUDGET - chars);
+              if (g && (g.nextNonSpace === "{" || (g.nextNonSpace === "=" && g.next2 === ">"))) {
+                if (g.nextNonSpace === "=") arrowAfterParen = true;
+                li = g.endLine - 1; col = g.endCol; continue outerLine;
+              }
+              openBody = true;
+            } else openBody = true; // plain `function METHOD() {`
+          }
+          // paren > 0 && fn mode: brace inside the parameter list (default value
+          // / type) — never the body
+        } else {
+          openBody = paren > 0 && sawArrow && !closedOnce;
+        }
         if (openBody) { bodyOpen0 = li; bodyDepth = 1; }
         col++;
         continue;
       }
       col++;
     }
+    col = 0; // next line starts fresh (preserved across `continue outerLine` jumps)
   }
   if (bodyOpen0 === -1) return null;
   return { open0: bodyOpen0, close0: Math.min(lines.length - 1, bodyOpen0 + BODY_MAX) };
@@ -228,24 +374,62 @@ export function handlerBlocks(f: ScannedFile): HandlerBlock[] {
     const exportArrow = /export\s+const\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*(?::[^=\n]{0,80})?=\s*(?:async\s*)?/.exec(line);
     const expressHandler = /\b(?:app|router|server)\.(get|post|put|patch|delete|all)\s*\(\s*["'`][^"'`]+["'`]/.exec(line);
     const nestMethod = /@(Get|Post|Put|Patch|Delete|All)\s*\(/.exec(line);
+    /**
+     * v1.5.3 — Next.js App Router handlers can also be exported by alias:
+     *   `const handler = async function (…) { … }; export { handler as DELETE };`
+     *   `const DELETE = async (…) => { … };          export { DELETE };`
+     * The LOCAL function/arrow declaration is the handler (its body is what the
+     * rules need). An export whose name has NO locally declared function-shaped
+     * declaration — typically an import re-exported under a method name —
+     * proves nothing about any body in THIS file, so NO handler is fabricated
+     * (an arbitrary export alias is not evidence a handler exists here).
+     */
+    const exportAlias = /export\s*\{\s*([A-Za-z_$][\w$]*)\s+as\s+(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\}/.exec(line);
+    const exportSame = !exportAlias ? /export\s*\{\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s*\}/.exec(line) : null;
     let mode: HMode = "fn";
     let method = "";
+    let start0 = i;
     if (exportHandler) method = (exportHandler[1] as string).toUpperCase();
     else if (exportArrow) method = (exportArrow[1] as string).toUpperCase();
+    else if (exportAlias || exportSame) {
+      const local = exportAlias ? (exportAlias[1] as string) : (exportSame as RegExpExecArray)[1];
+      const decl0 = localHandlerDecl(lines, local, i);
+      if (decl0 === -1) continue; // re-exported import — no local body, no fabricated handler
+      method = ((exportAlias ? exportAlias[2] : (exportSame as RegExpExecArray)[1]) as string).toUpperCase();
+      start0 = decl0;
+    }
     else if (expressHandler) { mode = "express"; method = (expressHandler[1] as string).toUpperCase(); }
     else if (nestMethod) method = (nestMethod[1] as string).toUpperCase();
     if (!method) continue;
     // bounded fallback (concise-bodies / signatureless): same 40-line window as v1.4
-    let end = Math.min(lines.length - 1, i + BODY_MAX);
-    const span = handlerBodySpan(lines, i, mode);
+    let end = Math.min(lines.length - 1, start0 + BODY_MAX);
+    const span = handlerBodySpan(lines, start0, mode);
     if (span) end = Math.min(span.close0, span.open0 + BODY_MAX);
-    else if (exportArrow && !/\(|=>/.test(lines.slice(i, Math.min(lines.length, i + 4)).join(""))) {
+    else if (start0 === i && exportArrow && !/\(|=>/.test(lines.slice(i, Math.min(lines.length, i + 4)).join(""))) {
       continue; // `export const METHOD = <not a function>` — not a route handler
     }
-    out.push({ name: `${method}:${line.slice(0, 60).trim()}`, line0: i, bodyEnd0: end, mutating: /^(POST|PUT|PATCH|DELETE)$/.test(method) });
-    i = end; // skip the body — nested handlers are not a thing per language
+    out.push({ name: `${method}:${lines[start0]?.slice(0, 60).trim()}`, line0: start0, bodyEnd0: end, mutating: /^(POST|PUT|PATCH|DELETE)$/.test(method) });
+    i = Math.max(end, i); // skip the body — nested handlers are not a thing per language
   }
   return out;
+}
+
+/**
+ * v1.5.3 — locate a LOCAL handler-shaped declaration of `name` before line
+ * `before0` (function declaration, or a const/let/var bound to `function`,
+ * a parenthesized arrow, or a single-identifier arrow). Returns the 0-based
+ * line of the declaration or -1. Comments are never declarations.
+ */
+function localHandlerDecl(lines: string[], name: string, before0: number): number {
+  const decl = new RegExp(
+    `(?:function\\s+${name}\\s*\\(|(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s*)?(?:function\\b|[A-Za-z_$][\\w$]*\\s*=>|\\())`
+  );
+  for (let i = 0; i < before0; i++) {
+    const l = lines[i] ?? "";
+    if (isComment(l)) continue;
+    if (decl.test(l)) return i;
+  }
+  return -1;
 }
 
 export function scanAuthz(ctx: ScanContext): RuleResult {

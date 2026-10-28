@@ -2,6 +2,7 @@ import type { ScanContext, RuleResult } from "../types.js";
 import { rootCause } from "../util.js";
 import { classifyFile } from "./context.js";
 import { collectAssignments, propagateTaint, resolveVarFlow } from "./flow.js";
+import { balancedTopArg } from "./taint.js";
 import { handlerBlocks } from "./authzpack.js";
 
 /**
@@ -30,9 +31,12 @@ import { handlerBlocks } from "./authzpack.js";
  * classes_not_covered.
  */
 
-/** request-derived source shapes (same family as taint.ts SOURCE_EXPR) */
+/** request-derived source shapes (same family as taint.ts SOURCE_EXPR;
+ *  v1.5.3: parsed request-body forms count — json/formData/text — a regex
+ *  built from `const body = await request.json()` content is exactly as
+ *  attacker-shaped as one built from req.query) */
 const REQ_SOURCE =
-  /req(?:uest)?\.(?:query|body|params|headers|cookies|nextUrl\.searchParams)|searchParams\.get|cookies\(\)\.get|headers\(\)\.get/;
+  /req(?:uest)?\.(?:query|body|params|headers|cookies|nextUrl\.searchParams)|req(?:uest)?\s*\.\s*(?:json|formData|text)\s*\(\s*\)|searchParams\.get|cookies\(\)\.get|headers\(\)\.get/;
 
 /** regex construction sinks */
 const REGEX_BUILD = /\bnew\s+RegExp\s*\(/;
@@ -60,7 +64,12 @@ export function scanDos(ctx: ScanContext): RuleResult {
       // ---- RES-001: regex built from request-derived input ----
       const rb = REGEX_BUILD.exec(line);
       if (rb) {
-        const argText = line.slice(rb.index + rb[0].length).replace(/\s*[,)].*$/, "");
+        // v1.5.3: quote/paren-aware FIRST-argument extraction (balancedTopArg)
+        // — the old cut-at-first-`)` slice truncated composite arguments like
+        // `(await request.json()).pattern` before their parsed-body source.
+        const openIdx = rb.index + rb[0].length - 1;
+        const argText = balancedTopArg(line, openIdx)
+          || line.slice(rb.index + rb[0].length).replace(/\s*[,)].*$/, "");
         let traced = REQ_SOURCE.test(argText) ? "direct" : "";
         let viaVar = "";
         if (!traced) {

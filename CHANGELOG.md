@@ -1,6 +1,42 @@
 # Changelog
 
-## [Unreleased] — Next.js App Router detection fixes (dev codebase, not yet released)
+## [Unreported-defect round 2 — Unreleased] six reported P0 detection defects + benchmark-integrity repairs (dev codebase, not yet released)
+
+Six externally reported P0 defects, each **reproduced against the unmodified tree through the real scanner path before fixing**, then fixed at the root cause and regression-locked. No release action taken in this round (npm stays at the last published version; no tag). **Do not release from this section** — the next version number is decided separately.
+
+### Fixed — detection defects (all reproduced before fixing)
+
+- **`export { handler as DELETE }` alias handlers were invisible to AUTHZ-001.** Route handlers declared as local consts and re-exported under an HTTP-method name (`const handler = async function (…) {…}; export { handler as DELETE };`) were never recognized as handlers. `handlerBlocks()` now resolves both `export { X as METHOD }` and `export { METHOD }` forms through a local declaration lookup — and deliberately does NOT fabricate a handler when the exported name has no local function-shaped declaration (a re-exported import produces no finding; regression-tested both ways).
+- **Taint sources missed `request.json()` / `request.formData()` / `request.text()`.** Only `req.body`-shaped sources were recognized, so `fetch((await request.json()).url)` and `fetch(form.get("target"))` were invisible. `SOURCE_EXPR` now covers the three parse shapes, flowing through the existing bounded assignment-chase machinery (≤4 hops, same function). Includes: AUTHZ-002 one-hop property aliasing (`const r = body.role; switch (r)…`) and re-destructure support, plus RES-001 `request.json()` sources for the `new RegExp(body.pattern)` case — whose first-argument extraction previously truncated at the first `)` (now quote/paren-aware via the exported `balancedTopArg`).
+- **NEXT-004 webhook false positive on signature-verified handlers.** The suppression relied on bare word mentions; it now requires REAL call shapes (a `constructEvent(…)` call, a `new Webhook(…)` + `.verify(…)`, or `createHmac(…)` + `timingSafeEqual(…)`), with recognition comments stripped — a comment-only mention still fires. Documented: signature authenticity is not application authorization (signature verification counts as in-body authz evidence for AUTHZ-001's evidence contract).
+- **SSRF demotion trusted variable NAMES instead of operations.** `const ALLOWED_HOSTS = […]` demoted TAINT-001 to LOW even when never applied to the destination. Demotion now requires an actual validation OPERATION (`Set.has(new URL(t).hostname)`, `.includes(host)`, host-equality against a literal, or a recognized helper call); name-only tokens were removed from the sanitizer list.
+- **Tokenizer robustness (handler body span).** The bounded seeded fuzz gate (`tests/verify-tokenizer-fuzz.mjs`, 320 deterministic fixtures chained into `npm test`) found and locked two root-cause bugs beyond the unit suite: a TS return-type annotation group followed by `=>` was misread as the body, and a scanning-position variable was redeclared per outer-loop iteration so the annotation-skip jump silently restarted the scan at column 0. Both fixed; the gate asserts exact declaration lines, span bounds, and planted-marker containment on every fixture within a hard time budget.
+- **Client-reachability via configured path aliases (`@/`).** SUPA-001 critical (client-reachable service-role key) was only reported when the import literally resolved; a `'use client'` component importing the secret module through a tsconfig path alias was reported only as the unclassified-medium review. The scanner now reads `tsconfig.json` at the scan root and resolves aliased imports (documented bounds: scan-root config only — `node_modules`, nested workspace configs, and `#` subpath imports are unsupported and disclosed).
+
+### Added
+
+- **Regression gates U28.1–U28.28** (373 unit gates total, up from 345) covering every fix above plus its safe negatives: imported-alias silence, second-hop alias silence, property-alias/re-destructure forms at exact lines, webhook call-shape matrix (verified silent / missing fires / comment-mention fires), unused-allowlist-name medium, alias-resolved critical vs unresolved info, and exact decision/declaration line placement.
+- **Bounded seeded tokenizer-fuzz gate** — deterministic (fixed-seed mulberry32, same 320 fixtures every run), invariant-based (no crash, bounds, marker containment), 20 s wall budget; wired into `npm test` as `tokenizer:verify`.
+- **Corpus expanded 18 → 29 adjudicated cases** (17 vulnerable / 12 safe; 0 FP, 0 FN) with new categories: alias-export handlers, property-alias decisions, `formData`-to-fetch SSRF, regex-from-request-input, destination-validation (name-not-applied + `Set.has` operation), webhook signature verification (unsigned + verified pair), and path-alias client-reachability (with a `tsconfig.json` fixture using distinct `@vuln/*` / `@safe/*` prefixes).
+
+### Fixed — benchmark integrity (measurement reproducibility)
+
+- **The committed BENCHMARKS.md FP=0 claim was irreproducible as committed**: re-running the committed adjudication produced FP=1 — the `ENV-001/low` "tracked .env, public values only" review note on the placeholder safe case was not in the manifest's `allowed` list. The manifest now adjudicates it explicitly (same calibration pattern as the allowlist note), making the arithmetic reproducible.
+- **External suites are pinned to exact commit SHAs** (fetch-by-SHA + full-clone fallback + `rev-parse HEAD` verification; the resolved SHA is printed in the report; any failure → PENDING, never a moving branch tip): OWASP NodeGoat `c5cb68a7084e4ae7dcc60e6a98768720a81841e8`, OWASP Juice Shop `717f5efa886b0417eeecb52378b03cf10567b7e2`.
+- **gitleaks path matching normalized**: reported file paths go through a scan-root-relative normalization before manifest matching (case-insensitive prefix strip + realpath fallback), with a measured abs-vs-rel `--source` equivalence assertion proving identical normalized sets.
+- **gitleaks version-pin enforcement**: the comparison row records the actual binary version and marks it NON-PINNED on mismatch (expected 8.30.1).
+- **FP-accounting calibration fixture** (`benchmarks/calibration/safe-labelled/`): a labelled-safe file with one planted, fabricated GitHub-PAT-shaped token — gitleaks must flag it and the FP counter must count ≥1 on it, or the corpus FP metric is void and the run fails. (Calibration history: AWS-key shapes produce zero findings under gitleaks 8.30.1 defaults — documented in the fixture.)
+- **semgrep adapter defaults to the `semgrep` executable** (`python -m semgrep` no longer the default — it masked "not runnable" behind exit-0); version is probed and recorded; a probe that does not produce valid JSON results stays PENDING with the observed blocker.
+- **Comparison PENDING now surfaces in the summary's pending list** (previously kept in local variables, so a run could report "0 pending" while the comparison was unmeasured); corpus counts in the rendered document are read from the manifest, never hardcoded.
+
+### Remaining limitations (documented, by design)
+
+- AUTHZ-002 aliasing stays ONE hop (≤8 body locals / ≤8 authz idents) — second-hop chains are test-locked silent.
+- Path-alias resolution covers the scan root's `tsconfig.json` only.
+- Taint sources are recognized at the three parse shapes; other body-reading forms remain future work (see ROADMAP.md).
+- Prioritization of what ships next: [ROADMAP.md](ROADMAP.md) (capability audit + P1–P3 items with prereqs, fixtures, and risks).
+
+## [Unreported-defect round 1 — Unreleased] Next.js App Router detection fixes (dev codebase, not yet released)
 
 Fixes for three reported detection-gap classes, each reproduced against the then-current engine before the fix (a scratch tree with the four fixtures below scanned with v1.5.1 produced **zero** AUTHZ/TAINT findings — only unrelated RES-003 notes). No detection severity HIGHER than taint-lite's documented MEDIUM cap and no new rule IDs; masking, determinism, read-only and no-exec contracts unchanged. **Do not release from this section** — the next version number is decided separately.
 

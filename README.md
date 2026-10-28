@@ -39,7 +39,7 @@ The rules are seeded from a pattern-frequency study of 100 AI-generated projects
 | **Detection focus** | framework & application logic: authz evidence, tenant isolation, taint to sinks, NEXT/Supabase/Nest playbooks | secret patterns in files and git history | whatever rules/ruleset the operator curates — arbitrary breadth |
 | **Zero-config value** | opinionated battery that runs out of the box with masking + scoring + coverage manifest | strong on the one class it targets | depends entirely on the ruleset you pick; no scoring contract |
 | **Evidence discipline** | two-tier contract: evidence-backed vs `needs_confirmation` review prompts, root-cause caps, no-CRITICAL-without-confirmation | matched/unmatched secrets | finding confidence/calibration depends on the selected ruleset — no built-in evidence-tier contract |
-| **Measured overlap** | committed-secret classes on identical trees: **both tools matched all labelled cases (2/2), 0 false positives on safe files** — scope and detail in [BENCHMARKS.md](BENCHMARKS.md) | | |
+| **Measured overlap** | committed-secret classes on identical trees: **both tools matched all labelled cases (3/3), 0 false positives on safe files, FP-accounting calibration fixture measured** — scope and detail in [BENCHMARKS.md](BENCHMARKS.md) | | |
 
 There is no "winner" to claim — the tool classes overlap on secrets and diverge everywhere else, and the [comparison section of BENCHMARKS.md](BENCHMARKS.md) pins versions, configuration, matching rules, and every pending scope instead of fabricating superiority.
 
@@ -51,9 +51,9 @@ Every number below reproduces from [`scripts/measure-benchmarks.mjs`](scripts/me
 |---|---|
 | Curated honeypot self-test (49 planted checks, 2 roots) | **49/49 detected**, masking contract intact |
 | Clean-project false-positive control | **0 findings above threshold — score 100, grade A** |
-| Labelled precision/recall corpus (10 vulnerable + 8 safe adjudicated cases) | **10/10 TP, 0 FP** — self-curated manifest [benchmarks/corpus](benchmarks/corpus/cases.json), not an external-recall claim |
-| Skilled-tool comparison (gitleaks, pinned 8.30.1, identical trees) | **2/2** labelled secret cases matched, 0 FP on safe files; Semgrep numerical comparison **PENDING** with a full scope matrix |
-| Scale on the benchmark hardware | single-root fixture scan ≈ sub-second (0.70 s for the ~30-file Next.js+Supabase honeypot tree) — per-measurement wall times, environment, and the adversarial worst case are all recorded in [BENCHMARKS.md](BENCHMARKS.md) |
+| Labelled precision/recall corpus (17 vulnerable + 12 safe adjudicated cases) | **17/17 TP, 0 FP** — self-curated manifest [benchmarks/corpus](benchmarks/corpus/cases.json), not an external-recall claim |
+| Skilled-tool comparison (gitleaks, pinned 8.30.1, identical trees) | **3/3** labelled secret cases matched, 0 FP on safe files; Semgrep numerical comparison **PENDING** with a full scope matrix |
+| Scale on the benchmark hardware | single-root fixture scan ≈ sub-second (0.66 s for the ~30-file Next.js+Supabase honeypot tree) — per-measurement wall times, environment, and the adversarial worst case are all recorded in [BENCHMARKS.md](BENCHMARKS.md) |
 
 > Wall times are local-machine records for scale transparency — **not universal performance guarantees**. The documented worst case (an adversarial ~4 MB pathological file) and its regression gates are disclosed in the limitations below.
 
@@ -201,7 +201,7 @@ More flags: `--exclude` globs, `--max-files` (fail-closed size cap), `--schema d
 
 - **A finding is evidence, never proof.** Authorization/tenant findings follow a two-tier contract: a missing *visible* check (`AUTHZ-001`, MEDIUM) is a review prompt — middleware, framework guards, and database RLS are legitimately invisible to static analysis and always win.
 - **The analysis is bounded, by design.** Rules are structured regex/heuristics over a shared bounded data-flow chase (≤4 assignment hops, same function scope, cycle-safe, one imported-local-helper level) — **no AST parser, no call graph, no cross-function/cross-file data flow**, and deliberately so: determinism, masking, no-exec, zero runtime cost. Deeper aliasing, helper-mediated field flows, and whole-body taint granularity are tracked only to the documented bounds; what a scan did not chase is in the coverage manifest.
-- **Recall claims stay local.** The labelled corpus in [benchmarks/corpus](benchmarks/corpus/cases.json) is self-curated (10 vulnerable + 8 safe adjudicated pairs, commit-pinned) — its precision/recall is a documented self-baseline, **not** external validation; raw counts on unlabelled projects (NodeGoat, Juice Shop) are observations, not recall.
+- **Recall claims stay local.** The labelled corpus in [benchmarks/corpus](benchmarks/corpus/cases.json) is self-curated (17 vulnerable + 12 safe adjudicated pairs, commit-pinned) — its precision/recall is a documented self-baseline, **not** external validation; raw counts on unlabelled projects (NodeGoat, Juice Shop) are observations, not recall.
 - **Known performance boundary.** Files >512 KB are analyzed in windows to 4 MB; above 4 MB is disclosed and skipped. Worst case is honest: an adversarial ~4 MB file of ~2M single-character rows scans in ~70 s on the benchmark hardware (padded absolute-line windows multiply per-rule row visits); realistic density is far faster. Locked by regression gates U26.1–U26.5.
 - **No DAST engine** — URL mode is consent-gated, bounded, and passive-first; deep dynamic testing belongs to your own tooling (a ZAP baseline config can be generated)
 - Full list with rationale: [METHODOLOGY.md §8](METHODOLOGY.md)
@@ -212,6 +212,8 @@ More flags: `--exclude` globs, `--max-files` (fail-closed size cap), `--schema d
 |---|---|
 | [METHODOLOGY.md](METHODOLOGY.md) | determinism contract, scoring, false-positive control, known limitations |
 | [BENCHMARKS.md](BENCHMARKS.md) | measured results only — honeypot recall, labelled corpus P/R, clean corpus, tool comparison with pinned versions & configs, wall-time scale |
+| [ROADMAP.md](ROADMAP.md) | capability-calibrated prioritized roadmap (P1–P3 items with prereqs, fixtures, risks) |
+| [docs/TRUST-AUDIT.md](docs/TRUST-AUDIT.md) | release-pipeline trust review — verified controls, ranked tasks, explicit non-claims |
 | [benchmarks/corpus](benchmarks/corpus/cases.json) | the adjudicated labelled corpus manifest + reproducible vulnerable/safe fixture pairs |
 | [CONTRIBUTING-RULES.md](CONTRIBUTING-RULES.md) | how to contribute rule packs (clean cases mandatory, CRITICAL gating) |
 | [docs/AGENT-INTEGRATION.md](docs/AGENT-INTEGRATION.md) | AI-agent wiring recipes and the exit-code contract |
@@ -228,12 +230,15 @@ Found a security issue in Anubis Guardian itself (not in your scanned code)? Rep
 
 ## Roadmap
 
+Detailed, calibrated roadmap with per-item value/prereqs/fixtures/risks: [ROADMAP.md](ROADMAP.md).
+
 | Stage | Status |
 |---|---|
 | v1.4 — six capability groups + adversarial ReDoS battery + windowed large-file scanning | ✅ shipped |
 | v1.5 — window-progress guarantee, whole-object LEAK-003, RES-003 timeouts, TEN-002 reads, SSRF severity accuracy | ✅ shipped |
 | v1.5.2 candidate — Next.js App Router AUTHZ/TAINT fixes, labelled benchmark corpus, pinned gitleaks/semgrep comparison | 🚧 candidate built — release pending owner review |
-| Bounded interprocedural parameter-flow analysis | 🔜 next |
+| reported-defect fix round (6 P0 detection defects reproduced + fixed + regression-locked; benchmark-integrity repairs: pinned external SHAs, gitleaks path calibration, corpus expanded to 29 cases) | 🚧 candidate built — release pending owner review |
+| Bounded interprocedural parameter-flow analysis | 🔜 unscheduled (contract change — see ROADMAP.md R7) |
 
 ## License
 

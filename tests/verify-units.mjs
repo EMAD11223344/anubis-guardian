@@ -2028,6 +2028,330 @@ const vc = await import(d("dist/rules/valueclass.js"));
   }
 }
 
+// ---------- U28: v1.5.3 P0 fixes — alias-export handlers, body sources & ----------
+// ---------- aliases, webhook signatures, SSRF ops, tokenizer, alias reach ----------
+{
+  const authzpack = await import(d("dist/rules/authzpack.js"));
+  const taint = await import(d("dist/rules/taint.js"));
+  const dos = await import(d("dist/rules/dospack.js"));
+  const nextjs = await import(d("dist/rules/nextjs.js"));
+  const secretsMod = await import(d("dist/rules/secrets.js"));
+  const codeCtx = (files) => ({ stack: { frameworks: { nextjs: true }, detected: [] }, rel: (x) => x, trackedFiles: new Set(), gitAvailable: false, files, rootDir: "/p" });
+  const cf = (rel, content) => ({ abs: `/p/${rel}`, rel, content, lines: content.split("\n") });
+
+  // --- U28.1/U28.2: alias-exported route handlers (P0-1) ---
+  const aliasExport =
+    "import { prisma } from \"@/db\";\n" +
+    "\n" +
+    "const handler = async function (request: Request) {\n" +
+    "  const data = await request.json();\n" +
+    "  await prisma.user.delete({ where: { id: data.id } });\n" +
+    "  return Response.json({ ok: true });\n" +
+    "};\n" +
+    "\n" +
+    "export { handler as DELETE };\n";
+  const a1 = authzpack.scanAuthz(codeCtx([cf("app/api/x/route.ts", aliasExport)]));
+  check("U28.1 P0-1: `export { handler as DELETE }` — the LOCAL const-function declaration is the handler; AUTHZ-001 fires at the exact declaration line (absolute)",
+    a1.findings.length === 1 && a1.findings[0].id === "AUTHZ-001" && a1.findings[0].line === 3 && a1.findings[0].needs_confirmation === true,
+    JSON.stringify(a1.findings.map((f) => `${f.id}@${f.line}`)));
+  const aliasImported =
+    "import { handler } from \"@/lib/handler\";\n" +
+    "\n" +
+    "export { handler as DELETE };\n";
+  const a2 = authzpack.scanAuthz(codeCtx([cf("app/api/x/route.ts", aliasImported)]));
+  check("U28.2 P0-1 safe negative: an alias re-export whose name has NO local function-shaped declaration fabricates NO handler (arbitrary export aliases are not handler evidence)",
+    a2.findings.length === 0, JSON.stringify(a2.findings.map((f) => f.id)));
+  const sameExport =
+    "import { prisma } from \"@/db\";\n" +
+    "const DELETE = async (request: Request, context) => {\n" +
+    "  await prisma.user.delete({ where: { id: \"123\" } });\n" +
+    "  return Response.json({ ok: true });\n" +
+    "};\n" +
+    "export { DELETE };\n";
+  const a3 = authzpack.scanAuthz(codeCtx([cf("app/api/x/route.ts", sameExport)]));
+  check("U28.3 P0-1: `export { DELETE }` over a local arrow declaration is recognized (AUTHZ-001 @ the arrow line)",
+    a3.findings.length === 1 && a3.findings[0].id === "AUTHZ-001" && a3.findings[0].line === 2,
+    JSON.stringify(a3.findings.map((f) => `${f.id}@${f.line}`)));
+
+  // --- U28.4/U28.5: AUTHZ-002 property aliases + re-destructuring (P0-2) ---
+  const propAlias =
+    "export async function POST(request: Request) {\n" +
+    "  const data = await request.json();\n" +
+    "  const r = data.role;\n" +
+    "  switch (r) {\n" +
+    "    case \"admin\":\n" +
+    "      await prisma.user.delete({ where: { id: data.id } });\n" +
+    "  }\n" +
+    "  return Response.json({ ok: true });\n" +
+    "}\n";
+  const a4 = authzpack.scanAuthz(codeCtx([cf("app/api/x/route.ts", propAlias)]));
+  check("U28.4 P0-2: one-hop property alias (`const r = data.role; switch (r)`) → AUTHZ-002 at the exact decision line; AUTHZ-001 keeps its own note on the same block",
+    a4.findings.some((f) => f.id === "AUTHZ-002" && f.severity === "high" && f.line === 4)
+      && a4.findings.some((f) => f.id === "AUTHZ-001" && f.line === 1),
+    JSON.stringify(a4.findings.map((f) => `${f.id}/${f.severity}@${f.line}`)));
+  const ordinaryAlias =
+    "export async function POST(request: Request) {\n" +
+    "  const data = await request.json();\n" +
+    "  const n = data.count;\n" +
+    "  if (n > 5) {\n" +
+    "    await db.event.create({ data: { n } });\n" +
+    "  }\n" +
+    "  return Response.json({ ok: true });\n" +
+    "}\n";
+  const a5 = authzpack.scanAuthz(codeCtx([cf("app/api/x/route.ts", ordinaryAlias)]));
+  check("U28.5 P0-2 safe negative: ordinary (non-authz) body field through an alias never becomes an AUTHZ-002 decision",
+    !a5.findings.some((f) => f.id === "AUTHZ-002"), JSON.stringify(a5.findings.map((f) => f.id)));
+  const redestructure =
+    "export async function POST(request: Request) {\n" +
+    "  const data = await request.json();\n" +
+    "  const { role, displayName } = data;\n" +
+    "  if (role === 'admin') promoteUser();\n" +
+    "  return Response.json({ ok: displayName });\n" +
+    "}\n";
+  const a6 = authzpack.scanAuthz(codeCtx([cf("app/api/x/route.ts", redestructure)]));
+  check("U28.6 P0-2: re-destructuring an authz field from an existing body local (`const { role } = data; if (role === 'admin')`) → AUTHZ-002 at the exact line",
+    a6.findings.some((f) => f.id === "AUTHZ-002" && f.line === 4), JSON.stringify(a6.findings.map((f) => `${f.id}@${f.line}`)));
+  const twoHop =
+    "export async function POST(request: Request) {\n" +
+    "  const data = await request.json();\n" +
+    "  const r = data.role;\n" +
+    "  const s = r;\n" +
+    "  if (s === 'admin') promoteUser();\n" +
+    "  return Response.json({ ok: true });\n" +
+    "}\n";
+  const a7 = authzpack.scanAuthz(codeCtx([cf("app/api/x/route.ts", twoHop)]));
+  check("U28.7 P0-2 documented bound: a SECOND alias hop (const s = r) is beyond the one-hop contract — AUTHZ-002 stays silent (no evidence overreach; the bound is disclosed)",
+    !a7.findings.some((f) => f.id === "AUTHZ-002"), JSON.stringify(a7.findings.map((f) => f.id)));
+
+  // --- U28.8: formData/text request-body sources in taint (P0-2) ---
+  const formDataFlow =
+    "export async function POST(request: Request) {\n" +
+    "  const form = await request.formData();\n" +
+    "  const target = form.get(\"target\") as string;\n" +
+    "  const r = await fetch(target);\n" +
+    "  return new Response(await r.text());\n" +
+    "}\n";
+  const t1 = taint.scanTaint(codeCtx([cf("app/api/x/route.ts", formDataFlow)]));
+  check("U28.8 P0-2: `await request.formData()` + `.get(\"field\")` flows to fetch → TAINT-001 MEDIUM at the exact sink line",
+    t1.findings.length === 1 && t1.findings[0].id === "TAINT-001" && t1.findings[0].severity === "medium" && t1.findings[0].line === 4,
+    JSON.stringify(t1.findings.map((f) => `${f.id}@${f.line}`)));
+  const textFlow =
+    "export async function POST(request: Request) {\n" +
+    "  const raw = await request.text();\n" +
+    "  const dest = raw.trim();\n" +
+    "  await fetch(dest);\n" +
+    "}\n";
+  const t2 = taint.scanTaint(codeCtx([cf("app/api/x/route.ts", textFlow)]));
+  check("U28.9 P0-2: `await request.text()` seeds its RETURN VALUE (raw) — the bounded fixpoint carries dest→fetch (TAINT-001 MEDIUM)",
+    t2.findings.some((f) => f.id === "TAINT-001" && f.severity === "medium" && f.line === 4),
+    JSON.stringify(t2.findings.map((f) => `${f.id}@${f.line}`)));
+  const formDataNoSink =
+    "export async function POST(request: Request) {\n" +
+    "  const form = await request.formData();\n" +
+    "  const name = form.get(\"name\") as string;\n" +
+    "  await db.user.create({ data: { name } });\n" +
+    "  return Response.json({ ok: true });\n" +
+    "}\n";
+  const t3 = taint.scanTaint(codeCtx([cf("app/api/x/route.ts", formDataNoSink)]));
+  check("U28.10 P0-2 safe negative: formData field into a JSON body only — no network/redirect/path sink — TAINT stays SILENT",
+    !t3.findings.some((f) => /^TAINT/.test(f.id)), JSON.stringify(t3.findings.map((f) => f.id)));
+
+  // --- U28.11: RES-001 recognizes parsed request-body sources (P0-2 sibling) ---
+  const resFlow =
+    "export async function POST(request: Request) {\n" +
+    "  const body = await request.json();\n" +
+    "  const re = new RegExp(body.pattern);\n" +
+    "  return Response.json({ matched: re.test(\"x\") });\n" +
+    "}\n";
+  const r1 = dos.scanDos(codeCtx([cf("app/api/x/route.ts", resFlow)]));
+  check("U28.11 P0-2: regex built from a request.json() local resolves by flow → RES-001 (medium review) at the exact line",
+    r1.findings.some((f) => f.id === "RES-001" && f.severity === "medium" && f.line === 3),
+    JSON.stringify(r1.findings.map((f) => `${f.id}/${f.severity}@${f.line}`)));
+  const resDirect =
+    "export async function POST(request: Request) {\n" +
+    "  const re = new RegExp((await request.json()).pattern);\n" +
+    "  return Response.json({ matched: re.test(\"x\") });\n" +
+    "}\n";
+  const r2 = dos.scanDos(codeCtx([cf("app/api/x/route.ts", resDirect)]));
+  check("U28.12 P0-2: regex built DIRECTLY from `request.json()` content → RES-001 high (attacker-chosen pattern)",
+    r2.findings.some((f) => f.id === "RES-001" && f.severity === "high" && f.line === 2),
+    JSON.stringify(r2.findings.map((f) => `${f.id}/${f.severity}@${f.line}`)));
+
+  // --- U28.13: SSRF demotion requires a validation OPERATION (P0-4) ---
+  const namedNotUsed =
+    "const ALLOWED_HOSTS = [\"api.github.com\"];\n" +
+    "\n" +
+    "export async function GET(req: Request) {\n" +
+    "  const target = req.nextUrl.searchParams.get(\"target\") ?? \"\";\n" +
+    "  const r = await fetch(target);\n" +
+    "  return new Response(await r.text());\n" +
+    "}\n";
+  const t4 = taint.scanTaint(codeCtx([cf("app/api/x/route.ts", namedNotUsed)]));
+  check("U28.13 P0-4: a variable merely NAMED ALLOWED_HOSTS (declared, never applied) does NOT demote — TAINT-001 stays MEDIUM",
+    t4.findings.some((f) => f.id === "TAINT-001" && f.severity === "medium"),
+    JSON.stringify(t4.findings.map((f) => `${f.id}/${f.severity}`)));
+  const setHas =
+    "export async function GET(req: Request) {\n" +
+    "  const t = req.nextUrl.searchParams.get(\"t\") ?? \"\";\n" +
+    "  if (!HOSTS.has(new URL(t).hostname)) return new Response(\"no\", { status: 400 });\n" +
+    "  const r = await fetch(t);\n" +
+    "}\n";
+  const t5 = taint.scanTaint(codeCtx([cf("app/api/x/route.ts", setHas)]));
+  check("U28.14 P0-4: `HOSTS.has(new URL(t).hostname)` — Set membership over the URL hostname — IS a validation operation → demotes to the LOW review note",
+    t5.findings.length === 1 && t5.findings[0].severity === "low", JSON.stringify(t5.findings.map((f) => `${f.id}/${f.severity}`)));
+  const originEq =
+    "export async function GET(req: Request) {\n" +
+    "  const t = req.nextUrl.searchParams.get(\"t\") ?? \"\";\n" +
+    "  if (new URL(t).origin !== APP_ORIGIN) return new Response(\"no\", { status: 400 });\n" +
+    "  const r = await fetch(t);\n" +
+    "}\n";
+  const t6 = taint.scanTaint(codeCtx([cf("app/api/x/route.ts", originEq)]));
+  check("U28.15 P0-4: exact `.origin ===` comparison demotes to the LOW review note",
+    t6.findings.length === 1 && t6.findings[0].severity === "low", JSON.stringify(t6.findings.map((f) => `${f.id}/${f.severity}`)));
+  const mismatchCompare =
+    "export async function GET(req: Request) {\n" +
+    "  const t = req.nextUrl.searchParams.get(\"t\") ?? \"\";\n" +
+    "  if (new URL(t).hostname !== \"api.example.com\") return new Response(\"no\", { status: 400 });\n" +
+    "  const r = await fetch(t);\n" +
+    "}\n";
+  const t7 = taint.scanTaint(codeCtx([cf("app/api/x/route.ts", mismatchCompare)]));
+  check("U28.16 P0-4: exact hostname compare against a fixed host (non-matching branch rejects) demotes to the LOW review note",
+    t7.findings.length === 1 && t7.findings[0].severity === "low", JSON.stringify(t7.findings.map((f) => `${f.id}/${f.severity}`)));
+
+  // --- U28.17: webhook signature verification (P0-3) ---
+  const stripeOk =
+    "import Stripe from \"stripe\";\n" +
+    "const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);\n" +
+    "export async function POST(request: Request) {\n" +
+    "  const body = await request.text();\n" +
+    "  const sig = request.headers.get(\"stripe-signature\") as string;\n" +
+    "  const event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET as string);\n" +
+    "  await prisma.payment.update({ where: { id: 1 }, data: { status: event.type } });\n" +
+    "  return Response.json({ ok: true });\n" +
+    "}\n";
+  const n1 = nextjs.scanNextjs(codeCtx([cf("app/api/webhook/route.ts", stripeOk)]));
+  check("U28.17 P0-3: a Stripe webhook that verifies the signature (constructEvent call shape) is NOT reported as unauthenticated (NEXT-004 silent)",
+    !n1.findings.some((f) => f.id === "NEXT-004"), JSON.stringify(n1.findings.map((f) => f.id)));
+  const svixOk =
+    "import { Webhook } from \"svix\";\n" +
+    "const wh = new Webhook(process.env.SVIX_SECRET as string);\n" +
+    "export async function POST(request: Request) {\n" +
+    "  const payload = await request.text();\n" +
+    "  const headers = Object.fromEntries(request.headers);\n" +
+    "  wh.verify(payload, headers);\n" +
+    "  await db.delivery.create({ data: { kind: \"svix\" } });\n" +
+    "  return Response.json({ ok: true });\n" +
+    "}\n";
+  const n2 = nextjs.scanNextjs(codeCtx([cf("app/api/webhook/route.ts", svixOk)]));
+  check("U28.18 P0-3: Svix `new Webhook(...)` + `.verify(...)` call shapes = verified webhook (NEXT-004 silent)",
+    !n2.findings.some((f) => f.id === "NEXT-004"), JSON.stringify(n2.findings.map((f) => f.id)));
+  const hmacOk =
+    "import { createHmac, timingSafeEqual } from \"crypto\";\n" +
+    "export async function POST(request: Request) {\n" +
+    "  const mac = createHmac(\"sha256\", process.env.HOOK_SECRET as string).update(await request.text()).digest();\n" +
+    "  if (!timingSafeEqual(mac, Buffer.from(request.headers.get(\"x-signature\") as string))) return new Response(\"no\", { status: 400 });\n" +
+    "  await db.delivery.create({ data: { ok: true } });\n" +
+    "  return Response.json({ done: true });\n" +
+    "}\n";
+  const n3 = nextjs.scanNextjs(codeCtx([cf("app/api/webhook/route.ts", hmacOk)]));
+  check("U28.19 P0-3: hand-rolled `createHmac` + `timingSafeEqual` verification = authenticated webhook (NEXT-004 silent)",
+    !n3.findings.some((f) => f.id === "NEXT-004"), JSON.stringify(n3.findings.map((f) => f.id)));
+  const hmacNoCompare =
+    "import { createHmac } from \"crypto\";\n" +
+    "export async function POST(request: Request) {\n" +
+    "  createHmac(\"sha256\", \"k\").update(\"x\").digest();\n" +
+    "  await db.delivery.create({ data: { ok: true } });\n" +
+    "  return Response.json({ done: true });\n" +
+    "}\n";
+  const n4 = nextjs.scanNextjs(codeCtx([cf("app/api/webhook/route.ts", hmacNoCompare)]));
+  check("U28.20 P0-3 invalid-signature counterpart: createHmac WITHOUT a safe-compare/timingSafeEqual shape does NOT silence NEXT-004",
+    n4.findings.some((f) => f.id === "NEXT-004"), JSON.stringify(n4.findings.map((f) => f.id)));
+  const missingVerification =
+    "export async function POST(request: Request) {\n" +
+    "  const event = await request.json();\n" +
+    "  await prisma.payment.update({ where: { id: event.id }, data: { status: event.type } });\n" +
+    "  return Response.json({ ok: true });\n" +
+    "}\n";
+  const n5 = nextjs.scanNextjs(codeCtx([cf("app/api/webhook/route.ts", missingVerification)]));
+  check("U28.21 P0-3 missing-verification counterpart: an unsigned webhook endpoint still fires NEXT-004",
+    n5.findings.some((f) => f.id === "NEXT-004"), JSON.stringify(n5.findings.map((f) => f.id)));
+  const commentOnly =
+    "// TODO: add stripe.webhooks.constructEvent(...) verification here\n" +
+    "export async function POST(request: Request) {\n" +
+    "  const event = await request.json();\n" +
+    "  await prisma.payment.update({ where: { id: event.id }, data: { status: event.type } });\n" +
+    "  return Response.json({ ok: true });\n" +
+    "}\n";
+  const n6 = nextjs.scanNextjs(codeCtx([cf("app/api/webhook/route.ts", commentOnly)]));
+  check("U28.22 P0-3: a COMMENT mentioning constructEvent is not a verification — NEXT-004 still fires (recognition is comment-stripped, call-shape based)",
+    n6.findings.some((f) => f.id === "NEXT-004"), JSON.stringify(n6.findings.map((f) => f.id)));
+  const authzStripe = authzpack.scanAuthz(codeCtx([cf("app/api/webhook/route.ts", stripeOk)]));
+  check("U28.23 P0-3: AUTHZ-001 also recognizes the signature-verification call as an in-body auth check (webhook-ok → silent AUTHZ-001)",
+    !authzStripe.findings.some((f) => f.id === "AUTHZ-001"), JSON.stringify(authzStripe.findings.map((f) => f.id)));
+
+  // --- U28.24: configured path aliases in client reachability (P0-6) ---
+  const tmpA = mkdtempSync(join(tmpdir(), "anubis-u28-alias-"));
+  mkdirSync(join(tmpA, "src", "lib"), { recursive: true });
+  mkdirSync(join(tmpA, "app", "components"), { recursive: true });
+  writeFileSync(join(tmpA, "tsconfig.json"),
+    "{\n  \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"src/*\"] } } // trailing comment\n,}\n");
+  const secretJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJlcHJvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNTY4OTYwMCwiZXhwIjoxODkzNDU2MDAwfQ.A7Zfe0D9KKF2QT4fwpMeJf36POk6yJV_adQssw5cXyz";
+  writeFileSync(join(tmpA, "src", "lib", "server-secret.ts"),
+    `import { createClient } from "@supabase/supabase-js";\n\nconst KEY = "${secretJwt}";\nexport async function fetchAdminData() {\n  const admin = createClient("https://repro.supabase.co", KEY);\n  return admin.from("secrets").select("*");\n}\n`);
+  const clientFile = (target) =>
+    `"use client";\n\nimport { fetchAdminData } from "${target}";\n\nexport function AdminPanel() {\n  return <button onClick={() => fetchAdminData()}>Go</button>;\n}\n`;
+  const filesA = [
+    { abs: join(tmpA, "app", "components", "AdminPanel.tsx"), rel: "app/components/AdminPanel.tsx", content: clientFile("@/lib/server-secret"), lines: clientFile("@/lib/server-secret").split("\n") },
+    { abs: join(tmpA, "src", "lib", "server-secret.ts"), rel: "src/lib/server-secret.ts", content: `import { createClient } from "@supabase/supabase-js";\n\nconst KEY = "${secretJwt}";\nexport async function fetchAdminData() {\n  const admin = createClient("https://repro.supabase.co", KEY);\n  return admin.from("secrets").select("*");\n}\n`, lines: null },
+  ];
+  filesA[1].lines = filesA[1].content.split("\n");
+  const ctxA = { rootDir: tmpA, rel: (x) => x, files: filesA, stack: { frameworks: {}, detected: [] }, trackedFiles: new Set(), gitAvailable: false };
+  const s1 = secretsMod.scanSecrets(ctxA);
+  check("U28.24 P0-6: a client component importing a secret module through the CONFIGURED `@/` path alias makes it client-reachable → SUPA-001 CRITICAL in the secret module (was: unclassified-medium FN)",
+    s1.findings.some((f) => f.id === "SUPA-001" && f.severity === "critical" && /server-secret/.test(f.file) && f.line === 3),
+    JSON.stringify(s1.findings.filter((f) => f.id === "SUPA-001").map((f) => `${f.severity}@${f.file}:${f.line}`)));
+  const serverOnly = `"use server";\n\nimport { createClient } from "@supabase/supabase-js";\n\nconst KEY = "${secretJwt}";\nexport async function fetchAdminData() {\n  const admin = createClient("https://repro.supabase.co", KEY);\n  return admin.from("secrets").select("*");\n}\n`;
+  writeFileSync(join(tmpA, "src", "lib", "server-only.ts"), serverOnly);
+  const filesB = [
+    { abs: join(tmpA, "app", "components", "Panel.tsx"), rel: "app/components/Panel.tsx", content: clientFile("@/lib/public-api"), lines: clientFile("@/lib/public-api").split("\n") },
+    { abs: join(tmpA, "src", "lib", "server-only.ts"), rel: "src/lib/server-only.ts", content: serverOnly, lines: serverOnly.split("\n") },
+  ];
+  const ctxB = { rootDir: tmpA, rel: (x) => x, files: filesB, stack: { frameworks: {}, detected: [] }, trackedFiles: new Set(), gitAvailable: false };
+  const s2 = secretsMod.scanSecrets(ctxB);
+  check("U28.25 P0-6 safe counterpart: a 'use server' module imported through the SAME alias stays server-only → SUPA-001 stays the INFO hygiene note (never critical)",
+    s2.findings.some((f) => f.id === "SUPA-001" && f.severity === "info" && /server-only/.test(f.file))
+      && !s2.findings.some((f) => f.id === "SUPA-001" && f.severity === "critical"),
+    JSON.stringify(s2.findings.filter((f) => f.id === "SUPA-001").map((f) => `${f.severity}@${f.file}`)));
+  const unimportedSecret = { abs: join(tmpA, "src", "lib", "unimported-secret.ts"), rel: "src/lib/unimported-secret.ts", content: `const KEY = "${secretJwt}";\nexport default KEY;\n`, lines: null };
+  unimportedSecret.lines = unimportedSecret.content.split("\n");
+  const ctxC = { rootDir: tmpA, rel: (x) => x, files: [unimportedSecret], stack: { frameworks: {}, detected: [] }, trackedFiles: new Set(), gitAvailable: false };
+  const s3 = secretsMod.scanSecrets(ctxC);
+  check("U28.26 P0-6 honesty: a secret-containing module that NO client file imports is NOT reported as a leak — it stays the MEDIUM 'confirm reachability' review (never a fabricated leak)",
+    s3.findings.some((f) => f.id === "SUPA-001" && f.severity === "medium" && f.needs_confirmation === true)
+      && !s3.findings.some((f) => f.id === "SUPA-001" && f.severity === "critical"),
+    JSON.stringify(s3.findings.filter((f) => f.id === "SUPA-001").map((f) => `${f.severity}@${f.file}`)));
+  rmSync(tmpA, { recursive: true, force: true });
+
+  // --- U28.27/U28.28: tokenizer — annotation braces and generics (P0-5) ---
+  const annotated =
+    "export async function DELETE(\n" +
+    "  request: Request,\n" +
+    "  context: { params: Promise<{ id: string }> }\n" +
+    "): Promise<{ ok: boolean }> {\n" +
+    "  await prisma.user.delete({ where: { id: \"1\" } });\n" +
+    "  return Response.json({ ok: true });\n" +
+    "}\n";
+  const z1 = authzpack.scanAuthz(codeCtx([cf("app/api/x/route.ts", annotated)]));
+  check("U28.27 P0-5 tokenizer: return-type annotation containing object braces (`): Promise<{ ok: boolean }> {`) no longer truncates the body — AUTHZ-001 sees the in-body privileged op (exact line 1)",
+    z1.findings.length === 1 && z1.findings[0].id === "AUTHZ-001" && z1.findings[0].line === 1,
+    JSON.stringify(z1.findings.map((f) => `${f.id}@${f.line}`)));
+  const z2 = authzpack.handlerBlocks(cf("app/api/x/route.ts",
+    "import { prisma } from \"@/db\";\n\nexport const DELETE = async (request: Request): Promise<Record<string, { a: 1 }>> => {\n  await prisma.user.delete({ where: { id: \"1\" } });\n  return Response.json({ ok: true });\n};\n"));
+  check("U28.28 P0-5 tokenizer: generic type arguments containing braces (`Promise<Record<string, { a: 1 }>>`) before `=> {` do not open the body — the real body is located and AUTHZ-001 fires at line 3",
+    z2.length === 1 && z2[0].name.startsWith("DELETE") && z2[0].bodyEnd0 >= 5,
+    JSON.stringify(z2));
+}
+
 // ---------- report ----------
 console.error(`\nUNIT VERIFICATION: ${PASS} passed, ${FAILS.length} failed`);
 if (FAILS.length) {

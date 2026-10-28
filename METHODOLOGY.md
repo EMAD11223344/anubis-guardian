@@ -130,23 +130,44 @@ command** — never fabricated, never used to claim a winner.
 
 ## 8. Known limitations (stated up front)
 
-- **Next.js App Router handler analysis (v1.5.2 candidate) — bounded heuristics**:
-  the handler-body locator is a string/comment/template-aware bounded tokenizer,
-  not an AST parser. Documented corners: an object-brace default value inside an
-  express callback parameter, a TS return-type annotation containing object
-  braces, and braces inside the first argument string can still misplace the
-  body boundary. AUTHZ-002's request-body tracking is bounded to ≤8 body locals,
-  one-hop aliases, and a decision-shape contract (if/switch/equality/ternary) over
-  the rule's documented authz-field list — deeper alias chains or field flows
-  through helper functions are not chased. Taint treats parsed request JSON
-  (`await request.json()`) as untrusted wholesale — any field reaching a sink is
-  reviewable; field-level sensitivity is out of scope. The rule contract remains
-  `needs_confirmation` review prompts, never verdicts.
-- **RES-001 sibling gap (documented, unfixed)**: dospack's request-source regex
-  (RES-001, regex-from-request-input) recognizes the `req.body`-shaped sources
-  but does not yet recognize `await request.json()` — a parsed-body value fed to
-  `new RegExp(...)` can be missed while the AUTHZ/TAINT layers see it. Left for
-  the next review round to keep the v1.5.2 change surface auditable.
+- **Next.js App Router handler analysis (v1.5.2 candidate + reported-defect round 2) — bounded
+  heuristics**: the handler-body locator is a string/comment/template-aware bounded
+  tokenizer, not an AST parser. The v1.5.2 corners (object-brace default values in
+  callback parameters, object-brace TS return annotations, braces in the first
+  argument string) plus the round-2 corner (an annotation group followed by `=>`)
+  are now regression-locked by **both** the unit gates and a deterministic seeded
+  fuzz battery (320 fixtures, `tests/verify-tokenizer-fuzz.mjs`, wired into
+  `npm test`) that asserts exact declaration lines, span bounds, and planted-marker
+  containment; pathological shapes outside the generator's grammar are still
+  possible (bounded worst case: the 40-line window, never an unbounded scan).
+  AUTHZ-001 handler recognition now also covers `export { handler as METHOD }`
+  alias exports **only** when a local function-shaped declaration exists — a
+  re-exported import fabricates no handler and no review note. AUTHZ-002's
+  request-body tracking is bounded to ≤8 body locals, **one-hop** aliases
+  (property alias and re-destructure; second-hop chains are test-locked silent),
+  and a decision-shape contract (if/switch/equality/ternary) over the rule's
+  documented authz-field list — deeper alias chains or field flows through helper
+  functions are not chased. Taint treats parsed request bodies
+  (`request.json()`, `request.formData()`, `request.text()`) as untrusted
+  wholesale — any field reaching a sink is reviewable; field-level sensitivity is
+  out of scope. SSRF (TAINT-001) demotion to the LOW review note requires an
+  actual destination-validation OPERATION (host-set membership, host includes,
+  host equality against a literal, or a recognized validation helper call) — a
+  variable merely NAMED like an allowlist no longer demotes anything. Webhook
+  signature recognition (NEXT-004) requires real call shapes (`constructEvent(...)`,
+  `new Webhook(...)` + `.verify(...)`, `createHmac(...)` + `timingSafeEqual(...)`);
+  signature authenticity counts as in-body authz evidence for AUTHZ-001 but is
+  explicitly NOT application authorization. Client-reachability (SUPA-001)
+  resolves imports through `tsconfig.json` `paths` at the scan root only —
+  `node_modules`, nested workspace configs, and `#` subpath imports are
+  unsupported and disclosed. The rule contract remains `needs_confirmation`
+  review prompts, never verdicts.
+- **RES-001 request-source recognition (closed in reported-defect round 2)**: as
+  of this round the rule recognizes `await request.json()`-shaped sources (with
+  quote/paren-aware first-argument extraction), in addition to the original
+  `req.body` shapes. Remaining boundary: body-reading forms outside the
+  recognized source set (custom parse helpers) stay invisible to RES-001 while
+  the AUTHZ/TAINT layers may still see them.
 
 - Static analysis sees patterns, not runtime truth — the authz matrix and taint
   canaries generate tests for **you** to run on staging; they do not confirm exploits.

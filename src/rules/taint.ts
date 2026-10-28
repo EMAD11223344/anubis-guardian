@@ -17,7 +17,7 @@ import { collectAssignments, propagateTaint } from "./flow.js";
  */
 
 const SOURCE_EXPR =
-  /req(?:uest)?\.(query|body|params|headers|cookies|nextUrl\.searchParams)|searchParams\.get|cookies\(\)\.get|headers\(\)\.get|url\.searchParams|getCookie|\.query\[|\.params\[|\.body\[|req(?:uest)?\s*\.\s*json\s*\(\s*\)/;
+  /req(?:uest)?\.(query|body|params|headers|cookies|nextUrl\.searchParams)|searchParams\.get|cookies\(\)\.get|headers\(\)\.get|url\.searchParams|getCookie|\.query\[|\.params\[|\.body\[|req(?:uest)?\s*\.\s*(?:json|formData|text)\s*\(\s*\)/;
 
 const SINK_RULES: Array<{
   id: string;
@@ -39,7 +39,15 @@ const SINK_RULES: Array<{
     // v1.5: inline URL-host validation shapes count (the v1.4 list only caught
     // the extracted-into-a-variable form) — `ALLOWED.includes(new URL(t).host)`,
     // `new URL(t).host === …`, `h === u.host` all demote to the LOW review note.
-    sanitizer: /allowlist|allowList|whitelist|allowed[_-]?hosts?|trusted[_-]?hosts?|isAllowed|validateUrl|assertUrl|sanitizeUrl|safeUrl|cleanUrl|isValidUrl|ALLOWED_[A-Z_]+|hostname\s*(?:===|!==)|includes\s*\(\s*[A-Za-z_$][\w$.]*\.?hostname|\.includes\s*\(\s*(?:new\s+URL\s*\([^)]{0,100}\)|[A-Za-z_$][\w$.]*)\s*\.\s*\.?host\b|new\s+URL\s*\([^)]{0,100}\)\s*\.\s*\.?host(?:name)?\s*(?:===|!==)|(?:===|!==)\s*[A-Za-z_$][\w$.]*\.?\s*\.?host\b|\.host\b\s*(?:===|!==)/,
+    // v1.5.3 — NAME-ONLY tokens were REMOVED from this list (P0 fix): a variable
+    // merely NAMED ALLOWED_HOSTS/allowlist/whitelist near the sink proves
+    // nothing — demotion now requires a validation OPERATION (exact
+    // host/origin equality, Set/array membership over a URL host/origin
+    // expression, or a validator-helper CALL). `ssrfValidated()` below is the
+    // authoritative check for TAINT-001 (it adds bare-ident membership
+    // resolution, e.g. `ALLOWED_HOSTS.includes(host)` where
+    // `const host = new URL(target).host` binds the ident in-window).
+    sanitizer: /hostname\s*(?:===|!==)|\.host\b\s*(?:===|!==)|\.origin\b\s*(?:===|!==)|(?:===|!==)\s*[A-Za-z_$][\w$.]*\.?\s*\.?(?:host(?:name)?|origin)\b|\.includes\s*\(\s*[A-Za-z_$][\w$.]*\.?\s*\.?host(?:name)?\b|\.includes\s*\(\s*(?:new\s+URL\s*\([^)]{0,100}\)|[A-Za-z_$][\w$.]*)\s*\.\s*\.?host(?:name)?\b|\.includes\s*\(\s*[A-Za-z_$][\w$.]*\.?\s*\.?origin\b|new\s+URL\s*\([^)]{0,100}\)\s*\.\s*\.?host(?:name)?\s*(?:===|!==)|(?:validate|assert|sanitize|isSafe|isValid)Url\s*\(|isAllowed(?:Host)?\s*\(|sanitizeUrl\s*\(|safeUrl\s*\(|cleanUrl\s*\(/,
     owasp: "A10",
     fix: "Validate the destination against a host allowlist (scheme + exact host) before any outbound request; block private/link-local ranges (169.254.x, 127.x, 10.x, 172.16-31.x, 192.168.x) and metadata endpoints.",
     note: "classic vibe-coding SSRF: 'fetch anything by URL' helpers — internal services/metadata IPs become reachable",
@@ -136,6 +144,40 @@ function taintedVars(lines: string[]): Set<string> {
   return tainted;
 }
 
+/**
+ * v1.5.3 (P0-4) — the authoritative SSRF demotion check for TAINT-001.
+ * A demotion to the LOW review note requires an actual VALIDATION OPERATION
+ * over the destination, not a variable NAME:
+ *   - exact host/hostname/origin equality (`u.host === "app.example"`,
+ *     `host !== ALLOWED[0]`),
+ *   - Set/array membership over a URL host/origin expression
+ *     (`ALLOWED.includes(new URL(t).host)`, `HOSTS.has(u.hostname)`),
+ *   - membership over a bare ident ONLY when the window binds that ident to a
+ *     host/origin/URL expression (`const host = new URL(target).host` +
+ *     `ALLOWED.includes(host)`),
+ *   - a recognized validator-helper CALL (validateUrl(…), isAllowed(…), …).
+ * A variable merely NAMED ALLOWED_HOSTS/allowlist near the sink is NOT
+ * evidence — the finding then stays at its calibrated MEDIUM review severity.
+ */
+const SSRF_HOST_EQ =
+  /(?:\bhost(?:name)?\b|\borigin\b)\s*(?:===|!==)|(?:===|!==)\s*[A-Za-z_$][\w$.]*\.?\s*\.?(?:host(?:name)?|origin)\b/;
+const SSRF_MEMBER =
+  /\.\s*(?:includes|has)\s*\(\s*(?:new\s+URL\s*\([^()]{0,80}\)\s*\.\s*(?:host(?:name)?|origin)|[A-Za-z_$][\w$.]*\s*\.\s*(?:host(?:name)?|origin)|([A-Za-z_$][\w$]*))\s*\)/;
+const SSRF_HELPER_CALL =
+  /\b(?:validate|assert|sanitize|isSafe|isValid)Url\s*\(|\bisAllowed(?:Host)?\s*\(|\bsanitizeUrl\s*\(|\bsafeUrl\s*\(|\bcleanUrl\s*\(|\bisValidUrl\s*\(/;
+
+export function ssrfValidated(window: string): boolean {
+  if (SSRF_HOST_EQ.test(window) || SSRF_HELPER_CALL.test(window)) return true;
+  const m = SSRF_MEMBER.exec(window);
+  if (!m) return false;
+  if (!m[1]) return true; // URL-host expression argument — an operation by itself
+  // bare ident: only counts when the window binds it to a host/origin/URL part
+  const bind = new RegExp(
+    `\\b${m[1]}\\s*=[^;\\n]{0,80}\\b(?:new\\s+URL\\s*\\([^)]*\\)\\s*\\.\\s*)?(?:host(?:name)?|origin|url)\\b`
+  );
+  return bind.test(window);
+}
+
 function containsTaint(line: string, vars: Set<string>): boolean {
   if (SOURCE_EXPR.test(line)) return true;
   for (const v of vars) {
@@ -144,28 +186,17 @@ function containsTaint(line: string, vars: Set<string>): boolean {
   return false;
 }
 
-/** balanced first call argument WITHIN one line ("" when never closed) */
-function balancedArg(line: string, openIdx: number): string {
-  let depth = 0;
-  for (let i = openIdx; i < line.length; i++) {
-    const c = line[i];
-    if (c === "(") depth++;
-    else if (c === ")") {
-      depth--;
-      if (depth === 0) return line.slice(openIdx + 1, i);
-    }
-  }
-  return "";
-}
-
 /**
  * §3.5 (h3): the FIRST TOP-LEVEL call argument — quote/bracket-aware scan that
  * stops at the call's closing paren or at a depth-1 comma (argument
  * separator). `fetch("https://fixed.example/api", { headers: req.headers })`
  * then yields only `"https://fixed.example/api"`, so unrelated header baggage
  * in argument #2 no longer reports as SSRF. "" when not closed on this line.
+ * v1.5.3: EXPORTED — dospack's RES-001 reuses it so a first argument like
+ * `(await request.json()).pattern` is extracted intact (the old
+ * cut-at-first-`)` slice truncated the parsed-body source mid-call).
  */
-function balancedTopArg(line: string, openIdx: number): string {
+export function balancedTopArg(line: string, openIdx: number): string {
   let depth = 0;
   let quote: string | null = null;
   for (let i = openIdx; i < line.length; i++) {
@@ -232,9 +263,12 @@ export function scanTaint(ctx: ScanContext): RuleResult {
         //  is CLEAN — the redirect argument is a fixed string; token is a guard.)
         if (!containsTaint(argSpan, vars)) continue;
         // sanitizer window: same line ±6 (call-site recognition — the sanitizer
-        // may be an imported helper; that is the one-level-import allowance)
+        // may be an imported helper; that is the one-level-import allowance).
+        // v1.5.3: for TAINT-001 the authoritative check is ssrfValidated() — a
+        // validation OPERATION (equality/membership/validator call), never a
+        // name-only token (a declared-but-unused ALLOWED_HOSTS stays MEDIUM).
         const window = f.lines.slice(Math.max(0, i - 6), i + 7).join("\n");
-        if (rule.sanitizer.test(window)) {
+        if (rule.id === "TAINT-001" ? ssrfValidated(window) : rule.sanitizer.test(window)) {
           // v1.2 (T6): a recognized SSRF allowlist no longer makes the finding
           // VANISH silently — the reviewer never saw why/what was skipped, and a
           // mis-recognized "sanitizer" hid a real flow without a trace. For
@@ -252,7 +286,7 @@ export function scanTaint(ctx: ScanContext): RuleResult {
               evidence: {
                 type: "taint_flow_allowlisted",
                 masked: line.trim().slice(0, 80),
-                note: "allowlist-shaped guard found near the sink (ALLOWED_*/allowlist/isAllowed…) — confirm it validates hostname exactly and rejects URL-encoded/bypass forms; LOW review note, no score impact",
+                note: "destination-validation operation found near the sink (exact host/origin compare, membership test over a URL host, or validator call) — confirm it validates hostname exactly and rejects URL-encoded/bypass forms; LOW review note, no score impact",
               },
               owasp: rule.owasp,
               fix: rule.fix,

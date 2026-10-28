@@ -72,8 +72,21 @@ export function scanNextjs(ctx: ScanContext): RuleResult {
     if (isApiRoute && fileClass === "server") {
       const hasMutation = /\bexport\s+(?:async\s+)?function\s+(POST|PUT|PATCH|DELETE)\b/.test(f.content);
       if (hasMutation) {
-        const authIndicator = /(supabase\.auth|getServerSession|getSession|auth\(\)|verifyToken|jwt|authorization|cookies\(\)\.get|requireUser|requireAuth|currentUser|getUser|clerk|next-auth|NextAuth|session\.get)/i.test(f.content);
-        if (!authIndicator) {
+        // v1.5.3 (P0-3): recognition runs on COMMENT-STRIPPED code — a prose
+        // or commented-out mention of an auth indicator must not silence the
+        // finding. Webhook SIGNATURE verification (precise call shapes, not
+        // bare words) counts as the in-file auth for a webhook endpoint: a
+        // verified webhook is not "unauthenticated" merely for lacking a
+        // session check. Honesty note: signature authenticity ≠ application
+        // authorization — verifying the sender does not prove every requested
+        // operation is authorized (reviewers still own that question).
+        const codeOnly = f.lines.filter((l) => { const t = l.trimStart(); return !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("/*"); }).join("\n");
+        const webhookSigVerified =
+          /constructEvent(?:Async)?\s*\(/.test(codeOnly) ||
+          (/new\s+Webhook\s*\(/.test(codeOnly) && /\.verify\s*\(/.test(codeOnly)) ||
+          (/createHmac\s*\(/.test(codeOnly) && /timingSafeEqual\s*\(/.test(codeOnly));
+        const authIndicator = /(supabase\.auth|getServerSession|getSession|auth\(\)|verifyToken|jwt|authorization|cookies\(\)\.get|requireUser|requireAuth|currentUser|getUser|clerk|next-auth|NextAuth|session\.get)/i.test(codeOnly);
+        if (!authIndicator && !webhookSigVerified) {
           findings.push({
             id: "NEXT-004",
             severity: "medium",
