@@ -59,14 +59,20 @@ const run = (cmd, opts = {}) => spawnSync(cmd[0], cmd.slice(1), { encoding: "utf
 // ---------- 1. Honeypot (self-test recall: planted vulnerabilities) ----------
 const t0 = Date.now();
 const hp = run(["node", join(ROOT, "tests", "honeypot", "setup.mjs")]);
+// v1.5.3 integrity fix: the scan output is written to the EXACT path the
+// verify script reads (tests/honeypot/findings.json — the same contract as the
+// honeypot:verify npm script). The generator previously scanned to a temp
+// path while verify-honeypot.mjs read the fixture-dir artifact, so the
+// published verdict silently validated a STALE untracked leftover instead of
+// this run's scan — and crashed with an empty verdict on a pristine checkout.
 const hpScan = run(["node", CLI, "scan", join(ROOT, "tests", "honeypot", "app"), join(ROOT, "tests", "honeypot", "nest-app"),
-  "--format", "json", "-o", join(TMP, "hp.json")]);
+  "--format", "json", "-o", join(ROOT, "tests", "honeypot", "findings.json")]);
 const hpMs = Date.now() - t0;
 const hpVerify = run(["node", join(ROOT, "tests", "verify-honeypot.mjs")]);
 const hpOk = hpVerify.status === 0 && /ALL SEEDS DETECTED/.test(hpVerify.stdout);
 let hpFindings = {};
-if (hpScan.status === 0 && existsSync(join(TMP, "hp.json"))) {
-  const r = JSON.parse(readFileSync(join(TMP, "hp.json"), "utf8"));
+if (hpScan.status === 0 && existsSync(join(ROOT, "tests", "honeypot", "findings.json"))) {
+  const r = JSON.parse(readFileSync(join(ROOT, "tests", "honeypot", "findings.json"), "utf8"));
   for (const f of r.findings) hpFindings[f.id] = (hpFindings[f.id] ?? 0) + 1;
 }
 record("Honeypot recall (49 planted checks, 2 roots — self-test)", hpOk ? "49/49 detected, masking contract intact" : `FAILURES: ${hpVerify.stdout.slice(-200)}`, hpOk ? "measured" : "failed");
@@ -75,7 +81,10 @@ record("Honeypot multi-root scan wall time (2 roots, includes setup)", `${(hpMs 
 
 // ---------- 2. Clean corpus (FP control) ----------
 const cl = run(["node", join(ROOT, "tests", "clean", "setup.mjs")]);
-const clScan = run(["node", CLI, "scan", join(ROOT, "tests", "clean", "app"), "--format", "json", "-o", join(TMP, "clean.json")]);
+// v1.5.3 integrity fix: same contract as honeypot — write the artifact the
+// verify script reads (tests/clean/findings.json) instead of relying on a
+// stale untracked leftover.
+const clScan = run(["node", CLI, "scan", join(ROOT, "tests", "clean", "app"), "--format", "json", "-o", join(ROOT, "tests", "clean", "findings.json")]);
 const clVerify = run(["node", join(ROOT, "tests", "verify-clean.mjs")]);
 const clOk = clVerify.status === 0 && /PASS/.test(clVerify.stdout);
 record("Clean corpus false positives (must be 0 above threshold)", clOk ? "0 findings above threshold — score 100, grade A" : `FP LEAK: ${clVerify.stdout.slice(-200)}`, clOk ? "measured" : "failed");
