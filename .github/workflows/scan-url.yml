@@ -63,6 +63,18 @@ jobs:
           [ -n "$OWNERSHIP_TOKEN" ] && echo "::add-mask::$OWNERSHIP_TOKEN"
           [ -n "$NONCE_PREFIX" ] && echo "::add-mask::$NONCE_PREFIX"
 
+      # Default source mode runs the tool via npx, but the deliver step needs
+      # scripts/anubis-callback.mjs from THIS repo at the run SHA — with no
+      # checkout the runner workspace is empty and step 8 fails with
+      # "Cannot find module …/scripts/anubis-callback.mjs" (proven by run
+      # 40796987931 on 4caa82c). Unconditional checkout fixes both modes;
+      # the pinned-mode checkout below re-checks out ANUBIS_PINNED_SHA with
+      # clean semantics, overriding what lands here.
+      - name: checkout runner-side scripts (deliver step needs them)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       - name: resolve tool version knob (fail-closed)
         id: version
         env:
