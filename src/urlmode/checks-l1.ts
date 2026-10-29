@@ -2,6 +2,7 @@ import type { RawFinding } from "../util.js";
 import { mkFinding, rootCause } from "../util.js";
 import type { CapturedResponse, CaptureBundle } from "./types.js";
 import { codeMapHint, scanBundle, type BundleIntel } from "./jsassets.js";
+import { classifySocketError } from "./fetcher.js";
 
 /**
  * Level 1 — Passive External Scan (Plan Section 7): browser-equivalent requests
@@ -49,11 +50,40 @@ export function runL1(bundle: CaptureBundle): L1Output {
   const stack: string[] = [];
 
   if (!homepage) {
-    // target unreachable — single INFO, no score drama
+    // v1.5.2-p1: honest failure taxonomy. A missing homepage has THREE very
+    // different causes; the report must not claim "target unreachable"
+    // unless the network actually said so.
+    const first = bundle.requests[0];
+    // Records without a taxonomy (legacy captures, `--from-capture` re-analysis)
+    // fall back to classification from the raw error text, else "network"
+    // (matches the old behavior for empty captures).
+    const kind = first?.errorKind ?? (first ? classifySocketError({ code: undefined, message: first.error }) : "network");
+    const evidence = first?.error ?? "no response captured";
+    if (kind === "internal") {
+      // Scanner bug / runtime violation — NO statement about the target.
+      F.push(mkFinding({
+        id: "URL-998", severity: "info", title: "Scanner internal error during capture — target reachability unknown",
+        file: bundle.meta.url, line: 0,
+        evidence: { type: "internal_error", masked: evidence, note: "The scanner itself failed before a request could complete. This is NOT a verdict about the target. Values without real responses are excluded from the report." },
+        owasp: "A05", confidence: "high", fix: "Re-run the scan; if it persists, report the error text to the scanner maintainers.",
+      }));
+      return { findings: F, bundles: [], stack, scriptUrls: [], inlineScripts: [] };
+    }
+    if (kind === "policy") {
+      // SSRF guard refused — safety layer, not a target statement.
+      F.push(mkFinding({
+        id: "URL-998", severity: "info", title: "Capture blocked by scanner safety policy (SSRF guard) — target not dialed",
+        file: bundle.meta.url, line: 0,
+        evidence: { type: "policy_refused", masked: evidence, note: "The target was refused by resolve→pin→connect before dialing. Not a reachability or security statement about the target." },
+        owasp: "A05", confidence: "high", fix: "If the target is legitimately yours, run with the documented CLI ownership flags.",
+      }));
+      return { findings: F, bundles: [], stack, scriptUrls: [], inlineScripts: [] };
+    }
+    // target unreachable — single INFO, no score drama (network/timeout noise only)
     F.push(mkFinding({
       id: "URL-999", severity: "info", title: "Target unreachable — L1 capture produced no homepage response",
       file: bundle.meta.url, line: 0,
-      evidence: { type: "unreachable", masked: bundle.requests[0]?.error ?? "no response captured", note: "A URL-mode report needs a reachable origin" },
+      evidence: { type: "unreachable", masked: evidence, note: "A URL-mode report needs a reachable origin" },
       owasp: "A05", confidence: "high", fix: "Check the URL and re-run.",
     }));
     return { findings: F, bundles: [], stack, scriptUrls: [], inlineScripts: [] };

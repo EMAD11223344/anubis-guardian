@@ -34,7 +34,7 @@ import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { SEVERITY_ORDER, type Inventory } from "./types.js";
 
-export const VERSION = "1.5.2";
+export const VERSION = "1.5.3";
 export const ADVISORY_SNAPSHOT = "2026-10";
 
 /**

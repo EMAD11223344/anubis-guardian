@@ -613,7 +613,10 @@ function emitUrlResult(
   _level: number
 ): void {
   const unreachable = result.findings.some((f) => f.id === "URL-999");
-  if (unreachable) result = { ...result, score: null, grade: "N/A" as const };
+  // v1.5.2-p1: internal scanner errors / guard refusals (URL-998) are NOT
+  // reachable-target statements — still fail-closed: no score, exit 2.
+  const noCapture = unreachable || result.findings.some((f) => f.id === "URL-998");
+  if (noCapture) result = { ...result, score: null, grade: "N/A" as const };
   if (opts.sarif) writeArtifact(opts.sarif, renderSarif(result));
   if (opts.fixPrompt) writeArtifact(opts.fixPrompt, renderFixPrompt(result));
   if (opts.compact) writeArtifact(opts.compact, renderCompact(result));
@@ -638,6 +641,11 @@ function emitUrlResult(
   }
   if (unreachable) {
     console.error(`\nscan-url: target unreachable — no homepage response, so there is no evidence to grade. Grade: N/A (score not computable). ${DISCLAIMER}`);
+    process.exit(2);
+  }
+  if (noCapture) {
+    const f = result.findings.find((x) => x.id === "URL-998")!;
+    console.error(`\nscan-url: no homepage was captured (${f.title}). No evidence to grade — this is not a verdict about the target. Grade: N/A (score not computable). ${DISCLAIMER}`);
     process.exit(2);
   }
   if (failOn) {

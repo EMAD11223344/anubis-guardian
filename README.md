@@ -9,7 +9,7 @@
 *An open-source, multi-layer security platform for software repositories and AI-assisted development.*
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.5.2-8b5cf6.svg)](package.json)
+[![Version](https://img.shields.io/badge/version-1.5.3-8b5cf6.svg)](package.json)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-blue.svg)](package.json)
 [![npm](https://img.shields.io/badge/npm-install%20--global-cb3837.svg)](https://www.npmjs.com/package/anubis-guardian)
 [![Tests](https://img.shields.io/github/actions/workflow/status/EMAD11223344/anubis-guardian/ci.yml?branch=main&label=tests)](https://github.com/EMAD11223344/anubis-guardian/actions/workflows/ci.yml)

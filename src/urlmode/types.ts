@@ -18,6 +18,13 @@ export interface CapturedResponse {
   body_truncated: boolean;
   bytes: number;              // original body byte length
   error?: string;             // network error (fetch failed etc.)
+  // v1.5.2-p1 failure taxonomy: why this record has no real response.
+  //   network = the target/network failed (honest "unreachable" case)
+  //   timeout = our own deadline — also target-side, but bounded
+  //   policy  = the SSRF guard refused (NOT a statement about the target)
+  //   internal= bug/protocol violation inside the scanner itself — reachability
+  //             is UNKNOWN; must never be reported as "target unreachable"
+  errorKind?: "network" | "timeout" | "policy" | "internal";
 }
 
 export interface CaptureMeta {

@@ -20,6 +20,69 @@ interface DialResult {
   body: Buffer;
   truncatedByPolicy: boolean;
   error?: string;
+  errorKind?: CapturedResponse["errorKind"];
+}
+
+/** Known target/network error codes (node errno + getaddrinfo families). */
+const NETWORK_ERROR_CODES = new Set([
+  "ENOTFOUND", "EAI_AGAIN", "EAI_FAIL", "EAI_NONAME", "ENOTDIR",     // DNS
+  "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EHOSTUNREACH",         // reachability
+  "ENETUNREACH", "ENETDOWN", "ECONNABORTED", "EPIPE", "EPROTO",      // transport
+  "EACCES", "EPERM", "EADDRNOTAVAIL",                                // network stack
+]);
+
+/**
+ * v1.5.2-p1: classify a socket/tls error honestly.
+ * Anything node's networking stack says for intrinsic reasons ("timeout",
+ * errno codes) is a target/network failure. ERR_INVALID_* / validation
+ * errors thrown by the runtime itself are INTERNAL — the scanner never
+ * dialed the wire, so nothing can be claimed about the target.
+ */
+export function classifySocketError(e: unknown): "network" | "timeout" | "internal" {
+  const err = e as { code?: string; message?: string } | null;
+  const code = (err && err.code) || "";
+  if (code.startsWith("ERR_INVALID") || code.startsWith("ERR_OUT_OF_RANGE") ||
+      code.startsWith("ERR_UNAVAILABLE") || code.startsWith("ERR_ASSERT")) return "internal";
+  if (code.startsWith("ERR_SOCKET_") || code.startsWith("ERR_STREAM_")) return "internal";
+  if (NETWORK_ERROR_CODES.has(code)) return "network";
+  const msg = (err && err.message) || "";
+  if (/ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|EPROTO|ECONNABORTED|EPIPE/.test(msg)) return "network";
+  if (/timeout|timed out/i.test(msg)) return "timeout";
+  return "internal";
+}
+
+/**
+ * v1.5.2-p1 — THE ROOT-CAUSE FIX for the Node ≥20 autoSelectFamily regression.
+ *
+ * Node's `lookup` (dns) option has TWO callback contracts:
+ *   - classic: (hostname, options, cb) and cb(err, address, family)
+ *   - array:   when options.all === true (autoSelectFamily passes dnsopts
+ *              {all:true} from lookupAndConnectMultiple), the callback MUST
+ *              be cb(err, [{ address, family }, ...]).
+ *
+ * The old inline lookup always answered the classic shape. On Node 22/24
+ * (autoSelectFamily default ON) Node iterated the returned STRING as an
+ * address array, derived `address: undefined`, found zero valid addresses
+ * and threw ERR_INVALID_IP_ADDRESS(undefined) BEFORE a single byte left the
+ * process — reported as a bogus "target unreachable" while DNS was fine.
+ *
+ * This helper answers BOTH contract shapes and always pins the ONE
+ * guard-validated address (ignores the hostname argument entirely → no
+ * rebinding window, service-mode restrictions untouched).
+ */
+export function pinnedIpLookup(
+  target: { ip: string; family: 4 | 6 },
+): NonNullable<import("node:http").RequestOptions["lookup"]> {
+  const ip = target.ip;
+  const fam = target.family === 6 ? 6 : 4;
+  return ((hostnameOpt: unknown, o: { all?: boolean } | undefined | null, cb: (...args: unknown[]) => void) => {
+    void hostnameOpt;
+    if (o && o.all === true) {
+      (cb as unknown as (err: NodeJS.ErrnoException | null, addresses: Array<{ address: string; family: number }>) => void)(null, [{ address: ip, family: fam }]);
+      return;
+    }
+    (cb as unknown as (err: NodeJS.ErrnoException | null, addr: string, fam: number) => void)(null, ip, fam);
+  }) as NonNullable<import("node:http").RequestOptions["lookup"]>;
 }
 
 /**
@@ -51,21 +114,21 @@ function dialHop(
 
     // CLI keeps the old single overall deadline; service mode splits connect/read.
     let overallTimer: NodeJS.Timeout | null = timeouts.overallMs !== null
-      ? setTimeout(() => { finishErr("timeout"); try { req.destroy(); } catch { /* gone */ } }, timeouts.overallMs)
+      ? setTimeout(() => { finishErr("timeout", "timeout"); try { req.destroy(); } catch { /* gone */ } }, timeouts.overallMs)
       : null;
     const connectTimer = setTimeout(() => {
-      finishErr("connect timeout");
+      finishErr("connect timeout", "timeout");
       try { req.destroy(); } catch { /* gone */ }
     }, timeouts.connectMs);
     let idleTimer: NodeJS.Timeout | null = null;
-    const finishErr = (msg: string): void => {
+    const finishErr = (msg: string, kind: NonNullable<DialResult["errorKind"]> = "network"): void => {
       if (settled) return;
-      finish({ status: 0, headers: {}, body: Buffer.alloc(0), truncatedByPolicy: false, error: msg });
+      finish({ status: 0, headers: {}, body: Buffer.alloc(0), truncatedByPolicy: false, error: msg, errorKind: kind });
     };
     const resetIdle = (): void => {
       if (timeouts.readIdleMs === null) return;
       if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => { finishErr("read idle timeout"); try { req.destroy(); } catch { /* gone */ } }, timeouts.readIdleMs);
+      idleTimer = setTimeout(() => { finishErr("read idle timeout", "timeout"); try { req.destroy(); } catch { /* gone */ } }, timeouts.readIdleMs);
     };
 
     const lower: Record<string, string> = {};
@@ -78,13 +141,15 @@ function dialHop(
       port: target.port,
       method,
       headers: lower,
+      // v1.5.2-p1: pin the family explicitly — mirrors the pinned address and
+      // keeps node on the single-address dial path on every version.
+      family: target.family === 6 ? 6 : 4,
       // TLS SNI + certificate subject check use the original hostname, not the IP
       servername: scheme === "https:" ? target.host : undefined,
-      // belt & braces: host is already a literal IP; outlaw any further resolution
-      lookup: (hostnameOpt, o, cb) => {
-        void hostnameOpt;
-        (cb as unknown as (err: NodeJS.ErrnoException | null, addr: string, fam: number) => void)(null, target.ip, target.family === 6 ? 6 : 4);
-      },
+      // v1.5.2-p1 ROOT-CAUSE FIX: the lookup hook now answers Node's array
+      // contract ({all:true}, autoSelectFamily) as well as the classic one.
+      // Ignoring the hostname in BOTH shapes → no rebinding window.
+      lookup: pinnedIpLookup(target),
       setHost: false,
     }, (res: InstanceType<typeof IncomingMessage>) => {
       clearTimeout(connectTimer);
@@ -113,9 +178,9 @@ function dialHop(
           truncatedByPolicy: false,
         });
       });
-      res.on("error", (e: Error) => finishErr(e.message));
+      res.on("error", (e: Error) => finishErr(e.message, classifySocketError(e)));
     });
-    req.on("error", (e: Error) => finishErr(e.message));
+    req.on("error", (e: Error) => finishErr(e.message, classifySocketError(e)));
     req.end();
   });
 }
@@ -177,7 +242,9 @@ export class Fetcher {
     };
     const recordErr = (finalUrl: string, error: string): CapturedResponse => {
       if (error.startsWith("SSRF-REFUSED")) this.guardRefusals.push(`${this.seq}: ${url} → ${error}`);
-      return record({ url, final_url: finalUrl, status: 0, headers: {}, body: "", body_truncated: false, bytes: 0, error });
+      // v1.5.2-p1 taxonomy: malformed input / guard refusal — nothing dialed,
+      // so this is policy, never "target unreachable".
+      return record({ url, final_url: finalUrl, status: 0, headers: {}, body: "", body_truncated: false, bytes: 0, error, errorKind: "policy" });
     };
 
     let current: URL;
@@ -191,7 +258,7 @@ export class Fetcher {
     const recordHopRefused = (origUrl: string, baseUrl: string, last: DialResult | null, error: string, fresh = false): CapturedResponse => {
       if (error.startsWith("SSRF-REFUSED")) this.guardRefusals.push(`${this.seq}: ${origUrl} → ${error}`);
       if (fresh || !last) {
-        return record({ url: origUrl, final_url: baseUrl, status: 0, headers: {}, body: "", body_truncated: false, bytes: 0, error });
+        return record({ url: origUrl, final_url: baseUrl, status: 0, headers: {}, body: "", body_truncated: false, bytes: 0, error, errorKind: error.startsWith("SSRF-REFUSED") ? "policy" : "internal" });
       }
       return record({
         url: origUrl,
@@ -202,6 +269,7 @@ export class Fetcher {
         body_truncated: last.truncatedByPolicy || last.body.length > MAX_BODY_BYTES,
         bytes: last.body.length,
         error,
+        errorKind: error.startsWith("SSRF-REFUSED") ? "policy" : "internal",
       });
     };
 
@@ -228,7 +296,7 @@ export class Fetcher {
       const res = await dialHop(current.protocol as "http:" | "https:", pinned, current, method, { "user-agent": USER_AGENT, ...(init?.headers ?? {}) }, timeouts, byteCap);
       if (res.error !== undefined) {
         if (res.error.startsWith("SSRF-REFUSED")) this.guardRefusals.push(`${this.seq}: ${current.toString()} → ${res.error}`);
-        return record({ url, final_url: current.toString(), status: 0, headers: {}, body: "", body_truncated: false, bytes: 0, error: res.error });
+        return record({ url, final_url: current.toString(), status: 0, headers: {}, body: "", body_truncated: false, bytes: 0, error: res.error, errorKind: res.errorKind ?? "network" });
       }
       lastRes = res;
 
