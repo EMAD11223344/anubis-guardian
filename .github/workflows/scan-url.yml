@@ -101,12 +101,21 @@ jobs:
           EXPECTED: ${{ vars.ANUBIS_TOOL_VERSION }}
         run: |
           set -euo pipefail
-          ACTUAL="$(npx --yes -p "anubis-guardian@$EXPECTED" anubis-guardian --version | tr -d 'v[:space:]')"
+          # npx -p PATH-shim resolution is not stable across runner npm builds
+          # (run 40801676072: 'sh: 1: anubis-guardian: not found', exit 127).
+          # Install into an isolated prefix and invoke the CLI by ABSOLUTE
+          # PATH through node — no shims, no global-bin interference.
+          TOOL_DIR="$RUNNER_TEMP/anubis-tool"
+          rm -rf "$TOOL_DIR"
+          npm install --prefix "$TOOL_DIR" --no-audit --no-fund "anubis-guardian@$EXPECTED"
+          TOOL_CLI="$TOOL_DIR/node_modules/anubis-guardian/dist/cli.js"
+          ACTUAL="$(node "$TOOL_CLI" --version | tr -d 'v[:space:]')"
           if [ "$ACTUAL" != "${EXPECTED#v}" ]; then
             echo "version mismatch — expected ${EXPECTED}, got ${ACTUAL}. Fail-closed: no scan."
             exit 1
           fi
           echo "tool version verified: $ACTUAL"
+          echo "ANUBIS_TOOL_CLI=$TOOL_CLI" >> "$GITHUB_ENV"
 
       - name: build tool from pinned SHA (fallback source mode)
         if: vars.ANUBIS_SOURCE_MODE == 'pinned'
@@ -129,7 +138,7 @@ jobs:
           if [ "${ANUBIS_SOURCE_MODE:-}" = "pinned" ]; then
             NODE_BIN="node dist/cli.js"   # fallback mode: previously built repo
           else
-            NODE_BIN="npx --yes -p anubis-guardian@$EXPECTED anubis-guardian"
+            NODE_BIN="node $ANUBIS_TOOL_CLI"   # isolated install from verify step (exported via GITHUB_ENV)
           fi
           ARGS=(--format json -o report-to.json)
           case "$LEVEL" in
