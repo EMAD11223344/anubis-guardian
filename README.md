@@ -19,7 +19,9 @@
 
 </div>
 
-<!-- A short demo video / animated terminal recording belongs here when one exists. -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/demo-arena.gif" alt="Screen recording of the hosted web bridge demo: entering a target URL, choosing a scan level (L1 passive — browser-equivalent, L2 discovery, L3 live probe — verified ownership required), dispatching to a GitHub-hosted runner, watching the live phases (queued → runner boot → acquiring scanner → scanning), and receiving a graded report; the panel also shows the equivalent CLI command (npx anubis-guardian@latest scan-url)" width="100%">
+</p>
 
 ---
 
@@ -159,6 +161,29 @@ L1 is always passive (headers, cookies, secrets in public bundles). L2 discovery
   <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/modes-art.svg" alt="Anubis Guardian's two modes on a stylized two-panel interface. Mode 1 — codebase audit, offline and static-only: secrets and git history, config/CI/infrastructure, credentials in configuration, npm dependency audit, JS/TS SAST/taint/authz, optional framework playbooks, SARIF/JSON/HTML with a coverage manifest. Mode 2 — URL audit, consent-gated: L1 passive, L2 discovery, L3 probe with verified ownership (DNS TXT or .well-known file); the gate is enforced. Chips: 49/49 honeypot self-test, 0 false positives on the clean corpus, 17/17 labelled corpus, 20/20 multilingual corpus, 3/3 gitleaks matched" width="100%">
 </p>
 
+### Try it online — hosted web bridge (no install)
+
+The same URL scanner also runs as a hosted demo instance — enter a URL, pick a level, dispatch, and the graded report lands while the CLI stays untouched in your editor. Try it at [my-arena-os.vercel.app/workspace/demo](https://my-arena-os.vercel.app/workspace/demo/overview):
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/scan-form.png" alt="Anubis Scan web-bridge demo panel: target field with a URL, scan-level cards L1 (passive — browser-equivalent, no ownership needed), L2 (discovery — requires verified ownership), L3 (L2 + Supabase live probe — verified ownership), a Start L1 scan button, an honest notice that scans run on GitHub-hosted runners, and a red-bordered CLI block: for the deepest scan run npx anubis-guardian@latest scan-url — Codebase Mode (Mode 1) is deeper than any web scan can be" width="100%">
+</p>
+
+How it works — the honest version:
+
+- **The levels are the CLI's own contract, not a web-tier invention:** L1 passive needs no ownership; L2/L3 are refused at dispatch without an ownership token, and the scanner **re-verifies ownership at scan time** — the gate is enforced, not promised.
+- **Scans run on GitHub-hosted runners.** The target site's server records the visit — the UI tells you before you click.
+- **No-storage reporting:** the demo instance keeps reports in memory briefly and expires them (nothing lands on disk or in a database). Copy or download the report while it's open — `COPY FOR AI ASSISTANT` / `DOWNLOAD .TXT`.
+- **Codebase Mode (Mode 1) does not run in the web bridge.** Secrets, git history, dependency audit, CI/IaC checks, and JS/TS SAST run through the CLI, offline, on your own machine:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/EMAD11223344/anubis-guardian/main/docs/assets/scan-report.png" alt="Completed web-bridge scan report: target URL, phase timeline all green, scan report v1.5.3 at L1, grade A — 93/100 with 0 critical, 0 high, 1 medium (URL-010 Content-Security-Policy header missing, VERIFIED, evidence masked), 3 low, 1 info, and COPY FOR AI ASSISTANT / DOWNLOAD .TXT actions" width="100%">
+</p>
+
+```bash
+npm install -g anubis-guardian        # Mode 1 and everything URL-mode, locally
+```
+
 ## Output formats & exit codes
 
 `terminal` (default) · `json` · `md` · `sarif` · `html` · `compact`, plus `--fix-prompt fix.md` (a deterministic repair prompt for any AI agent) and `--inventory inventory.json` (static attack-surface map).
@@ -281,3 +306,5 @@ anubis-guardian scan . --fail-on high               # بوابة CI
 anubis-guardian scan-url https://example.com        # فحص موقع منشور — L1 سلبي
 anubis-guardian ownership https://example.com       # إثبات الملكية للـ L2+
 ```
+
+**جرِّبه أونلاين دون تثبيت:** نسخة استعراض مُستضافة لنفس فاحص الـ URL (اختر المستوى، أرسل الفحص، وشاهد التقرير مباشرة) — [my-arena-os.vercel.app/workspace/demo](https://my-arena-os.vercel.app/workspace/demo/overview). الفحوص تعمل على GitHub-hosted runners، والتقارير تنتهي من الذاكرة بعد التسليم (بدون تخزين دائم) — أما **فحص الكود (Mode 1) فلا يعمل في الويب** ويُنفّذ محليًا عبر الـ CLI فقط.
