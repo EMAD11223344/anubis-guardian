@@ -3,7 +3,8 @@
 > This document is the public contract for how Anubis Guardian finds, scores and
 > reports security issues. It exists so every number we publish can be checked,
 > every finding can be reproduced, and every limitation is stated before you
-> find it the hard way. The full design rationale lives in `docs/PLAN.master.md`.
+> find it the hard way. The measured evidence and the prioritized roadmap live in
+> `BENCHMARKS.md` and `ROADMAP.md`.
 
 ## 1. Determinism-first
 

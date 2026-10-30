@@ -90,8 +90,8 @@ URL checks (L1/L2/L3) follow the same contract with two extra requirements:
 
 ## Where to start
 
-- `docs/PLAN.master.md` — design + decision log (why things are the way they are).
 - `METHODOLOGY.md` — scoring, determinism and FP-control contracts.
+- `ROADMAP.md` — what ships next, with prereqs and fixtures.
 - `src/rules/packs2.ts` and `src/rules/taint.ts` — realistic examples of
   well-formed built-in checks with negative-signal detection.
 - `tests/honeypot/` — how seeds and clean cases are structured.
